@@ -3,12 +3,15 @@
 // reuse the live R2 plant (copied from .superpowers/garden-liveliness-mockup.html).
 // Ambient sway from the base; disabled under reduced motion. See garden-liveliness spec.
 
-// Per-stage canvas size — heights MUST step up seed < sprout < sapling < tree.
+// Per-stage rendered size + viewBox. Heights MUST step up seed < sprout <
+// sapling < tree. The sprout's art is drawn in a larger 64×84 coordinate space
+// but rendered at 50×66, so the browser scales it down (nothing clips); every
+// other stage's viewBox equals its w×h.
 const DIMS = {
-  seed: [60, 52],
-  sprout: [50, 66],
-  sapling: [96, 120],
-  tree: [120, 150],
+  seed: { w: 60, h: 52, vb: '0 0 60 52' },
+  sprout: { w: 50, h: 66, vb: '0 0 64 84' },
+  sapling: { w: 96, h: 120, vb: '0 0 96 120' },
+  tree: { w: 120, h: 150, vb: '0 0 120 150' },
 }
 
 function Defs() {
@@ -142,14 +145,14 @@ const BODY = {
 
 export default function GardenPlant({ stage, vitality, reduceMotion = false }) {
   const s = DIMS[stage] ? stage : 'seed'
-  const [w, h] = DIMS[s]
+  const { w, h, vb } = DIMS[s]
   return (
     <svg
       className={'garden-plant' + (reduceMotion ? '' : ' garden-sway')}
       data-stage={s}
       width={w}
       height={h}
-      viewBox={`0 0 ${s === 'sprout' ? '64 84' : `${w} ${h}`}`}
+      viewBox={vb}
       role="img"
       aria-hidden="true"
     >
