@@ -4,8 +4,17 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('../api/client', () => ({ default: { get: vi.fn() } }))
-vi.mock('../components/RecipeCard', () => ({
-  default: ({ recipe }) => <div>{recipe.name}</div>,
+// GardenBed mock: render title (if any) + each recipe name, so page-level tests
+// assert grouping/behavior without the SVG/scroll internals.
+vi.mock('../components/GardenBed', () => ({
+  default: ({ title, recipes }) => (
+    <div data-bed={title || 'search'}>
+      {title && <h2>{title}</h2>}
+      {recipes.map((r) => (
+        <div key={r.id}>{r.name}</div>
+      ))}
+    </div>
+  ),
 }))
 import client from '../api/client'
 import MyRecipes from './MyRecipes'
@@ -60,5 +69,32 @@ describe('MyRecipes', () => {
     expect(screen.getByText('Old Faithful')).toBeInTheDocument()
     // no sapling → 'Growing' band header absent
     expect(screen.queryByText('Growing')).not.toBeInTheDocument()
+  })
+
+  it('searching shows one untitled bed of matches (plants, not a titled band)', async () => {
+    client.get.mockResolvedValueOnce({
+      data: [
+        { id: 1, name: 'Adobo', growth_stage: 'tree' },
+        { id: 2, name: 'Sinigang', growth_stage: 'seed' },
+      ],
+    })
+    render(<MemoryRouter><MyRecipes /></MemoryRouter>)
+    await screen.findByText('Adobo')
+    await userEvent.type(screen.getByPlaceholderText('Search recipes'), 'adobo')
+    expect(screen.getByText('Adobo')).toBeInTheDocument()
+    expect(screen.queryByText('Sinigang')).not.toBeInTheDocument()
+    // the search bed is untitled — no band headers while searching
+    expect(screen.queryByText('Needs tending')).not.toBeInTheDocument()
+    expect(screen.queryByText('Thriving')).not.toBeInTheDocument()
+  })
+
+  it('a search with no matches shows the no-match message', async () => {
+    client.get.mockResolvedValueOnce({
+      data: [{ id: 1, name: 'Adobo', growth_stage: 'tree' }],
+    })
+    render(<MemoryRouter><MyRecipes /></MemoryRouter>)
+    await screen.findByText('Adobo')
+    await userEvent.type(screen.getByPlaceholderText('Search recipes'), 'zzz')
+    expect(screen.getByText(/No plants match/i)).toBeInTheDocument()
   })
 })

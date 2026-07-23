@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import RecipeCard from '../components/RecipeCard'
+import GardenBed from '../components/GardenBed'
 import IconField from '../components/IconField'
 import { gardenBands } from '../lib/gardenBands'
 
@@ -17,28 +17,15 @@ export default function MyRecipes() {
       .catch(() => {})
   }, [])
 
-  const searching = search.trim().length > 0
+  const query = search.trim()
+  const searching = query.length > 0
   const filtered = recipes.filter((r) =>
-    r.name.toLowerCase().includes(search.toLowerCase()),
+    r.name.toLowerCase().includes(query.toLowerCase()),
   )
-  // While searching, show a flat grid of matches (grouping a filtered subset would
-  // create confusing single-item bands). Otherwise, show the garden by band.
+  // Not searching → the garden by growth band. Searching → ONE untitled bed of
+  // matches (still plants, never cards; grouping a filtered subset makes
+  // confusing single-plant bands). See garden-liveliness spec §4.5.
   const bands = searching ? [] : gardenBands(recipes)
-
-  function grid(list) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        {list.map((recipe) => (
-          <RecipeCard
-            key={recipe.id}
-            recipe={recipe}
-            variant="grid"
-            onClick={() => navigate(`/recipes/${recipe.id}`)}
-          />
-        ))}
-      </div>
-    )
-  }
 
   return (
     <div className="px-4 pt-6">
@@ -66,23 +53,22 @@ export default function MyRecipes() {
         wrapperClassName="mt-3.5 mb-4"
       />
 
-      {searching
-        ? grid(filtered)
-        : bands.map((band) => (
-            <section key={band.key} className="mb-6">
-              <h2 className="font-serif font-bold text-[17px] text-ink">
-                {band.title}
-              </h2>
-              <p className="font-serif italic text-[12.5px] text-ink-soft mb-2.5">
-                {band.blurb}
-              </p>
-              {grid(band.recipes)}
-            </section>
-          ))}
+      {searching ? (
+        <GardenBed recipes={filtered} />
+      ) : (
+        bands.map((band) => (
+          <GardenBed
+            key={band.key}
+            title={band.title}
+            blurb={band.blurb}
+            recipes={band.recipes}
+          />
+        ))
+      )}
 
       {searching && filtered.length === 0 && (
         <p className="text-center text-ink-soft text-sm mt-8">
-          No recipes found.
+          No plants match “{query}”.
         </p>
       )}
       {!searching && recipes.length === 0 && (
