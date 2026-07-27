@@ -2,14 +2,27 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import RecipeCard from '../components/RecipeCard'
-import SectionHeader from '../components/SectionHeader'
-import Wordmark from '../components/Wordmark'
 
 function getGreeting() {
   const hour = new Date().getHours()
   if (hour < 12) return 'Good morning'
   if (hour < 18) return 'Good afternoon'
   return 'Good evening'
+}
+
+// The "issei." masthead — Fraunces wordmark with the signature orange period,
+// and the motto beneath (capitalized, punctuated).
+function Masthead() {
+  return (
+    <div className="px-5 pt-6 pb-4 bg-cream">
+      <h1 className="font-display font-black text-[34px] leading-[0.95] tracking-[-0.01em] text-ink">
+        issei<span className="text-terra">.</span>
+      </h1>
+      <p className="font-display italic text-[15px] text-ink-soft mt-0.5">
+        Recipes that live in memory.
+      </p>
+    </div>
+  )
 }
 
 export default function Home() {
@@ -31,34 +44,35 @@ export default function Home() {
   }, [])
 
   if (mine === null) {
-    return <div className="p-6 text-center text-ink-soft">Loading…</div>
+    return (
+      <div className="min-h-screen bg-cream p-6 text-center font-display italic text-ink-soft">
+        Loading…
+      </div>
+    )
   }
 
-  const greeting = (
-    <p className="text-terra text-[11px] font-sans font-semibold uppercase tracking-[0.22em]">
-      {getGreeting()}, {user.first_name || 'friend'}
-    </p>
-  )
-
-  // First-run: nothing kept yet. Warm hero + CTA (bottom nav still offers Add).
+  // First-run: nothing kept yet. Hero band + CTA (bottom nav still offers Add).
   if (mine.length === 0) {
     return (
-      <div className="min-h-screen px-6">
-        <div className="pt-8">{greeting}</div>
-        <div className="flex flex-col items-center justify-center text-center pt-20">
-          <Wordmark className="text-5xl mb-6" />
-          <h1 className="font-serif font-black text-[26px] leading-[1.1] text-ink mb-3 max-w-[15rem]">
-            Every family has a dish that means home.
-          </h1>
-          <p className="text-sm text-ink-soft mb-8 max-w-xs leading-relaxed">
-            Start with the one you'd miss most — the taste you'd want to keep
-            forever.
+      <div className="min-h-screen bg-cream">
+        <Masthead />
+        <div className="bg-peach px-6 pt-10 pb-12">
+          <p className="font-display font-bold uppercase tracking-[0.2em] text-[11px] text-terra">
+            {getGreeting()}, {user.first_name || 'friend'}
+          </p>
+          <h2 className="font-display font-medium text-[34px] leading-[1.05] text-ink mt-3 max-w-[16rem]">
+            Every family has a dish that means{' '}
+            <span className="font-black italic">home.</span>
+          </h2>
+          <p className="font-display text-[16px] text-ink-soft mt-4 max-w-xs leading-relaxed">
+            Start with the one you&rsquo;d miss most — the taste you&rsquo;d want
+            to keep forever.
           </p>
           <button
             onClick={() => navigate('/add')}
-            className="btn-primary !w-auto px-6"
+            className="mt-6 rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream shadow-[0_6px_0_#7c351a] active:translate-y-[3px] active:shadow-[0_3px_0_#7c351a] transition"
           >
-            Keep your first recipe
+            Keep your first recipe →
           </button>
         </div>
       </div>
@@ -69,46 +83,68 @@ export default function Home() {
   const passedDown = community.filter((r) => r.user_id !== user.id).slice(0, 12)
 
   return (
-    <div className="pt-8">
-      <div className="px-4">
-        {greeting}
-        <h1 className="font-serif font-black text-[32px] leading-[1.02] tracking-[-0.01em] text-ink mt-1.5">
-          What's cooking tonight?
-        </h1>
-        <p className="font-serif italic text-[14.5px] text-ink-soft mt-1.5">
-          Recipes that live in memory, not cookbooks.
+    <div className="min-h-screen bg-cream pb-6">
+      <Masthead />
+
+      {/* HERO BAND — peach panel, mixed-weight display headline (reference look) */}
+      <div className="bg-peach px-5 pt-7 pb-8">
+        <p className="font-display font-bold uppercase tracking-[0.2em] text-[11px] text-terra">
+          {getGreeting()}, {user.first_name || 'friend'}
+        </p>
+        <h2 className="font-display text-[38px] leading-[1.0] text-ink mt-2 max-w-[15rem]">
+          What&rsquo;s cooking{' '}
+          <span className="font-black italic">tonight?</span>
+        </h2>
+        <p className="font-display italic text-[15px] text-ink-soft mt-3">
+          Everything you&rsquo;ve kept, in one kitchen.
         </p>
       </div>
 
+      {/* CORAL ACCENT BAR — the reference's red strip */}
+      <button
+        onClick={() => navigate('/browse')}
+        className="w-full bg-coral px-5 py-3 flex items-center justify-between text-cream"
+      >
+        <span className="font-display font-black text-[15px]">
+          {passedDown.length + mine.length} recipes to cook
+        </span>
+        <span className="font-display font-bold text-[13px]">Browse all →</span>
+      </button>
+
+      {/* SECTIONS — big Fraunces titles, two-up recipe-card grids */}
       {passedDown.length > 0 && (
-        <>
-          <div className="px-4">
-            <SectionHeader className="mt-5">Passed down lately</SectionHeader>
-          </div>
-          <div className="flex gap-3.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
+        <section className="px-5 pt-6">
+          <h3 className="font-display font-bold text-[24px] text-ink leading-none mb-3">
+            Passed down lately
+          </h3>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6">
             {passedDown.map((recipe) => (
               <RecipeCard
                 key={recipe.id}
                 recipe={recipe}
+                variant="grid"
                 onClick={() => navigate(`/recipes/${recipe.id}`)}
               />
             ))}
           </div>
-        </>
+        </section>
       )}
 
-      <div className="px-4">
-        <SectionHeader className="mt-5">From your garden</SectionHeader>
-      </div>
-      <div className="flex gap-3.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
-        {mine.slice(0, 12).map((recipe) => (
-          <RecipeCard
-            key={recipe.id}
-            recipe={recipe}
-            onClick={() => navigate(`/recipes/${recipe.id}`)}
-          />
-        ))}
-      </div>
+      <section className="px-5 pt-7">
+        <h3 className="font-display font-bold text-[24px] text-ink leading-none mb-3">
+          Your kitchen
+        </h3>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+          {mine.slice(0, 12).map((recipe) => (
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              variant="grid"
+              onClick={() => navigate(`/recipes/${recipe.id}`)}
+            />
+          ))}
+        </div>
+      </section>
     </div>
   )
 }

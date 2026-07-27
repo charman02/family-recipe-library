@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import GardenBed from '../components/GardenBed'
+import RecipeCard from '../components/RecipeCard'
 import IconField from '../components/IconField'
-import { gardenBands } from '../lib/gardenBands'
 
 export default function MyRecipes() {
   const [recipes, setRecipes] = useState([])
@@ -19,26 +18,22 @@ export default function MyRecipes() {
 
   const query = search.trim()
   const searching = query.length > 0
-  const filtered = recipes.filter((r) =>
-    r.name.toLowerCase().includes(query.toLowerCase()),
-  )
-  // Not searching → the garden by growth band. Searching → ONE untitled bed of
-  // matches (still plants, never cards; grouping a filtered subset makes
-  // confusing single-plant bands). See garden-liveliness spec §4.5.
-  const bands = searching ? [] : gardenBands(recipes)
+  const filtered = searching
+    ? recipes.filter((r) => r.name.toLowerCase().includes(query.toLowerCase()))
+    : recipes
 
   return (
-    <div className="px-4 pt-6">
-      <h1 className="font-serif font-black text-[28px] text-ink">
-        Your Garden
+    <div className="min-h-screen bg-cream px-5 pt-6 pb-6">
+      <h1 className="font-display font-black text-[30px] leading-none text-ink">
+        Your kitchen<span className="text-terra">.</span>
       </h1>
-      <p className="font-serif italic text-sm text-ink-soft mt-0.5">
-        A garden of everything you’ve kept.
+      <p className="font-display italic text-[15px] text-ink-soft mt-1">
+        Everything you&rsquo;ve kept.
       </p>
 
       <button
         onClick={() => navigate('/shared')}
-        className="mt-2 font-sans text-[11.5px] font-semibold text-terra"
+        className="mt-2 font-display font-bold text-[12.5px] text-terra"
       >
         Shared with you →
       </button>
@@ -50,30 +45,28 @@ export default function MyRecipes() {
         placeholder="Search recipes"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        wrapperClassName="mt-3.5 mb-4"
+        wrapperClassName="mt-4 mb-5"
       />
 
-      {searching ? (
-        <GardenBed recipes={filtered} />
-      ) : (
-        bands.map((band) => (
-          <GardenBed
-            key={band.key}
-            title={band.title}
-            blurb={band.blurb}
-            recipes={band.recipes}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+        {filtered.map((recipe) => (
+          <RecipeCard
+            key={recipe.id}
+            recipe={recipe}
+            variant="grid"
+            onClick={() => navigate(`/recipes/${recipe.id}`)}
           />
-        ))
-      )}
+        ))}
+      </div>
 
       {searching && filtered.length === 0 && (
-        <p className="text-center text-ink-soft text-sm mt-8">
-          No plants match “{query}”.
+        <p className="text-center font-display italic text-ink-soft text-[15px] mt-10">
+          No recipes match “{query}”.
         </p>
       )}
       {!searching && recipes.length === 0 && (
-        <p className="text-center text-ink-soft text-sm mt-8">
-          Your garden’s just getting started. Plant your first seed.
+        <p className="text-center font-display italic text-ink-soft text-[15px] mt-10">
+          Your kitchen&rsquo;s empty — keep your first recipe.
         </p>
       )}
     </div>

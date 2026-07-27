@@ -19,9 +19,18 @@ export default {
         action: '#B5502A',       // = terra — buttons, links, active states
         growth: '#5C7A3F',       // lead green — plants, growth, garden ambient, eyebrows
         'growth-bright': '#7FA05A', // leaf highlights, plant accents
+        // "Kamala's Recipes"-inspired accents for the redesigned Home color-blocking.
+        cream: '#FBF3E2',        // pale header cream (near-white warm)
+        peach: '#FBE0A8',        // hero band peach/butter
+        coral: '#F96D5B',        // red-coral accent bar / tags
+        periwinkle: '#6E7BF2',   // playful blue seal
+        mint: '#8FE39E',         // donate-pill green
       },
       fontFamily: {
         serif: ['Cormorant Garamond', 'Georgia', 'serif'],
+        // Fraunces — the chunky high-contrast display serif for big Home titles
+        // (matches the "Kamala's Recipes" reference). Serif stays Cormorant.
+        display: ['Fraunces', 'Cormorant Garamond', 'Georgia', 'serif'],
         sans: ['Nunito Sans', 'system-ui', 'sans-serif'],
         hand: ['Caveat', 'cursive'],
       },

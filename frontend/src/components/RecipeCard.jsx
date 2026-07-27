@@ -1,49 +1,38 @@
 import CoverImage from './CoverImage'
-import Plant from './Plant'
-import { stageForRecipe, vitalityForRecipe } from '../lib/growth'
 import { sourceNameOf } from '../lib/sourceName'
 
-// The signature repeated unit: a recipe as a designed "card in a recipe box."
-// - squared corners (heirloom, not app-rounded)
-// - layered paper edge: hairline border + stacked warm shadow
-// - cuisine as a cream stamped tag ON the photo, not a gray pill
-// - Fraunces name, italic terra "kept by" byline
+// The recipe card, restyled to the "Kamala's Recipes" reference: a food photo
+// in a soft-rounded frame, then a big Fraunces title centered beneath it with a
+// small italic byline. No plant/growth iconography (classic kitchen, not garden).
 //
-// variant: "row" (fixed-width, for horizontal scroll rows) | "grid" (fills its
-// grid cell). onClick navigates to the recipe.
-export default function RecipeCard({ recipe, onClick, variant = 'row' }) {
-  const widthClass = variant === 'row' ? 'w-[168px] flex-none' : 'w-full'
+// variant: "grid" (fills its cell — two-up rows) | "row" (fixed width, for any
+// horizontal-scroll rows). onClick navigates to the recipe.
+export default function RecipeCard({ recipe, onClick, variant = 'grid' }) {
+  const widthClass = variant === 'row' ? 'w-[200px] flex-none' : 'w-full'
 
   return (
     <button
       onClick={onClick}
-      className={`${widthClass} text-left bg-card rounded-[5px] overflow-hidden border border-[#ECE0C9] shadow-[0_1px_0_#E3D3BA,0_8px_18px_rgba(90,60,30,0.14)] transition-transform active:scale-[0.98]`}
+      className={`${widthClass} text-left bg-transparent transition-transform active:scale-[0.98]`}
     >
       <div className="relative">
         <CoverImage
           url={recipe.cover_photo_url}
-          size="sm"
-          className="w-full h-[104px]"
+          size="md"
+          className="w-full h-[136px] rounded-[16px] object-cover border border-line shadow-[0_8px_20px_-12px_rgba(80,50,20,0.35)]"
         />
         {recipe.cuisine && (
-          <span className="absolute top-[7px] left-[7px] text-[9px] font-sans font-semibold uppercase tracking-[0.12em] text-[#5C3A1E] bg-[rgba(247,238,221,0.94)] px-[7px] py-[3px] rounded-[2px]">
+          <span className="absolute top-2 left-2 font-display font-semibold uppercase tracking-[0.1em] text-[9px] text-ink bg-cream/95 px-2.5 py-1 rounded-full shadow-sm">
             {recipe.cuisine}
           </span>
         )}
-        <span className="absolute top-[6px] right-[6px] bg-[rgba(247,238,221,0.94)] rounded-full p-[5px] shadow-[0_1px_3px_rgba(90,60,30,0.2)]">
-          <Plant
-            stage={stageForRecipe(recipe)}
-            vitality={vitalityForRecipe(recipe)}
-            size={38}
-          />
-        </span>
       </div>
-      <div className="px-[11px] pt-[9px] pb-[11px]">
-        <p className="font-serif font-bold text-[15px] leading-[1.15] text-ink">
+      <div className="px-0.5 pt-2.5 text-center">
+        <p className="font-display font-bold text-[18px] leading-[1.06] text-ink">
           {recipe.name}
         </p>
         {(sourceNameOf(recipe) || recipe.author_full_name) && (
-          <p className="font-serif italic text-[11.5px] text-plum mt-[3px]">
+          <p className="font-display italic text-[12.5px] text-plum mt-0.5">
             {sourceNameOf(recipe)
               ? `from ${sourceNameOf(recipe)}`
               : `kept by ${recipe.author_full_name}`}
