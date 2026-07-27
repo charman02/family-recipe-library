@@ -55,6 +55,37 @@ function Defs() {
   )
 }
 
+// Soul accents that MATCH the recipe-page plant (LivingPlant/plantForms) exactly:
+// a 5-petal cream blossom with a saffron center, and a detailed fruit with a
+// highlight + stem. Raw-hex fills (the garden svg can't see the page plant's
+// scoped --blossom/--saffron vars). Placed at (x,y) in the stage's own viewBox,
+// sized by `s` so they read at the garden's smaller scale.
+function Blossom({ x, y, s = 1 }) {
+  const p = 3.9 * s
+  const rx = 0.53 * p
+  const ry = p
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <ellipse cx="0" cy={-0.9 * p} rx={rx} ry={ry} fill="#FBF7EE" />
+      <ellipse cx={0.86 * p} cy={-0.28 * p} rx={rx} ry={ry} fill="#FBF7EE" transform={`rotate(72 ${0.86 * p} ${-0.28 * p})`} />
+      <ellipse cx={0.53 * p} cy={0.77 * p} rx={rx} ry={ry} fill="#FBF7EE" transform={`rotate(144 ${0.53 * p} ${0.77 * p})`} />
+      <ellipse cx={-0.53 * p} cy={0.77 * p} rx={rx} ry={ry} fill="#FBF7EE" transform={`rotate(216 ${-0.53 * p} ${0.77 * p})`} />
+      <ellipse cx={-0.86 * p} cy={-0.28 * p} rx={rx} ry={ry} fill="#FBF7EE" transform={`rotate(288 ${-0.86 * p} ${-0.28 * p})`} />
+      <circle r={0.75 * p} fill="#D99A2B" />
+    </g>
+  )
+}
+function Fruit({ x, y, s = 1 }) {
+  const r = 4.5 * s
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <circle r={r} fill="url(#fruitG)" />
+      <ellipse cx={-0.3 * r} cy={-0.35 * r} rx={0.29 * r} ry={0.18 * r} fill="#FFE6BC" opacity=".85" />
+      <path d={`M0 ${-r} q0.8 -1.7 2 -1.7`} stroke="#3B5228" strokeWidth={0.7 * s} fill="none" strokeLinecap="round" />
+    </g>
+  )
+}
+
 // SVG body per stage (paths copied verbatim from the approved mockup).
 const BODY = {
   seed: (
@@ -112,6 +143,10 @@ const BODY = {
       <ellipse cx="64" cy="50" rx="15" ry="13" fill="url(#canMid)" />
       <ellipse cx="40" cy="30" rx="17" ry="14" fill="url(#canBright)" />
       <ellipse cx="57" cy="34" rx="14" ry="12" fill="url(#canBright)" />
+      {/* soul accents — match the recipe-page sapling: 2 blossoms + 1 fruit, intermixed */}
+      <Blossom x={35} y={32} s={0.85} />
+      <Fruit x={60} y={36} s={0.85} />
+      <Blossom x={48} y={50} s={0.85} />
     </>
   ),
   tree: (
@@ -135,10 +170,13 @@ const BODY = {
       <ellipse cx="38" cy="30" rx="22" ry="18" fill="url(#canBright)" />
       <ellipse cx="76" cy="34" rx="19" ry="16" fill="url(#canBright)" />
       <ellipse cx="59" cy="46" rx="22" ry="17" fill="url(#canBright)" />
-      <circle cx="40" cy="34" r="3.4" fill="#FBF7EE" />
-      <circle cx="40" cy="34" r="1.4" fill="#D99A2B" />
-      <circle cx="82" cy="52" r="4" fill="url(#fruitG)" />
-      <circle cx="66" cy="66" r="4" fill="url(#fruitG)" />
+      {/* soul accents — match the recipe-page tree: 3 blossoms + 3 fruit, intermixed across the canopy */}
+      <Blossom x={40} y={32} s={1} />
+      <Fruit x={80} y={38} s={1} />
+      <Blossom x={60} y={26} s={1} />
+      <Fruit x={38} y={60} s={1} />
+      <Blossom x={82} y={60} s={1} />
+      <Fruit x={58} y={66} s={1} />
     </>
   ),
 }

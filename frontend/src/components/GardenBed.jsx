@@ -26,39 +26,73 @@ export default function GardenBed({ title, blurb, recipes }) {
           {blurb}
         </p>
       )}
-      <div className="relative">
-        <div className="flex items-end gap-[18px] px-4 overflow-x-auto scrollbar-hide min-h-[158px]">
-          {recipes.map((recipe) => {
-            const source = sourceNameOf(recipe)
-            return (
-              <button
-                key={recipe.id}
-                onClick={() => navigate(`/recipes/${recipe.id}`)}
-                className="flex-[0_0_120px] flex flex-col items-center justify-end rounded-xl hover:bg-white/20 transition"
-              >
-                <span className="mb-[8px]">
+      {/* Each plant unit owns its own soil so alignment is LOCAL and robust
+          (no fragile shared absolute strip guessed against a flex column):
+          - the plant row bottom-aligns the plants; each plant's visible base is
+            ~6px above its svg box bottom, so -mb-[6px] drops that base to the
+            row's baseline;
+          - the soil strip is the NEXT block, overlapping upward (-mt) so the
+            plant base sits IN it; it's opaque + in front (z-10) to hide the base;
+          - the caption flows naturally below the soil (no fixed height → no
+            clipping of the chips). */}
+      <div className="flex gap-[18px] px-4 overflow-x-auto scrollbar-hide">
+        {recipes.map((recipe) => {
+          const source = sourceNameOf(recipe)
+          return (
+            <button
+              key={recipe.id}
+              onClick={() => navigate(`/recipes/${recipe.id}`)}
+              className="flex-[0_0_120px] flex flex-col items-center rounded-xl hover:bg-white/20 transition"
+            >
+              {/* plant, bottom-aligned in a fixed-height stage so heights vary
+                  but all bases land on one line */}
+              <span className="flex h-[152px] items-end">
+                <span className="-mb-[6px]">
                   <GardenPlant
                     stage={stageForRecipe(recipe)}
                     vitality={vitalityForRecipe(recipe)}
                     reduceMotion={reduceMotion}
                   />
                 </span>
-                <span className="block max-w-[112px] text-center">
-                  <span className="block font-serif font-semibold text-[13px] text-ink leading-tight truncate">
-                    {recipe.name}
-                  </span>
-                  {source && (
-                    <span className="block text-[9.5px] font-bold tracking-[0.2px] text-plum">
-                      from {source}
-                    </span>
-                  )}
+              </span>
+              {/* soil — overlaps up into the plant base, opaque, in front */}
+              <span
+                className="relative z-10 -mt-[14px] h-[26px] w-full pointer-events-none"
+                style={{
+                  background:
+                    'linear-gradient(180deg,#8A5E34 0%,#6E4B29 55%,#543920 100%)',
+                  clipPath:
+                    'polygon(0% 32%,12% 16%,25% 30%,38% 15%,50% 28%,62% 15%,75% 30%,88% 16%,100% 26%,100% 100%,0% 100%)',
+                }}
+              />
+              {/* caption — natural height below the soil, never clipped */}
+              <span className="block max-w-[116px] pt-1.5 pb-1 text-center">
+                <span className="block font-serif font-bold text-[15px] text-ink leading-tight truncate">
+                  {recipe.name}
                 </span>
-              </button>
-            )
-          })}
-        </div>
-        {/* soil strip the plants are rooted into */}
-        <div className="absolute left-0 right-0 bottom-[38px] h-[22px] -z-10 bg-[linear-gradient(180deg,#D8B88C_0%,#C9A277_55%,#B0864F_100%)]" />
+                {source && (
+                  <span className="block text-[10px] font-bold tracking-[0.2px] text-plum">
+                    from {source}
+                  </span>
+                )}
+                {(recipe.cuisine || recipe.cook_count > 0) && (
+                  <span className="mt-1 flex flex-wrap justify-center gap-1">
+                    {recipe.cuisine && (
+                      <span className="rounded-full px-[7px] py-[2px] text-[8.5px] font-bold uppercase tracking-[0.3px] text-growth bg-growth/[0.12]">
+                        {recipe.cuisine}
+                      </span>
+                    )}
+                    {recipe.cook_count > 0 && (
+                      <span className="rounded-full px-[7px] py-[2px] text-[8.5px] font-bold uppercase tracking-[0.3px] text-terra bg-terra/10">
+                        cooked {recipe.cook_count}×
+                      </span>
+                    )}
+                  </span>
+                )}
+              </span>
+            </button>
+          )
+        })}
       </div>
     </section>
   )
