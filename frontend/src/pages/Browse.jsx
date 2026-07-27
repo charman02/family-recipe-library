@@ -101,11 +101,13 @@ export default function Browse() {
   )
 
   return (
-    <div className="pt-6">
+    <div className="min-h-screen bg-cream pt-6">
       <div className="px-4">
-        <h1 className="font-serif font-black text-[28px] text-ink">Browse</h1>
-        <p className="font-serif italic text-sm text-ink-soft mt-0.5">
-          Wander through everyone’s gardens.
+        <h1 className="font-display font-black text-[32px] text-ink leading-none inline-block border-b-[3px] border-ink pb-1">
+          Browse<span className="text-terra">.</span>
+        </h1>
+        <p className="font-display italic text-[15px] text-ink-soft mt-2">
+          Recipes from every kitchen.
         </p>
 
         <IconField
@@ -151,6 +153,7 @@ export default function Browse() {
                   <RecipeCard
                     key={`${section.title}-${recipe.id}`}
                     recipe={recipe}
+                    variant="row"
                     onClick={() => navigate(`/recipes/${recipe.id}`)}
                   />
                 ))}

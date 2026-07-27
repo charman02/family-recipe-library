@@ -1,9 +1,7 @@
-import Wordmark from './Wordmark'
-
-// Renders a recipe cover photo, or a warm cream placeholder with the faded
-// issei. wordmark watermark when no photo is set. The prompt text shows at
-// md/lg (form dropzone, detail hero) but is suppressed at sm — small cards read
-// cleaner with just the mark, matching the mockup's garden grid placeholder.
+// Renders a recipe cover photo, or — when no photo is set — a warm peach
+// placeholder carrying the issei. wordmark, in the sticker design language.
+// The prompt text shows at md/lg (form dropzone, detail hero) but is suppressed
+// at sm so small cards read cleanly with just the mark.
 const sizes = {
   sm: { mark: 'text-2xl', text: 'text-[10px]', prompt: false },
   md: { mark: 'text-4xl', text: 'text-xs', prompt: true },
@@ -18,11 +16,13 @@ export default function CoverImage({ url, size = 'md', className = '' }) {
   const s = sizes[size] || sizes.md
   return (
     <div
-      className={`bg-paper flex flex-col items-center justify-center text-center px-3 ${className}`}
+      className={`bg-peach flex flex-col items-center justify-center text-center px-3 ${className}`}
     >
-      <Wordmark muted className={s.mark} />
+      <span className={`font-display font-black text-ink/80 ${s.mark}`}>
+        issei<span className="text-terra">.</span>
+      </span>
       {s.prompt && (
-        <span className={`text-ink-soft/80 mt-1.5 leading-tight ${s.text}`}>
+        <span className={`text-ink/70 mt-1.5 leading-tight font-display italic ${s.text}`}>
           A photo brings this dish to life
         </span>
       )}

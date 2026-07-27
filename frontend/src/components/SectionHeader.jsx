@@ -10,8 +10,12 @@ export default function SectionHeader({
   return (
     <div className={`flex items-center gap-2.5 mb-3 ${className}`}>
       <span className="section-label whitespace-nowrap">{children}</span>
-      <span className="h-px flex-1 bg-line" />
-      {seal && <span className="font-serif text-xs text-terra/60">issei.</span>}
+      <span className="h-0.5 flex-1 bg-ink/25 rounded-full" />
+      {seal && (
+        <span className="font-display font-black text-xs text-terra">
+          issei<span className="text-terra">.</span>
+        </span>
+      )}
     </div>
   )
 }

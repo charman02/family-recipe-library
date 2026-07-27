@@ -13,33 +13,52 @@
 }
 
 @layer components {
-  .section-label {
-    @apply text-[11px] font-sans font-medium uppercase tracking-[0.16em] text-ink-soft;
+  /* ── STICKER DESIGN SYSTEM ─────────────────────────────────────────────
+     The "Kamala's Recipes" reference reads as flat graphic stickers: bold ink
+     outlines, hard SOLID offset shadows (no blur), saturated color fields, and
+     chunky Fraunces display type. These utilities are the shared vocabulary. */
+
+  /* A sticker: ink outline + hard offset shadow. Compose with a bg-* color. */
+  .sticker {
+    @apply border-[2.5px] border-ink rounded-[18px] shadow-[0_4px_0_#2E3A24];
   }
-  /* Field treatment C (locked): cream card fill, soft warm border, terra focus
-     ring + border. Inter body. Used by Login, Add/Edit forms, and search. */
+  .sticker-sm {
+    @apply border-2 border-ink rounded-[14px] shadow-[0_3px_0_#2E3A24];
+  }
+  /* Pressable sticker — the shadow collapses as it's pushed down. */
+  .sticker-press {
+    @apply transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24];
+  }
+
+  .section-label {
+    @apply text-[12px] font-display font-bold uppercase tracking-[0.14em] text-ink;
+  }
+
+  /* Field: cream fill, bold ink outline (sticker language), terra focus. */
   .field {
-    @apply w-full font-sans text-[13.5px] text-ink bg-card border border-line rounded-[10px] px-3.5 py-3
-      placeholder:text-ink-soft/70 focus:outline-none focus:border-terra
-      focus:ring-2 focus:ring-terra/[0.12] transition-colors;
+    @apply w-full font-sans text-[14px] text-ink bg-card border-2 border-ink rounded-[12px] px-3.5 py-3
+      placeholder:text-ink-soft/70 focus:outline-none focus:ring-4 focus:ring-terra/25 transition-shadow;
   }
   .field--icon { @apply pl-10; }
-  /* Login uses treatment C's warmer border (#ddcba8); search + Add/Edit keep --line. */
-  .field--login { @apply border-line; }
-  /* Primary CTA: orange Fraunces button with warm terra shadow. */
+  .field--login { @apply border-ink; }
+
+  /* Primary CTA: a terra sticker button — Fraunces, ink outline, hard shadow. */
   .btn-primary {
-    @apply w-full py-3 rounded-[10px] bg-terra text-white font-serif font-semibold text-sm
-      shadow-[0_8px_16px_rgba(181,80,42,0.28)] transition-opacity disabled:opacity-50;
+    @apply w-full py-3 rounded-full bg-terra text-cream font-display font-bold text-[15px]
+      border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24]
+      transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] disabled:opacity-50;
   }
+
+  /* Filter chip: an outlined pill; active flips to a saturated color field. */
   .chip {
-    @apply inline-block px-[13px] py-[5px] rounded-full text-[12px] font-sans border border-line bg-card text-ink-soft transition-colors;
+    @apply inline-block px-[14px] py-[6px] rounded-full text-[12.5px] font-display font-bold border-2 border-ink bg-cream text-ink transition-colors;
   }
-  .chip--active { @apply bg-terra text-white border-terra; }
-  .chip--herb { @apply bg-herb text-white border-herb; }
-  .chip--saffron { @apply bg-saffron text-[#4a3210] border-saffron; }
-  .chip--plum { @apply bg-plum text-white border-plum; }
+  .chip--active { @apply bg-terra text-cream; }
+  .chip--saffron { @apply bg-saffron text-ink; }
+  .chip--plum { @apply bg-plum text-cream; }
+
   .story-callout {
-    @apply bg-[#EDEAD6] border-l-[3px] border-terra rounded-r-xl p-4;
+    @apply bg-peach border-2 border-ink rounded-2xl p-4;
   }
   /* Readable body scale (R1). Body/ingredients read too thin+small in serif; the
      reading surfaces use Nunito Sans at a legible size with bold amounts. */
@@ -51,9 +70,8 @@
   }
 }
 
-/* R2 recipe body — Steps numbering. A CSS counter (not Tailwind alone) drives
-   the numerals: clean green Cormorant serif, bold, ~21px, no circle, no period
-   (the chosen "option F"). Green token = growth (#5C7A3F). */
+/* Recipe body — Steps numbering. A CSS counter drives the numerals: chunky
+   Fraunces display, bold, terra, no circle, no period. */
 .r2-steps {
   margin: 0;
   padding-left: 0;
@@ -67,30 +85,10 @@
   content: counter(st);
   position: absolute;
   left: 0;
-  top: 7px;
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  font-weight: 700;
-  font-size: 21px;
+  top: 5px;
+  font-family: 'Fraunces', 'Cormorant Garamond', Georgia, serif;
+  font-weight: 900;
+  font-size: 22px;
   line-height: 1;
-  color: #5c7a3f;
-}
-
-/* Garden ambient sway — plants rock gently from their base. */
-@keyframes gardenSway {
-  0%, 100% {
-    transform: rotate(-1deg);
-  }
-  50% {
-    transform: rotate(1deg);
-  }
-}
-.garden-sway {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: gardenSway 6.5s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .garden-sway {
-    animation: none;
-  }
+  color: #b5502a;
 }

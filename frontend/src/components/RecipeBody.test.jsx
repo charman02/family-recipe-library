@@ -28,9 +28,9 @@ describe('RecipeBody', () => {
     expect(getByText('Brown the chicken.')).toBeTruthy()
     expect(getByText('Add vinegar.')).toBeTruthy()
   })
-  it('shows the Wordmark fallback when there is no cover photo', () => {
+  it('shows the issei. cover fallback when there is no cover photo', () => {
     const { container } = render(<RecipeBody recipe={base} />)
-    // Wordmark renders the issei wordmark text
+    // CoverImage's no-photo fallback renders the issei. wordmark text
     expect(container.textContent.toLowerCase()).toContain('issei')
   })
 })

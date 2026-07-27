@@ -175,8 +175,8 @@ export default function RecipeForm({
   }
 
   return (
-    <div className="px-[18px] pt-6 pb-8">
-      <h1 className="font-serif font-black text-[26px] text-ink mb-4">
+    <div className="min-h-screen bg-cream px-[18px] pt-6 pb-8">
+      <h1 className="font-display font-black text-[30px] text-ink mb-4 inline-block border-b-[3px] border-ink pb-1">
         {heading}
       </h1>
 
@@ -203,7 +203,7 @@ export default function RecipeForm({
             </button>
           </div>
         ) : (
-          <label className="flex flex-col items-center justify-center w-full h-[120px] rounded-xl border-2 border-dashed border-line bg-paper text-terra/70 cursor-pointer mb-1.5">
+          <label className="flex flex-col items-center justify-center w-full h-[120px] rounded-xl border-2 border-dashed border-ink/45 bg-peach text-terra cursor-pointer mb-1.5">
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"

@@ -26,39 +26,39 @@ export default function HandoffPage() {
 
   if (error) {
     return (
-      <div className="p-6 text-center">
+      <div className="min-h-screen bg-cream p-6 text-center">
         <p className="text-red-600 mb-4">{error}</p>
-        <button onClick={() => navigate('/my-recipes')} className="text-terra text-sm">
-          Back to your garden
+        <button onClick={() => navigate('/my-recipes')} className="font-display font-bold text-[13px] text-terra">
+          Back to your kitchen →
         </button>
       </div>
     )
   }
 
   if (!recipe) {
-    return <div className="p-6 text-center text-ink-soft">Loading…</div>
+    return <div className="min-h-screen bg-cream p-6 text-center font-display italic text-ink-soft">Loading…</div>
   }
 
   const source = sourceNameOf(recipe)
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen bg-cream">
       <header className="px-6 pt-4 pb-2">
         <div className="flex items-center mb-3">
           <button
             onClick={back}
             aria-label="Back"
-            className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-line bg-card/70 text-terra shadow-[0_1px_0_rgba(255,255,255,.55)_inset,0_4px_12px_-8px_rgba(46,58,36,.4)] active:scale-95 transition"
+            className="inline-flex items-center justify-center w-10 h-10 rounded-full border-2 border-ink bg-cream text-ink shadow-[0_3px_0_#2E3A24] active:translate-y-[2px] active:shadow-[0_1px_0_#2E3A24] transition-transform"
           >
             <Icon name="back" className="w-5 h-5" />
           </button>
         </div>
-        <h1 className="font-serif font-semibold text-[26px] leading-tight text-ink">
+        <h1 className="font-display font-black text-[28px] leading-tight text-ink">
           Pass on {recipe.name}
         </h1>
-        <p className="font-serif italic text-[14.5px] text-ink-soft mt-1">
-          Hand this recipe to someone — they’ll be able to cook it, keep it, and
-          add their own memories.
+        <p className="font-display italic text-[14.5px] text-ink-soft mt-1">
+          Hand this recipe to someone — they&rsquo;ll be able to cook it, keep
+          it, and add their own memories.
         </p>
       </header>
 

@@ -45,12 +45,12 @@ export default function HandoffInvite({
 
   return (
     <div className="px-[18px] py-6 text-center">
-      <h1 className="font-serif font-black text-[24px] text-ink leading-tight">
+      <h1 className="font-display font-black text-[26px] text-ink leading-tight">
         Who else should
         <br />
-        have this seed?
+        have this recipe?
       </h1>
-      <p className="font-serif italic text-[14px] text-ink-soft mt-2 mb-5">
+      <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
         {recipeVisibility === 'public'
           ? 'Let them know about this — it’s already public.'
           : 'They’ll be able to cook it and keep it — and add the parts only they know.'}
@@ -69,10 +69,10 @@ export default function HandoffInvite({
             type="button"
             onClick={() => applyStarter(s)}
             aria-pressed={activeStarter === s.key}
-            className={`flex-1 text-[12.5px] font-sans rounded-full px-3 py-2 border transition-colors ${
+            className={`flex-1 text-[12.5px] font-display font-bold rounded-full px-3 py-2 border-2 border-ink transition-colors ${
               activeStarter === s.key
-                ? 'border-terra bg-terra/10 text-terra'
-                : 'border-line text-ink-soft'
+                ? 'bg-terra text-cream'
+                : 'bg-cream text-ink-soft'
             }`}
           >
             {s.label}
@@ -99,7 +99,7 @@ export default function HandoffInvite({
       </button>
       <button
         onClick={onSkip}
-        className="block w-full mt-3 font-serif italic text-ink-soft text-sm"
+        className="block w-full mt-3 font-display italic text-ink-soft text-sm"
       >
         Skip for now
       </button>

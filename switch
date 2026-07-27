@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# switch — flip the issei frontend between its two known-good looks.
+#
+#   ./switch garden    → the seed→tree living-plant UI (tag garden-v1)
+#   ./switch kitchen    → the Kamala recipe-card redesign (branch redesign-kamala)
+#   ./switch            → prints which look is currently checked out
+#
+# It checks out the matching git ref, then restarts the Vite dev server on
+# :5173 so the browser reflects the switch on the next reload. No app code is
+# touched — the two versions live at distinct commits, so switching is just a
+# checkout. Reverting never means re-stripping features by hand.
+#
+# Windows/Git-Bash note: a stale Vite server holding :5173 is killed with
+# taskkill (pkill is unavailable here).
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+GARDEN_REF="garden-v1"           # tag: known-good garden version
+KITCHEN_REF="redesign-kamala"    # branch: kitchen redesign
+
+current_look() {
+  # Map the current HEAD commit back to a friendly look name.
+  local head garden kitchen
+  head="$(git rev-parse HEAD)"
+  garden="$(git rev-parse "$GARDEN_REF" 2>/dev/null || echo none)"
+  kitchen="$(git rev-parse "$KITCHEN_REF" 2>/dev/null || echo none)"
+  if   [ "$head" = "$garden" ];  then echo "garden"
+  elif [ "$head" = "$kitchen" ]; then echo "kitchen"
+  else echo "unknown ($(git rev-parse --abbrev-ref HEAD) @ ${head:0:7})"
+  fi
+}
+
+restart_vite() {
+  # Free :5173 if a stale dev server is holding it, then start a fresh one.
+  local pid
+  pid="$(netstat -ano 2>/dev/null | grep ':5173' | grep LISTENING | awk '{print $NF}' | head -1 || true)"
+  if [ -n "${pid:-}" ]; then
+    echo "  → freeing :5173 (pid $pid)"
+    taskkill //F //PID "$pid" >/dev/null 2>&1 || true
+  fi
+  echo "  → starting Vite (logs → frontend/vite.log)"
+  ( cd frontend && nohup npm run dev >vite.log 2>&1 & )
+  sleep 2
+  echo "  live at http://localhost:5173"
+}
+
+look="${1:-}"
+
+if [ -z "$look" ]; then
+  echo "current look: $(current_look)"
+  echo "usage: ./switch garden | kitchen"
+  exit 0
+fi
+
+case "$look" in
+  garden)  ref="$GARDEN_REF" ;;
+  kitchen) ref="$KITCHEN_REF" ;;
+  *) echo "unknown look '$look' — use 'garden' or 'kitchen'"; exit 1 ;;
+esac
+
+# Guard against clobbering uncommitted work.
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "✗ you have uncommitted changes — commit or stash them before switching."
+  git status --short
+  exit 1
+fi
+
+echo "switching to $look ($ref)…"
+git checkout --quiet "$ref"
+echo "  → checked out $look"
+restart_vite

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('../api/client', () => ({
@@ -9,11 +9,10 @@ import client from '../api/client'
 
 const recipe = {
   id: 1, user_id: 9, name: 'Adobo',
-  growth_stage: 'tree', growth_vitality: 'fruiting',
-  cook_count: 300, shared_with_count: 12,
   story: 'Her Sunday dish.', origin_attribution: 'Lola Remedios · Cebu',
   author_full_name: 'Lola Remedios', cover_photo_url: null,
-  ingredients: [], ingredient_sections: [], steps: [],
+  ingredients: [{ id: 1, name: 'Soy sauce', quantity_text: '1/2 cup', position: 0 }],
+  ingredient_sections: [], steps: [{ id: 1, content: 'Simmer.', position: 0 }],
 }
 
 function renderAt() {
@@ -21,8 +20,6 @@ function renderAt() {
     <MemoryRouter initialEntries={['/recipes/1']}>
       <Routes>
         <Route path="/recipes/:id" element={<RecipePageDefault />} />
-        {/* marker route so we can assert navigation to the full recipe page */}
-        <Route path="/recipes/:id/full" element={<div>FULL RECIPE PAGE</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -35,17 +32,18 @@ beforeEach(() => {
 })
 
 describe('RecipePage', () => {
-  it('loads and renders the dish name + the living plant hero', async () => {
+  it('loads and renders the dish name and its readable body', async () => {
     renderAt()
     await waitFor(() => expect(screen.getByText('Adobo')).toBeTruthy())
-    expect(document.querySelector('.plant')).toBeTruthy()
+    // The classic detail page shows the recipe body inline — ingredients + steps.
+    expect(screen.getByText('Soy sauce')).toBeTruthy()
+    expect(screen.getByText('Ingredients')).toBeTruthy()
+    expect(screen.getByText('Simmer.')).toBeTruthy()
   })
-  it('navigates to the full recipe page when "View recipe" is tapped', async () => {
+
+  it('renders no plant/garden hero (kitchen look)', async () => {
     renderAt()
     await waitFor(() => screen.getByText('Adobo'))
-    fireEvent.click(screen.getByText(/view recipe/i))
-    await waitFor(() =>
-      expect(screen.getByText('FULL RECIPE PAGE')).toBeTruthy(),
-    )
+    expect(document.querySelector('.plant')).toBeNull()
   })
 })

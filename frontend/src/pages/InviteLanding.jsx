@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getInvitePreview } from '../api/lineage'
-import Plant from '../components/Plant'
-import { stageForRecipe, vitalityForRecipe } from '../lib/growth'
-import Wordmark from '../components/Wordmark'
+import CoverImage from '../components/CoverImage'
 
 // The soft-wall recipient landing (spec §4.3): a warm preview — name, who it's
-// from, the story, the growth plant — then a signup gate to participate. The
+// from, the story, the dish's photo — then a signup gate to participate. The
 // emotional hook lands BEFORE the ask. Public route; no account required to view.
 export default function InviteLanding() {
   const { token } = useParams()
@@ -29,56 +27,65 @@ export default function InviteLanding() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-paper flex flex-col items-center justify-center px-6 text-center">
-        <p className="font-serif italic text-ink-soft">{error}</p>
-        <Link to="/login" className="btn-primary mt-5 inline-block">
-          Go to Issei
+      <div className="min-h-screen bg-cream flex flex-col items-center justify-center px-6 text-center">
+        <p className="font-display italic text-ink-soft">{error}</p>
+        <Link
+          to="/login"
+          className="mt-5 inline-block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream shadow-[0_6px_0_#7c351a] active:translate-y-[3px] active:shadow-[0_3px_0_#7c351a] transition"
+        >
+          Go to issei
         </Link>
       </div>
     )
   }
   if (!preview) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <p className="font-serif italic text-ink-soft">Opening…</p>
+      <div className="min-h-screen bg-cream flex items-center justify-center">
+        <p className="font-display italic text-ink-soft">Opening…</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-paper flex flex-col items-center px-6 py-12 text-center">
-      <Wordmark className="text-[40px] mb-6" />
-      <Plant
-        stage={stageForRecipe(preview)}
-        vitality={vitalityForRecipe(preview)}
-        size={72}
-      />
+    <div className="min-h-screen bg-cream flex flex-col items-center px-6 py-12 text-center">
+      <h1 className="font-display font-black text-[30px] leading-none text-ink mb-6">
+        issei<span className="text-terra">.</span>
+      </h1>
+
+      <div className="sticker overflow-hidden w-[230px] h-[156px]">
+        <CoverImage
+          url={preview.cover_photo_url}
+          size="md"
+          className="w-full h-full object-cover"
+        />
+      </div>
+
       {preview.from_name && (
-        <p className="font-sans text-[11px] tracking-[0.18em] uppercase text-herb mt-4 mb-1">
+        <p className="font-display font-bold uppercase tracking-[0.18em] text-[11px] text-terra mt-5 mb-1">
           {preview.from_name} passed you
         </p>
       )}
-      <h1 className="font-serif font-black text-[28px] text-ink leading-tight">
+      <h2 className="font-display font-black text-[28px] text-ink leading-tight">
         {preview.name}
-      </h1>
+      </h2>
       {preview.origin_attribution && (
-        <p className="font-serif italic text-[14px] text-ink-soft mt-1">
-          🌱 {preview.origin_attribution.split('·')[0].trim()}
+        <p className="font-display italic text-[14px] text-plum mt-1">
+          from {preview.origin_attribution.split('·')[0].trim()}
         </p>
       )}
       {preview.story && (
-        <p className="font-serif italic text-[15px] text-ink-soft mt-5 max-w-sm leading-relaxed">
+        <p className="font-hand text-[21px] text-plum mt-5 max-w-sm leading-snug">
           {preview.story}
         </p>
       )}
       <div className="mt-8 w-full max-w-sm">
         <Link
           to={`/login?tab=signup&invite=${token}`}
-          className="btn-primary block"
+          className="block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream shadow-[0_6px_0_#7c351a] active:translate-y-[3px] active:shadow-[0_3px_0_#7c351a] transition"
         >
-          Keep this recipe — start your garden
+          Keep this recipe →
         </Link>
-        <p className="font-sans text-[12px] text-ink-soft mt-3">
+        <p className="font-display text-[13px] text-ink-soft mt-3">
           Make a free account to cook it, keep it, and add the parts only you
           know.
         </p>

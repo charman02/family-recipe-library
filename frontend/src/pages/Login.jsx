@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import client from '../api/client'
 import { claimInvite } from '../api/lineage'
-import Wordmark from '../components/Wordmark'
 import IconField from '../components/IconField'
 
 export default function Login() {
@@ -94,20 +93,23 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-paper flex flex-col items-center justify-center px-6 py-12">
+    <div className="min-h-screen bg-cream flex flex-col items-center justify-center px-6 py-12">
       <div className="text-center mb-2">
-        <Wordmark className="text-[56px]" as="h1" />
+        <h1 className="font-display font-black text-[52px] leading-none tracking-[-0.01em] text-ink">
+          issei<span className="text-terra">.</span>
+        </h1>
       </div>
-      <p className="font-serif italic text-base text-ink-soft mb-6 text-center max-w-xs">
+      <p className="font-display italic text-[16px] text-ink-soft mb-6 text-center max-w-xs">
         Recipes that live in memory, not cookbooks.
       </p>
 
-      {/* The meaning of the name — every newcomer meets it before signing up. */}
-      <div className="w-full max-w-sm mb-8 pl-4 border-l-2 border-terra">
-        <p className="font-serif text-xs text-terra tracking-[0.2em] mb-1.5">
+      {/* The meaning of the name — a peach story-callout sticker every newcomer
+          meets before signing up. */}
+      <div className="w-full max-w-sm mb-8 story-callout">
+        <p className="font-display font-bold text-xs text-terra tracking-[0.2em] mb-1.5">
           一世 · issei
         </p>
-        <p className="font-serif italic text-sm leading-relaxed text-ink-soft">
+        <p className="font-display italic text-sm leading-relaxed text-ink">
           The first of a family to arrive somewhere new — the ones who carry the
           recipes no one wrote down. This is where they stay alive, passed from
           one generation to the next.
@@ -115,26 +117,22 @@ export default function Login() {
       </div>
 
       <div className="w-full max-w-sm">
-        <div className="flex bg-[#E6D7BD] rounded-full p-1 mb-6">
+        <div className="flex bg-cream border-2 border-ink rounded-full p-1 mb-6">
           <button
             onClick={() => switchTab('login')}
-            className={`flex-1 py-2.5 rounded-full font-serif font-semibold text-sm transition-colors ${
-              tab === 'login'
-                ? 'bg-paper text-terra shadow-[0_2px_6px_rgba(90,60,30,0.15)]'
-                : 'text-ink-soft'
+            className={`flex-1 py-2 rounded-full font-display font-bold text-sm transition-colors ${
+              tab === 'login' ? 'bg-terra text-cream' : 'text-ink-soft'
             }`}
           >
             Sign In
           </button>
           <button
             onClick={() => switchTab('signup')}
-            className={`flex-1 py-2.5 rounded-full font-serif font-semibold text-sm transition-colors ${
-              tab === 'signup'
-                ? 'bg-paper text-terra shadow-[0_2px_6px_rgba(90,60,30,0.15)]'
-                : 'text-ink-soft'
+            className={`flex-1 py-2 rounded-full font-display font-bold text-sm transition-colors ${
+              tab === 'signup' ? 'bg-terra text-cream' : 'text-ink-soft'
             }`}
           >
-            Plant your first seed
+            Start your kitchen
           </button>
         </div>
 
@@ -220,7 +218,7 @@ export default function Login() {
               disabled={loading}
               className="btn-primary !mt-4"
             >
-              {loading ? 'Planting…' : 'Plant your first seed'}
+              {loading ? 'Setting up…' : 'Start your kitchen'}
             </button>
           </form>
         )}

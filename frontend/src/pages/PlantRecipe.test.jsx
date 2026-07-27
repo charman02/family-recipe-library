@@ -51,14 +51,14 @@ beforeEach(() => {
 })
 
 describe('PlantRecipe', () => {
-  it('walks doorway → mine → form → planted, sending story not origin', async () => {
+  it('walks doorway → mine → form → saved, sending story not origin', async () => {
     render(
       <MemoryRouter>
         <PlantRecipe />
       </MemoryRouter>,
     )
     await userEvent.click(
-      screen.getByRole('button', { name: /a seed of your own/i }),
+      screen.getByRole('button', { name: /one of your own/i }),
     )
     await userEvent.type(
       screen.getByPlaceholderText(/what made this yours/i),
@@ -82,13 +82,12 @@ describe('PlantRecipe', () => {
     // Story comes straight from the form payload (seeded from selfMemory),
     // with no silent override in handleFormSubmit.
     expect(payload.story).toBe('I riffed on it for years')
-    // The planted beat launches the growth loop with real stage + loop copy.
-    expect(await screen.findByText('Congee is planted.')).toBeInTheDocument()
-    expect(screen.getByText(/and watch it grow/i)).toBeInTheDocument()
+    // The saved beat confirms the recipe and names the next acts.
+    expect(await screen.findByText('Congee is saved.')).toBeInTheDocument()
+    expect(screen.getByText(/saved to your kitchen/i)).toBeInTheDocument()
     // Mine path has no source name → generic "add a memory"
     expect(screen.getByText(/add a memory/i)).toBeInTheDocument()
-    // 'sprout' from the API → sprout eyebrow, and a secondary CTA to the recipe
-    expect(screen.getByText(/first sprout/i)).toBeInTheDocument()
+    // a secondary CTA takes you straight to the recipe
     expect(
       screen.getByRole('button', { name: /take me to it/i }),
     ).toBeInTheDocument()
@@ -101,7 +100,7 @@ describe('PlantRecipe', () => {
       </MemoryRouter>,
     )
     await userEvent.click(
-      screen.getByRole('button', { name: /a seed of your own/i }),
+      screen.getByRole('button', { name: /one of your own/i }),
     )
     await userEvent.type(
       screen.getByPlaceholderText(/what made this yours/i),

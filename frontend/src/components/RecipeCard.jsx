@@ -1,41 +1,45 @@
 import CoverImage from './CoverImage'
 import { sourceNameOf } from '../lib/sourceName'
 
-// The recipe card, restyled to the "Kamala's Recipes" reference: a food photo
-// in a soft-rounded frame, then a big Fraunces title centered beneath it with a
-// small italic byline. No plant/growth iconography (classic kitchen, not garden).
+// The recipe card in the "Kamala's Recipes" sticker language: the food photo
+// sits in a bold ink-outlined frame with a hard offset shadow (a sticker), an
+// outlined cuisine tag pinned to the corner, then a chunky Fraunces title and a
+// small italic byline beneath. No plant/growth iconography (classic kitchen).
 //
-// variant: "grid" (fills its cell — two-up rows) | "row" (fixed width, for any
-// horizontal-scroll rows). onClick navigates to the recipe.
+// variant: "grid" (fills its cell — two-up rows) | "row" (fixed width, for the
+// horizontal-scroll rows on Browse). onClick navigates to the recipe.
 export default function RecipeCard({ recipe, onClick, variant = 'grid' }) {
-  const widthClass = variant === 'row' ? 'w-[200px] flex-none' : 'w-full'
+  const widthClass = variant === 'row' ? 'w-[210px] flex-none' : 'w-full'
+  const byline = sourceNameOf(recipe)
+    ? `from ${sourceNameOf(recipe)}`
+    : recipe.author_full_name
+      ? `kept by ${recipe.author_full_name}`
+      : null
 
   return (
     <button
       onClick={onClick}
-      className={`${widthClass} text-left bg-transparent transition-transform active:scale-[0.98]`}
+      className={`${widthClass} group text-left bg-transparent`}
     >
-      <div className="relative">
+      <div className="relative sticker sticker-press overflow-hidden bg-card">
         <CoverImage
           url={recipe.cover_photo_url}
           size="md"
-          className="w-full h-[136px] rounded-[16px] object-cover border border-line shadow-[0_8px_20px_-12px_rgba(80,50,20,0.35)]"
+          className="w-full h-[150px] object-cover block"
         />
         {recipe.cuisine && (
-          <span className="absolute top-2 left-2 font-display font-semibold uppercase tracking-[0.1em] text-[9px] text-ink bg-cream/95 px-2.5 py-1 rounded-full shadow-sm">
+          <span className="absolute top-2 left-2 font-display font-bold uppercase tracking-[0.06em] text-[9.5px] text-ink bg-saffron border-2 border-ink px-2 py-0.5 rounded-full">
             {recipe.cuisine}
           </span>
         )}
       </div>
-      <div className="px-0.5 pt-2.5 text-center">
-        <p className="font-display font-bold text-[18px] leading-[1.06] text-ink">
+      <div className="px-0.5 pt-2.5">
+        <p className="font-display font-black text-[19px] leading-[1.04] text-ink">
           {recipe.name}
         </p>
-        {(sourceNameOf(recipe) || recipe.author_full_name) && (
-          <p className="font-display italic text-[12.5px] text-plum mt-0.5">
-            {sourceNameOf(recipe)
-              ? `from ${sourceNameOf(recipe)}`
-              : `kept by ${recipe.author_full_name}`}
+        {byline && (
+          <p className="font-display italic text-[13px] text-plum mt-0.5">
+            {byline}
           </p>
         )}
       </div>

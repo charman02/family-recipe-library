@@ -1,47 +1,24 @@
 import { useState } from 'react'
 import { isImprecise, impreciseLabel } from '../lib/measures'
-import Wordmark from './Wordmark'
+import CoverImage from './CoverImage'
 
-// The recipe "body" — the part that is always readable, whether the plant is a
-// seed or in full fruit (R2 living-plant spec; editorial layout from v6's
-// recipePanel()). Growth is the *soul* accruing; the body is here from day one.
+// The recipe "body" — the always-readable heart of the recipe detail page.
 //
-// Renders: cover photo (or a cream <Wordmark> fallback when there's no photo),
-// the story in Caveat if present, an Ingredients section (amounts in bold
-// Cormorant serif; imprecise/unmeasured amounts get a small plum "their way"
-// pill — imprecise measures are TRUTH, celebrated, never normalized), and a Steps
-// section with clean green Cormorant serif numerals (CSS counter, option F:
-// no circle, no period — see .r2-steps in index.css).
+// Renders: cover photo (or the peach issei. CoverImage fallback when there's no photo),
+// the story in Caveat if present, an Ingredients section (amounts in bold serif;
+// imprecise/unmeasured amounts get a small plum "their way" pill — imprecise
+// measures are TRUTH, celebrated, never normalized), and a Steps section with
+// clean serif numerals (CSS counter, option F: no circle, no period — see
+// .r2-steps in index.css).
 
-// A small botanical leaf marker for the section headers.
-function LeafMark() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-      className="w-4 h-4 flex-shrink-0"
-    >
-      <path d="M20 4C10 5 5 10 4 20c10-1 15-6 16-16Z" fill="#5C7A3F" />
-      <path
-        d="M6 18C9 13 13 9 18 6"
-        stroke="#3B5228"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
-// Cormorant section header with a leaf marker and a growth-green rule fading out.
+// A Fraunces section header with a terra rule fading out — the kitchen look.
 function SecHead({ children }) {
   return (
-    <div className="flex items-center gap-2.5 mt-5 mb-2.5">
-      <LeafMark />
-      <h4 className="font-serif font-semibold text-[20px] text-ink m-0 tracking-[0.2px] whitespace-nowrap">
+    <div className="flex items-center gap-2.5 mt-6 mb-2.5">
+      <h4 className="font-display font-black text-[21px] text-ink m-0 tracking-[0.2px] whitespace-nowrap">
         {children}
       </h4>
-      <span className="flex-1 h-0.5 rounded-[2px] bg-gradient-to-r from-growth to-growth/[0.18]" />
+      <span className="flex-1 h-0.5 rounded-full bg-ink/25" />
     </div>
   )
 }
@@ -74,15 +51,15 @@ export default function RecipeBody({ recipe }) {
 
   return (
     <div className="mt-1.5">
-      {/* Cooking-mode toggle — a quiet segmented control. Rich by default. */}
+      {/* Cooking-mode toggle — an outlined segmented control. Rich by default. */}
       <div className="flex justify-center mb-3">
-        <div className="inline-flex rounded-full border border-line bg-paper/70 p-0.5 text-[12px] font-sans font-bold">
+        <div className="inline-flex rounded-full border-2 border-ink bg-cream p-0.5 text-[12px] font-display font-bold">
           <button
             onClick={() => setCooking(false)}
             aria-pressed={!cooking}
             className={
               'px-3.5 py-1.5 rounded-full transition ' +
-              (!cooking ? 'bg-card text-ink shadow-sm' : 'text-ink-soft')
+              (!cooking ? 'bg-terra text-cream' : 'text-ink-soft')
             }
           >
             The whole story
@@ -92,7 +69,7 @@ export default function RecipeBody({ recipe }) {
             aria-pressed={cooking}
             className={
               'px-3.5 py-1.5 rounded-full transition ' +
-              (cooking ? 'bg-growth text-white shadow-sm' : 'text-ink-soft')
+              (cooking ? 'bg-terra text-cream' : 'text-ink-soft')
             }
           >
             Cooking mode
@@ -100,21 +77,16 @@ export default function RecipeBody({ recipe }) {
         </div>
       </div>
 
-      {/* Cover photo (or the cream Wordmark fallback). Hidden in cooking mode. */}
+      {/* Cover photo (or the peach issei. fallback) — a sticker frame. Hidden in
+          cooking mode. */}
       {!cooking && (
-      <div className="relative w-full h-[168px] rounded-2xl overflow-hidden border border-line mb-1.5 mt-0.5 bg-paper shadow-[0_8px_18px_-12px_rgba(46,58,36,.5)]">
-        {recipe.cover_photo_url ? (
-          <img
-            src={recipe.cover_photo_url}
-            alt=""
-            className="w-full h-full object-cover block"
+        <div className="sticker overflow-hidden mb-1.5 mt-0.5 bg-card">
+          <CoverImage
+            url={recipe.cover_photo_url}
+            size="lg"
+            className="w-full h-[180px] object-cover block"
           />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Wordmark muted className="text-6xl" />
-          </div>
-        )}
-      </div>
+        </div>
       )}
 
       {/* Byline + cuisine — whose recipe this is, and what kind. Icons match
@@ -163,10 +135,10 @@ export default function RecipeBody({ recipe }) {
             className="flex items-baseline justify-between gap-2 py-2 text-[14.5px] text-ink border-b border-dashed border-line last:border-b-0"
           >
             <span className="text-ink">{ing.name}</span>
-            <span className="flex items-baseline flex-wrap justify-end gap-1.5 text-right flex-shrink-0 font-serif font-bold text-base text-ink">
+            <span className="flex items-baseline flex-wrap justify-end gap-1.5 text-right flex-shrink-0 font-display font-black text-[15px] text-ink">
               {ing.quantity_text}
               {isImprecise(ing) && (
-                <span className="font-sans font-bold text-[10.5px] tracking-[0.4px] lowercase text-plum bg-plum/10 border border-plum/[0.28] rounded-full px-2 py-0.5 leading-tight whitespace-nowrap">
+                <span className="font-display font-bold text-[10.5px] tracking-[0.3px] lowercase text-cream bg-plum border-2 border-ink rounded-full px-2 py-0.5 leading-tight whitespace-nowrap">
                   {impreciseLabel(ing)}
                 </span>
               )}

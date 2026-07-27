@@ -9,14 +9,13 @@ import RecipePage from './pages/RecipePage'
 import PlantRecipe from './pages/PlantRecipe'
 import EditRecipe from './pages/EditRecipe'
 import HandoffPage from './pages/HandoffPage'
-import RecipeBodyPage from './pages/RecipeBodyPage'
 import SharedWithMe from './pages/SharedWithMe'
 import Profile from './pages/Profile'
 import InviteLanding from './pages/InviteLanding'
 
 function Layout({ children }) {
   return (
-    <div className="max-w-app mx-auto min-h-screen pb-20">
+    <div className="max-w-app mx-auto min-h-screen pb-28">
       {children}
       <BottomNav />
     </div>
@@ -84,16 +83,6 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <HandoffPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/recipes/:id/full"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <RecipeBodyPage />
             </Layout>
           </ProtectedRoute>
         }

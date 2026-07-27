@@ -66,20 +66,20 @@ export default function EditRecipe() {
 
   if (error) {
     return (
-      <div className="p-6 text-center">
+      <div className="min-h-screen bg-cream p-6 text-center">
         <p className="text-red-600 mb-4">{error}</p>
         <button
           onClick={() => navigate('/my-recipes')}
-          className="text-terra text-sm"
+          className="font-display font-bold text-[13px] text-terra"
         >
-          Back to your garden
+          Back to your kitchen →
         </button>
       </div>
     )
   }
 
   if (!initialValues) {
-    return <div className="p-6 text-center text-ink-soft">Loading…</div>
+    return <div className="min-h-screen bg-cream p-6 text-center font-display italic text-ink-soft">Loading…</div>
   }
 
   return (

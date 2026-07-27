@@ -17,27 +17,30 @@ export default function Profile() {
     .toUpperCase()
 
   return (
-    <div className="px-4 pt-6">
-      <h1 className="font-serif font-black text-[28px] text-ink">You</h1>
+    <div className="min-h-screen bg-cream px-5 pt-6">
+      <h1 className="font-display font-black text-[32px] text-ink leading-none inline-block border-b-[3px] border-ink pb-1">
+        You<span className="text-terra">.</span>
+      </h1>
 
-      <div className="bg-card border border-line rounded-2xl p-5 mt-[18px] shadow-[0_2px_10px_rgba(120,80,40,0.08)]">
-        <div className="w-14 h-14 rounded-full bg-terra text-white font-serif font-semibold text-2xl flex items-center justify-center mb-3.5">
+      <div className="sticker bg-card p-5 mt-5">
+        {/* Monogram as a periwinkle sticker disc — the reference's badge motif. */}
+        <div className="w-16 h-16 rounded-full bg-periwinkle text-cream font-display font-black text-3xl flex items-center justify-center border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] mb-4">
           {monogram}
         </div>
         {fullName && (
-          <p className="font-serif font-semibold text-[19px] text-ink">
+          <p className="font-display font-black text-[22px] text-ink">
             {fullName}
           </p>
         )}
         <p className="section-label mt-3">Email</p>
-        <p className="font-sans text-[13.5px] text-ink mt-0.5">
+        <p className="font-sans text-[14px] text-ink mt-0.5">
           {user.email || 'Unknown'}
         </p>
       </div>
 
       <button
         onClick={handleLogout}
-        className="w-full py-3 mt-[18px] rounded-[10px] border border-[#d99] text-[#b4472f] font-sans font-medium text-[13px]"
+        className="w-full py-3 mt-5 rounded-full bg-cream border-[2.5px] border-ink text-terra font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
       >
         Log out
       </button>

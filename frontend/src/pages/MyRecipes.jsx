@@ -24,16 +24,16 @@ export default function MyRecipes() {
 
   return (
     <div className="min-h-screen bg-cream px-5 pt-6 pb-6">
-      <h1 className="font-display font-black text-[30px] leading-none text-ink">
+      <h1 className="font-display font-black text-[32px] leading-none text-ink inline-block border-b-[3px] border-ink pb-1">
         Your kitchen<span className="text-terra">.</span>
       </h1>
-      <p className="font-display italic text-[15px] text-ink-soft mt-1">
+      <p className="font-display italic text-[15px] text-ink-soft mt-2">
         Everything you&rsquo;ve kept.
       </p>
 
       <button
         onClick={() => navigate('/shared')}
-        className="mt-2 font-display font-bold text-[12.5px] text-terra"
+        className="mt-3 inline-block font-display font-bold text-[12px] text-ink bg-mint border-2 border-ink rounded-full px-3 py-1 shadow-[0_2px_0_#2E3A24] transition-transform active:translate-y-[2px] active:shadow-none"
       >
         Shared with you →
       </button>

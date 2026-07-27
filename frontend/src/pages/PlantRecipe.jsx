@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/RecipeForm'
 import HandoffInvite from '../components/HandoffInvite'
-import Plant from '../components/Plant'
 import { buildOriginPayload } from '../lib/lineagePayload'
-import { plantedBeatCopy } from '../lib/plantedBeat'
 import { plantRecipe } from '../api/lineage'
 
+// The add-a-recipe flow (route /add). A short heritage doorway (who this recipe
+// came from) → capture → the recipe form → a "saved" confirmation → an optional
+// hand-off. Kitchen look: cream, Fraunces, recipe-first — no plants, no growth.
 export default function PlantRecipe() {
   const navigate = useNavigate()
-  const [step, setStep] = useState('doorway') // doorway|origin|form|planted|handoff
+  const [step, setStep] = useState('doorway') // doorway|origin|form|saved|handoff
   const [originMode, setOriginMode] = useState(null) // 'ancestor'|'mine'
   const [origin, setOrigin] = useState({
     name: '',
@@ -18,7 +19,7 @@ export default function PlantRecipe() {
     memory: '',
   })
   const [selfMemory, setSelfMemory] = useState('')
-  const [planted, setPlanted] = useState(null)
+  const [saved, setSaved] = useState(null)
 
   function chooseDoor(mode) {
     setOriginMode(mode)
@@ -28,7 +29,7 @@ export default function PlantRecipe() {
   async function handleFormSubmit(formPayload) {
     const payload = { ...formPayload }
     if (originMode === 'ancestor') {
-      // The doorway memory belongs to the ANCESTOR (origin.memory), which is
+      // The doorway memory belongs to the SOURCE (origin.memory), which is
       // distinct from the dish's own story — leave payload.story from the form.
       payload.origin = buildOriginPayload(origin)
     }
@@ -36,41 +37,41 @@ export default function PlantRecipe() {
     // initialValues below, so formPayload.story is already authoritative — no
     // override here (that would silently discard edits made in the form).
     const { data } = await plantRecipe(payload)
-    setPlanted(data)
-    setStep('planted')
+    setSaved(data)
+    setStep('saved')
   }
 
   if (step === 'doorway') {
     return (
-      <div className="px-[18px] pt-8">
-        <h1 className="font-serif font-black text-[28px] text-ink leading-tight">
+      <div className="min-h-screen bg-cream px-[18px] pt-8">
+        <h1 className="font-display font-black text-[30px] text-ink leading-tight">
           Where does this
           <br />
           recipe begin?
         </h1>
-        <p className="font-serif italic text-[15px] text-ink-soft mt-2 mb-6">
-          Every seed has a first hand that held it.
+        <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-6">
+          Every recipe has a first hand that made it.
         </p>
         <button
           onClick={() => chooseDoor('ancestor')}
-          className="block w-full text-left bg-card border border-line rounded-2xl p-4 mb-3 shadow-warm"
+          className="block w-full text-left sticker sticker-press bg-peach p-4 mb-4"
         >
-          <span className="font-serif font-semibold text-[17px] text-ink">
-            A seed passed to you
+          <span className="font-display font-black text-[18px] text-ink">
+            Passed down to you
           </span>
-          <span className="block font-sans text-[12.5px] text-ink-soft mt-0.5">
+          <span className="block font-display text-[13px] text-ink-soft mt-0.5">
             Someone taught you this. Honor them.
           </span>
         </button>
         <button
           onClick={() => chooseDoor('mine')}
-          className="block w-full text-left bg-card border border-line rounded-2xl p-4 shadow-warm"
+          className="block w-full text-left sticker sticker-press bg-card p-4"
         >
-          <span className="font-serif font-semibold text-[17px] text-ink">
-            A seed of your own
+          <span className="font-display font-black text-[18px] text-ink">
+            One of your own
           </span>
-          <span className="block font-sans text-[12.5px] text-ink-soft mt-0.5">
-            You are the root of this one.
+          <span className="block font-display text-[13px] text-ink-soft mt-0.5">
+            You are where this one begins.
           </span>
         </button>
       </div>
@@ -79,16 +80,16 @@ export default function PlantRecipe() {
 
   if (step === 'origin') {
     return (
-      <div className="px-[18px] pt-8">
+      <div className="min-h-screen bg-cream px-[18px] pt-8">
         {originMode === 'ancestor' ? (
           <>
-            <h1 className="font-serif font-black text-[26px] text-ink leading-tight">
+            <h1 className="font-display font-black text-[28px] text-ink leading-tight">
               Who taught you
               <br />
               this recipe?
             </h1>
-            <p className="font-serif italic text-[14px] text-ink-soft mt-2 mb-5">
-              They'll sit at the root of its tree.
+            <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
+              They&rsquo;ll be remembered as its source.
             </p>
             <input
               className="field mb-2.5"
@@ -129,13 +130,13 @@ export default function PlantRecipe() {
           </>
         ) : (
           <>
-            <h1 className="font-serif font-black text-[26px] text-ink leading-tight">
+            <h1 className="font-display font-black text-[28px] text-ink leading-tight">
               This one starts
               <br />
               with you.
             </h1>
-            <p className="font-serif italic text-[14px] text-ink-soft mt-2 mb-5">
-              You're the root of this dish's tree.
+            <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
+              You&rsquo;re where this dish begins.
             </p>
             <textarea
               className="field resize-none mb-4"
@@ -156,53 +157,61 @@ export default function PlantRecipe() {
   if (step === 'form') {
     // Mine path: pre-fill the Story field with the doorway memory so there's
     // ONE story input. Ancestor path: no seed — the doorway memory is the
-    // ancestor's (captured in origin.memory), not the dish's story.
+    // source's (captured in origin.memory), not the dish's story.
     const initialValues = originMode === 'mine' ? { story: selfMemory } : {}
     return (
-      <RecipeForm
-        mode="add"
-        initialValues={initialValues}
-        onSubmit={handleFormSubmit}
-        intro={
-          <p className="font-serif italic text-[14px] text-ink-soft -mt-2 mb-4">
-            Add what you’ve got — “a splash of vinegar” is perfect. Only the
-            name is required.
-          </p>
-        }
-      />
+      <div className="min-h-screen bg-cream">
+        <RecipeForm
+          mode="add"
+          initialValues={initialValues}
+          onSubmit={handleFormSubmit}
+          intro={
+            <p className="font-display italic text-[14px] text-ink-soft -mt-2 mb-4">
+              Add what you&rsquo;ve got — &ldquo;a splash of vinegar&rdquo; is
+              perfect. Only the name is required.
+            </p>
+          }
+        />
+      </div>
     )
   }
 
-  if (step === 'planted') {
-    // The ancestor's first name personalizes the "add their story" act; the
+  if (step === 'saved') {
+    // The source's first name personalizes the "add their story" act; the
     // self-authored path has no source, so the act reads "add a memory".
     const sourceName =
       originMode === 'ancestor' && origin.name.trim()
         ? origin.name.trim().split(/\s+/)[0]
         : null
-    const beat = plantedBeatCopy(planted, sourceName)
+    const storyAct = sourceName ? `add ${sourceName}’s story` : 'add a memory'
     return (
-      <div className="px-[18px] pt-12 text-center flex flex-col items-center">
-        <Plant
-          stage={beat.stage}
-          vitality={planted?.growth_vitality || 'bare'}
-          size={96}
-        />
-        <p className="font-sans text-[10px] font-semibold tracking-[0.18em] uppercase text-herb mt-5 mb-2">
-          {beat.eyebrow}
+      <div className="min-h-screen bg-cream px-[18px] pt-16 text-center flex flex-col items-center">
+        <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-mint text-ink border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24]">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="w-8 h-8">
+            <path
+              d="M5 12.5l4.5 4.5L19 7.5"
+              stroke="#2E3A24"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+        <p className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[11px] text-ink bg-saffron border-2 border-ink rounded-full px-3 py-1 mt-6 mb-3">
+          Saved to your kitchen
         </p>
-        <h1 className="font-serif font-black italic text-[26px] text-ink leading-tight">
-          {beat.heading}
+        <h1 className="font-display font-black italic text-[28px] text-ink leading-tight">
+          {saved.name} is saved.
         </h1>
-        <p className="font-serif italic text-[14px] text-ink-soft mt-3 mb-8 max-w-[16rem]">
-          {beat.body}
+        <p className="font-display italic text-[15px] text-ink-soft mt-3 mb-8 max-w-[17rem]">
+          Cook it, {storyAct}, or pass it on.
         </p>
         <button className="btn-primary" onClick={() => setStep('handoff')}>
           Pass it on →
         </button>
         <button
-          className="mt-3 font-serif italic text-ink-soft text-sm"
-          onClick={() => navigate(`/recipes/${planted.id}`)}
+          className="mt-3 font-display italic text-ink-soft text-sm"
+          onClick={() => navigate(`/recipes/${saved.id}`)}
         >
           Take me to it →
         </button>
@@ -210,19 +219,21 @@ export default function PlantRecipe() {
     )
   }
 
-  // step === 'handoff' — only reachable after a successful plant, but guard
-  // `planted` defensively to match the optional-chaining used in the planted beat.
-  if (!planted) return null
+  // step === 'handoff' — only reachable after a successful save, but guard
+  // `saved` defensively to match the optional-chaining used elsewhere.
+  if (!saved) return null
   return (
-    <HandoffInvite
-      recipeId={planted.id}
-      sourceName={
-        originMode === 'ancestor' && origin.name.trim()
-          ? origin.name.trim()
-          : null
-      }
-      onSent={() => navigate(`/recipes/${planted.id}`)}
-      onSkip={() => navigate(`/recipes/${planted.id}`)}
-    />
+    <div className="min-h-screen bg-cream">
+      <HandoffInvite
+        recipeId={saved.id}
+        sourceName={
+          originMode === 'ancestor' && origin.name.trim()
+            ? origin.name.trim()
+            : null
+        }
+        onSent={() => navigate(`/recipes/${saved.id}`)}
+        onSkip={() => navigate(`/recipes/${saved.id}`)}
+      />
+    </div>
   )
 }
