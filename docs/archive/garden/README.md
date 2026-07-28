@@ -7,11 +7,11 @@
 ## What It Is
 A deployed full-stack web app for preserving the family recipes that were never written down — the cooking knowledge immigrant elders carry in memory, one generation from being lost. *Issei* (一世) means "first generation": the first of a family to arrive somewhere new. The tagline says it — **recipes that live in memory, not cookbooks.**
 
-Instead of treating a recipe as a static list of grams and steps, Issei treats it as a **living vessel for a person**: the cook's own voice and story are woven in, and their imprecise measurements ("a dash," "three soup spoons," "until it smells right") are preserved verbatim and celebrated as fidelity rather than normalized away. Passing a recipe to a relative — the *handoff* — is both how the knowledge spreads and how families are invited in to fill in what one person can't remember alone. The UI is a warm, playful "kitchen": bold color-block stickers, chunky display type, and food-forward illustration, mobile-first.
+Instead of treating a recipe as a static list of grams and steps, Issei treats it as a **living vessel for a person**: the cook's own voice and story are woven in, their imprecise measurements ("a dash," "three soup spoons," "until it smells right") are preserved verbatim and celebrated as fidelity rather than normalized away, and each recipe **grows from a seed into a tree** as it's cooked, enriched, and handed down to the next generation. Passing a recipe to a relative — the *handoff* — is both how the knowledge spreads and how families are invited in to fill in what one person can't remember alone.
 
-Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling, shopping-list consolidation, photo upload (with automatic iPhone HEIC → JPEG conversion), and a lineage + sharing system with private → shared → public visibility.
+Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling, shopping-list consolidation, photo upload, and a lineage/growth system with private → shared → public visibility.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 19 endpoints, 8 data models, ~125 automated tests (pytest + Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 19 endpoints, 8 data models, ~140 automated tests (pytest + Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -66,7 +66,7 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 | GET | /recipes/{recipe_id}/lineage | Yes | Returns the walkable lineage spine + tree counts. |
 | GET | /recipes/shared | Yes | Returns recipes shared *with* the current user (accepted grants; excludes their own). |
 | POST | /recipes/handoffs/{handoff_id}/accept | Yes | Claims a pending invite for the current user (backend-only; the two auto-accept paths cover the in-app cases, so there is no MVP UI for this). |
-| GET | /recipes/invite/{token} | No | Unauthenticated soft-wall preview of a handed-off recipe (name, who it's from, story, cover photo — never the body). |
+| GET | /recipes/invite/{token} | No | Unauthenticated soft-wall preview of a handed-off recipe (name, who it's from, story, plant — never the body). |
 | POST | /recipes/invite/{token}/claim | Yes | Claims an invite by its token, granting the current user access (resolves the mismatched-email case). |
 | GET | /recipes/browse | No | Public discovery feed (root-visibility gated). |
 | POST | /shopping-list | Yes | Creates a shopping list. |
@@ -131,7 +131,7 @@ npm test
 See [FUTURE.md](FUTURE.md) for planned features including multi-user family sharing, iOS mobile app, translation support, and richer photo/video support.
 
 ## Live Demo
-- **App (React frontend):** https://issei-delta.vercel.app — sign up and it works end to end: create a recipe (with a photo), keep it in your kitchen, scale it, pass it on to family.
+- **App (React frontend):** https://issei-delta.vercel.app — sign up and it works end to end: create a recipe, watch it grow, scale it, build a shopping list.
 - **API (FastAPI, interactive Swagger docs):** https://family-recipe-library.onrender.com/docs — every endpoint is callable in-browser.
 
 **Deployment:** the frontend is hosted on **Vercel** (static SPA build, auto-deploys on push to `main`); the backend is hosted on **Render** (auto-deploys on push to `main`) and talks to a **Neon** PostgreSQL database. CORS origins are env-driven so the frontend host can change without a code edit.

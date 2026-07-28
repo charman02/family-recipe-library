@@ -2,19 +2,9 @@
 
 Issei is a full-stack app for preserving the family recipes immigrant elders
 carry but never wrote down (*issei* = "first generation"). Its core is the
-**living recipe** — a recipe as a vessel for a person (the cook's voice and
-story woven in, imprecise measures preserved verbatim), cooked, enriched, and
-handed down. The UI is a warm, playful "kitchen" (bold sticker / color-block
-design). This file is a practical map of how that codebase is organized and what
-each piece does.
-
-> **Note on the "garden" era.** An earlier UI rendered each recipe as a plant
-> that grew seed→sprout→sapling→tree, and the Kitchen as a garden of those
-> plants. That UI was replaced by the current kitchen design. The backend still
-> *computes* growth fields (`growth_stage`/`growth_vitality` via
-> `services/growth.py`) and returns them on `RecipeResponse`, but the frontend
-> no longer surfaces them. The old garden-era docs are archived under
-> `docs/archive/garden/`, and the full garden UI lives at the `garden-v1` tag.
+**living recipe** — a recipe as a vessel for a person, which grows from a seed
+into a tree as it's cooked, enriched, and handed down. This file is a practical
+map of how that codebase is organized and what each piece does.
 
 For *why* the backend is built the way it is (tech choices, design trade-offs),
 see `README.md`. For planned features, see `FUTURE.md`. This file is the
@@ -65,7 +55,7 @@ database (Postgres / SQLite)
 
 **Sharing model (the "Shared" tier).** Passing a recipe *is* sharing — there is no separate access-grant concept. The `handoffs` table doubles as the grant: passing a private recipe to someone creates a `Handoff` normalized to the lineage **root** (so a grant covers the whole subtree), with `state` in `pending | accepted` and a `token` (a `secrets.token_urlsafe(32)` capability secret). In-app recipients are accepted instantly; email invites stay `pending` until that address signs up (then they auto-accept). Additionally, any holder of the invite token can **claim** the grant (via `POST /recipes/invite/{token}/claim`) — this resolves the mismatched-email orphan case (an invite addressed to one email claimed by someone who signed up with another). `can_view` in `lineage.py` gates `get_recipe` and `get_lineage` on this. `GET /recipes/shared` lists a user's accepted-grant recipes; `RecipeResponse.shared_with_count` tells an owner how many people a private recipe is shared with (count only — no identities). Grantees get view + cook, but cannot edit the owner's copy or re-share.
 
-**Soft-wall invite preview.** Before signing up, a recipient holding an invite link (`/invite/:token`) sees a *warm, limited preview* of the recipe: name, who it's from, the story, and the cover photo — never ingredients, steps, or body content. This boundary is enforced by the `InvitePreview` schema (it simply has no body fields). After signup/login, the token is claimed and the recipe becomes fully viewable.
+**Soft-wall invite preview.** Before signing up, a recipient holding an invite link (`/invite/:token`) sees a *warm, limited preview* of the recipe: name, who it's from, the story, and the growth plant — never ingredients, steps, or body content. This boundary is enforced by the `InvitePreview` schema (it simply has no body fields). After signup/login, the token is claimed and the recipe becomes fully viewable.
 
 **Models vs Schemas — the distinction that trips people up.** A *model*
 (`models/recipe.py`) is the database table. A *schema* (`schemas/recipe.py`) is
@@ -73,11 +63,9 @@ the API contract. They look similar but serve different masters: the model has
 every column (including ones you never expose); the schema has only what the API
 should accept or return. `RecipeCreate` (what you send to create) and
 `RecipeResponse` (what you get back) are different schemas for the same model.
-`RecipeResponse` also includes derived counts (`cook_count`, `child_count`,
-`has_grandchildren`, `growth_stage`, `growth_vitality`, etc.) that are computed
-per-request in `_attach_growth_fields`, not stored columns. The frontend uses
-some of these (e.g. `cook_count`); the `growth_*` fields are computed but no
-longer displayed since the garden UI was removed.
+`RecipeResponse` also includes derived growth counts (`cook_count`,
+`child_count`, `has_grandchildren`, etc.) that are computed per-request in
+`_attach_growth_fields`, not stored columns.
 
 **`alembic/`** (sibling of `app/`, not inside it) — database migrations. Every
 time a model changes (new column, etc.), you generate a migration here and apply
@@ -142,58 +130,51 @@ frontend/
 | `App.jsx` | The **route table**. Each `<Route>` maps a URL path to a page component. Protected routes are wrapped in `<ProtectedRoute>` and `<Layout>` (which adds the bottom nav). When you add a page, you add a route here. |
 | `api/client.js` | A single configured **axios** instance — the *only* thing that talks to the backend. It auto-attaches the JWT token to every request (request interceptor) and, on any 401 response, clears the session and redirects to login (response interceptor). Import `client` anywhere you need data. |
 | `api/lineage.js` | Lineage + sharing endpoint calls (cook, handoff, the `/lineage` view, `getSharedWithMe`, invite preview/claim, and `setVisibility`) built on `client`. |
-| `index.css` | Pulls in Tailwind and defines the shared **sticker design system** — `.sticker` / `.sticker-press` (ink outline + hard offset shadow), `.field`, `.btn-primary`, `.chip`, `.error-pill`, `.section-label`, `.story-callout`, plus the Steps counter and `scrollbar-hide`. |
+| `index.css` | Pulls in Tailwind and defines a couple of custom utility classes (e.g. `scrollbar-hide`). |
 
 ### `components/` — reusable pieces
-
-The UI uses a shared **"sticker" design language** (bold ink outlines, hard
-offset shadows, saturated color-block fields, chunky Fraunces display type),
-factored into small reusable components. The core `.sticker` / `.field` /
-`.btn-primary` / `.error-pill` utilities live in `index.css`.
 
 | Component | Role |
 |---|---|
 | `ProtectedRoute.jsx` | A gate. If there's no token in localStorage, it redirects to `/login`. Wraps every authenticated route. |
-| `BottomNav.jsx` | The floating "sticker pill" bottom nav (Home, Browse, Add, Kitchen, You). Inactive tabs are icon-only; the active tab expands into a terra color-blob with its label; Add is a raised scalloped badge. |
-| `RecipeCard.jsx` | A recipe as a sticker card — cover photo in an ink-outlined frame, cuisine tag, chunky title, byline (`from <source>` / `kept by <author>`, name emphasized). `variant` `grid` (two-up) or `row` (horizontal scroll). |
-| `RecipeBody.jsx` | The always-readable recipe body: cover, byline + cuisine, the **story** as a featured peach card ("In X's words" + quote stamp), **ingredients** (imprecise amounts tagged "their way" via `lib/measures.js`), and **steps** (each optional `voice_note` rendered as a saffron "their words" callout). Has a cooking-mode toggle. |
-| `CoverImage.jsx` | Renders a recipe's cover photo, or a peach `issei.` placeholder when there's no photo. Shared by every screen that shows a recipe. |
+| `BottomNav.jsx` | The fixed bottom navigation bar (Home, Browse, Add, Kitchen, You). |
+| `CoverImage.jsx` | Renders a recipe's cover photo, or a styled cream placeholder with the handwritten `issei` `<Wordmark />` when there's no photo. Shared by every screen that shows a recipe. |
+| `Plant.jsx` | The seed→sprout→sapling→tree plant SVG (4 distinct stage shapes × bare/blooming/fruiting vitality). Props `stage`/`vitality`/`size`; reads growth from the recipe via `lib/growth.js`. Replaced the old `GrowthMark`. |
 | `HandoffInvite.jsx` | Pass-it-on invite form (hand a recipe to a person / email). Copy adapts to the recipe's visibility — access-granting for a private recipe, a nudge for a public one. |
-| `RecipeForm.jsx` | Shared create/edit form body, reused by PlantRecipe and EditRecipe. Marker-titled sections with persistent `FieldLabel`s and paired name-vs-measurement / step-vs-voice-note fields. Handles photo upload incl. iPhone HEIC → JPEG conversion (lazy-loaded `heic2any`). |
-| `VisibilityControl.jsx` | Owner-only private/public toggle on the recipe page, with a descendants-aware confirm when publishing a root that has children. |
-| `MarkerTitle.jsx` | A heading with a highlighter-swipe color block behind the text (the app's section-header motif). |
-| `HeroDiscs.jsx` | The trio of decorative emoji-dish discs on the Home hero (config-driven positions). |
-| `EmptyState.jsx` / `Loader.jsx` | Shared sticker-styled empty/no-results state (peach card + emoji badge) and loading state (bouncing pot badge). |
-| `BackButton.jsx` | Icon-only sticker back button for sub-pages. |
-| `Icon.jsx` / `IconField.jsx` | The inline-SVG line-icon set and a labeled input field. |
-| `FilterSelect.jsx` | A custom sticker-styled dropdown (used for the Browse cuisine/diet/ready-in filters). |
-| `FieldLabel.jsx` | A persistent field label (stays visible after a field is filled), shared by RecipeForm and the capture flow. |
+| `RecipeForm.jsx` | Shared create/edit form body, reused by PlantRecipe and EditRecipe. |
+| `Wordmark.jsx` | The handwritten `issei` wordmark (Caveat). |
+| `Provenance.jsx` | The provenance line — `🌱 <origin> → <keeper>` — built from the recipe's `origin_attribution` + `author_full_name` (no tree/network needed; reads at 1 node). |
+| `Icon.jsx` / `IconField.jsx` | The line-icon set and a labeled input field. |
+| `SectionHeader.jsx` | A titled section header. |
 
 ### `pages/` — one per screen
 
 | Page | Route | Purpose |
 |---|---|---|
-| `Login.jsx` | `/login` | Login + signup (tabs). The only public page. Sticker masthead, peach "meaning of issei" definition card, and a "forgot password → email me" line (no self-serve reset yet). |
-| `Home.jsx` | `/` | Greeting + a peach hero (with decorative dish discs) that opens the Kitchen, a coral "N recipes to cook" bar, and marker-titled sections of recipe cards (community "passed down lately" + "your kitchen"). Welcome empty state on first run. |
-| `Browse.jsx` | `/browse` | Discovery: search + Cuisine / Diet / Ready-In sticker dropdowns. Unfiltered → curated horizontal cuisine/recency rows; searching or filtering → a flat results grid (section titles hide). |
-| `MyRecipes.jsx` | `/my-recipes` | The Kitchen — a grid of your recipe cards with a search field; links to "Shared with you". Empty/no-match states use `EmptyState`. |
+| `Login.jsx` | `/login` | Login + signup (tabs). The only public page. |
+| `Home.jsx` | `/` | Greeting + recent recipes (or a welcome empty state). |
+| `Browse.jsx` | `/browse` | Discovery: search, diet filters, recipes grouped by cuisine. |
+| `MyRecipes.jsx` | `/my-recipes` | The Kitchen — **a garden of your recipe-plants grouped into growth bands** (Needs tending → Growing → Thriving, via `lib/gardenBands.js`); empty bands are omitted, and searching collapses to a flat grid. Links to "Shared with you". |
 | `SharedWithMe.jsx` | `/shared` | Recipes others have passed to the user (accepted grants only; no accept UI). |
-| `RecipePage.jsx` | `/recipes/:id` | The **living recipe page** — a centered title over `<RecipeBody>` (story leads as a featured card; each step's `voice_note` renders as a "their words" callout; **imprecise measures** are tagged "their way" via `lib/measures.js`, never normalized). For the owner: `<VisibilityControl>`, "Pass it on", and a delete button with a confirm dialog. |
-| `PlantRecipe.jsx` | `/add` | Stepped add-a-recipe flow: choose a doorway (recipe passed down to you vs. one of your own) → origin details (with persistent field labels + stamps) → RecipeForm (only a name is required) → a "saved" confirmation that names the next acts (cook it · add its story · pass it on) → HandoffInvite. The confirmation's secondary CTA lands on the new recipe page. |
+| `RecipeDetail.jsx` | `/recipes/:id` | The **living recipe page** — three registers of voice: the framing **story** leads; each step's `voice_note` renders as a woven **quote** (Caveat hand) beneath it; **imprecise measures** are tagged "their way" (via `lib/measures.js`), never normalized. Plus a `<Provenance>` line (🌱 origin → keeper), the growth `<Plant>`, and — for the owner when there's no story yet — a warm "add a memory" invitation (empty-state). Owner also sees "Shared with N" + "Pass it on". |
+| `PlantRecipe.jsx` | `/add` | Stepped plant-a-recipe flow: choose a doorway (ghost ancestor vs. self-authored root) → RecipeForm (with a soul-invitation framing line — only a name is required) → **planted beat** that launches the growth loop (shows the recipe's real computed stage — a recipe planted with an origin/story is born a sprout, not a seed — and invites the three nourishing acts: cook it · add its story · pass it on, via `lib/plantedBeat.js`) → HandoffInvite. The beat's secondary CTA lands on the new recipe page. |
 | `EditRecipe.jsx` | `/recipes/:id/edit` | Edit an existing recipe (shared RecipeForm). |
-| `InviteLanding.jsx` | `/invite/:token` | **Public** soft-wall: a warm preview of a handed-off recipe (name, who it's from, story, cover photo — never the body) via the unauthenticated preview endpoint, then a signup-to-participate gate that carries the token to Login. |
-| `Profile.jsx` | `/profile` | The "You" page — account info, client-side settings (reduce-motion, cooking-mode default), account actions (stubbed "Soon"), a "Send feedback" link (env-gated `VITE_FEEDBACK_URL`), and logout. |
+| `InviteLanding.jsx` | `/invite/:token` | **Public** soft-wall: a warm preview of a handed-off recipe (name, who it's from, story, plant — never the body) via the unauthenticated preview endpoint, then a signup-to-participate gate that carries the token to Login. |
+| `Profile.jsx` | `/profile` | User info + logout. |
 
-(`AddRecipe.jsx` still exists on disk but is no longer routed — `/add` maps to `PlantRecipe`. It is dormant-but-revivable. Remix was removed entirely — page, API helper, and backend endpoint — as a network-maturity feature cut from the v1 product; the `parent_recipe_id` lineage substrate it used remains. The garden-era plant/growth components — `Plant`, `GardenBed`, `GardenPlant`, `LivingPlant`, `SoulSheet`, `Provenance`, `Wordmark`, `SectionHeader`, and the `growth`/`gardenBands`/`plantedBeat` libs + `useGrowthAnimation` hook — were removed in the kitchen redesign; they live at the `garden-v1` tag.)
+(`AddRecipe.jsx` still exists on disk but is no longer routed — `/add` maps to `PlantRecipe`. It is dormant-but-revivable. Remix was removed entirely — page, API helper, and backend endpoint — as a network-maturity feature cut from the v1 product; the `parent_recipe_id` lineage substrate it used remains.)
 
 ### `lib/` — non-UI logic
 
 | File | What it does |
 |---|---|
+| `growth.js` | `stageForRecipe` / `vitalityForRecipe` — read the server-computed `recipe.growth_stage`/`growth_vitality` (source of truth), with a client fallback that mirrors `app/services/growth.py` exactly. Replaced the old `growthState.js`. |
 | `measures.js` | `isImprecise` / `impreciseLabel` — flags imprecise/unmeasured ingredient amounts so the recipe page tags them "their way" (celebrated as fidelity, never normalized). |
+| `plantedBeat.js` | `plantedBeatCopy(recipe, sourceName)` — the copy for the capture flow's "planted!" beat, derived from the recipe's real growth stage (server-first via `growth.js`) + the source's name. Names the three growth-loop acts. |
 | `handoffStarters.js` | `HANDOFF_STARTERS` (two starter objects: fill-in + sharing) and `defaultStarterKey(sourceName)` — logic for the one-tap note starters + the safe auto-touch when passing back to the recorded source. |
-| `sourceName.js` | `sourceNameOf(recipe)` — extracts the recorded source's name from `origin_attribution` (leading segment before `·`). Used for recipe bylines + the auto-preselect on HandoffInvite. |
-| `lineagePayload.js` | Builds the origin request payload sent to the backend (`buildOriginPayload`). |
+| `sourceName.js` | `sourceNameOf(recipe)` — extracts the recorded source's name from `origin_attribution` (leading segment before `·`). Used to trigger the auto-preselect on HandoffInvite. |
+| `gardenBands.js` | `gardenBands(recipes)` — groups a recipe list into ordered growth bands (tending/growing/thriving) by `stageForRecipe`, omitting empty bands. The data behind the Kitchen-as-garden view. |
+| `lineagePayload.js` | Builds the plant/origin request payloads sent to the backend (`buildOriginPayload`). |
 
 ### `utils/` — non-UI logic
 
@@ -209,10 +190,7 @@ factored into small reusable components. The core `.sticker` / `.field` /
   directly, or you lose the token attachment and 401 handling.
 - **Function components + hooks only** — no class components.
 - **Tailwind only** — no UI libraries. Use the design tokens in
-  `tailwind.config.js` (`cream`, `peach`, `coral`, `saffron`, `mint`,
-  `periwinkle`, `terra`, `ink`, `plum`, etc.) rather than raw hex. Fonts:
-  `font-display` (Fraunces) for headings, `font-sans` (Nunito Sans) for body,
-  `font-hand` (Caveat) for the story/voice.
+  `tailwind.config.js` (`cream`, `accent`, `primary`, etc.) rather than raw hex.
 - **Mobile-first**, max-width 430px centered.
 
 ---

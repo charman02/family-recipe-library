@@ -19,7 +19,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 GARDEN_REF="garden-v1"           # tag: known-good garden version
-KITCHEN_REF="redesign-kamala"    # branch: kitchen redesign
+KITCHEN_REF="kitchen-v1"         # tag: known-good kitchen version (shipped to prod)
 
 current_look() {
   # Map the current HEAD commit back to a friendly look name.

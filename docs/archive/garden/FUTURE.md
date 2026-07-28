@@ -1,6 +1,6 @@
 # Future Roadmap
 
-This document outlines planned features and improvements for Issei — a full-stack app for preserving the family recipes immigrant elders carry but never wrote down (*issei* = "first generation"). The current build (FastAPI backend + React frontend) centers on the **living recipe**: a recipe as a vessel for a person — the cook's voice and story woven in, their imprecise measurements preserved verbatim — kept in a warm, playful "kitchen" UI and **handed down** to family. It includes recipe management, serving-size scaling, shopping lists, photo upload, and the handoff/sharing flow with private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
+This document outlines planned features and improvements for Issei — a full-stack app for preserving the family recipes immigrant elders carry but never wrote down (*issei* = "first generation"). The current build (FastAPI backend + React frontend) centers on the **living recipe**: a recipe as a vessel for a person, which **grows from a seed into a tree** as it's cooked, enriched, and **handed down**. It includes recipe management, serving-size scaling, shopping lists, the seed→tree growth system, and the handoff/sharing flow with private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
 
 ---
 
