@@ -185,6 +185,18 @@ export default function Login() {
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
+            {/* No self-serve reset yet (small trusted launch) — point locked-out
+                users to email. Replace with a real flow post-launch. */}
+            <p className="text-center font-display text-[13px] text-ink-soft pt-1">
+              Forgot your password?{' '}
+              <a
+                href="mailto:charlie0309@me.com?subject=issei%20password%20help"
+                className="font-bold text-terra underline underline-offset-2"
+              >
+                Email me
+              </a>{' '}
+              and I&rsquo;ll get you back in. 💛
+            </p>
           </form>
         ) : (
           <form onSubmit={handleSignup} className="space-y-3">
