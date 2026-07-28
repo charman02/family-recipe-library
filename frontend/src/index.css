@@ -60,6 +60,10 @@
   .story-callout {
     @apply bg-peach border-2 border-ink rounded-2xl p-4;
   }
+  /* Error pill — sticker treatment for form/page errors (warm, on-palette). */
+  .error-pill {
+    @apply inline-block font-display font-bold text-[13px] text-cream bg-coral border-2 border-ink rounded-full px-3.5 py-1.5 shadow-[0_2px_0_#2E3A24];
+  }
   /* Readable body scale (R1). Body/ingredients read too thin+small in serif; the
      reading surfaces use Nunito Sans at a legible size with bold amounts. */
   .ingredient-row {

@@ -11,7 +11,9 @@ describe('RecipeCard', () => {
       />,
     )
     expect(screen.getByText('Adobo')).toBeInTheDocument()
-    expect(screen.getByText(/kept by Yoko M\./i)).toBeInTheDocument()
+    // The byline splits the verb from the emphasized name into two spans.
+    expect(screen.getByText(/kept by/i)).toBeInTheDocument()
+    expect(screen.getByText('Yoko M.')).toBeInTheDocument()
   })
 
   it('shows "from {source}" when there is a recorded origin', () => {
@@ -26,7 +28,8 @@ describe('RecipeCard', () => {
         onClick={() => {}}
       />,
     )
-    expect(screen.getByText(/from Lola Remedios/i)).toBeInTheDocument()
+    expect(screen.getByText(/^from$/i)).toBeInTheDocument()
+    expect(screen.getByText('Lola Remedios')).toBeInTheDocument()
     expect(screen.queryByText(/kept by/i)).not.toBeInTheDocument()
   })
 
@@ -37,6 +40,7 @@ describe('RecipeCard', () => {
         onClick={() => {}}
       />,
     )
-    expect(screen.getByText(/kept by Yoko M\./i)).toBeInTheDocument()
+    expect(screen.getByText(/kept by/i)).toBeInTheDocument()
+    expect(screen.getByText('Yoko M.')).toBeInTheDocument()
   })
 })

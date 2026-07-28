@@ -35,6 +35,20 @@ const paths = {
       <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
     </>
   ),
+  // Cooking pot — an unambiguous "kitchen" symbol: lidded pot with two handles
+  // and rising steam. Reads clearly at nav size.
+  pot: (
+    <>
+      {/* steam */}
+      <path d="M9 3.5c0 1-1 1.5-1 2.5M13 3c0 1.2-1.2 1.7-1.2 2.9" strokeWidth="1.5" />
+      {/* lid with knob */}
+      <path d="M4.5 9.5h15" />
+      <path d="M12 7.4v2" />
+      {/* pot body + side handles */}
+      <path d="M6 9.5h12l-.8 8.2a2 2 0 0 1-2 1.8H8.8a2 2 0 0 1-2-1.8z" />
+      <path d="M6 11.5H4.4M18 11.5h1.6" />
+    </>
+  ),
 
   // actions / affordances
   back: <path d="M15 5l-7 7 7 7" />,

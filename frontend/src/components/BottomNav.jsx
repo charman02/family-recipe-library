@@ -31,9 +31,9 @@ const SCALLOP = scallopPath(50, 50, 38, 11)
 
 const navItems = [
   { label: 'Home', path: '/', icon: 'home' },
-  { label: 'Browse', path: '/browse', icon: 'compass' },
+  { label: 'Browse', path: '/browse', icon: 'search' },
   { label: 'Add', path: '/add', icon: 'plus', center: true },
-  { label: 'Kitchen', path: '/my-recipes', icon: 'book' },
+  { label: 'Kitchen', path: '/my-recipes', icon: 'pot' },
   { label: 'You', path: '/profile', icon: 'user' },
 ]
 
@@ -83,7 +83,7 @@ export default function BottomNav() {
               className={`flex items-center rounded-full transition-all duration-200 ${
                 active
                   ? 'gap-1.5 bg-terra px-3.5 py-2 text-cream'
-                  : 'px-2 py-2 text-[#8A7A5C]'
+                  : 'px-2 py-2 text-ink-soft'
               }`}
             >
               <Icon

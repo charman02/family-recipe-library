@@ -10,10 +10,12 @@ import { sourceNameOf } from '../lib/sourceName'
 // horizontal-scroll rows on Browse). onClick navigates to the recipe.
 export default function RecipeCard({ recipe, onClick, variant = 'grid' }) {
   const widthClass = variant === 'row' ? 'w-[210px] flex-none' : 'w-full'
-  const byline = sourceNameOf(recipe)
-    ? `from ${sourceNameOf(recipe)}`
+  // Byline: a quiet verb ("from" / "kept by") + the person's name emphasized.
+  const source = sourceNameOf(recipe)
+  const byline = source
+    ? { verb: 'from', name: source }
     : recipe.author_full_name
-      ? `kept by ${recipe.author_full_name}`
+      ? { verb: 'kept by', name: recipe.author_full_name }
       : null
 
   return (
@@ -38,8 +40,11 @@ export default function RecipeCard({ recipe, onClick, variant = 'grid' }) {
           {recipe.name}
         </p>
         {byline && (
-          <p className="font-display italic text-[13px] text-plum mt-0.5">
-            {byline}
+          <p className="text-[13px] mt-0.5">
+            <span className="font-sans text-ink-soft/80">{byline.verb} </span>
+            <span className="font-display font-bold italic text-plum">
+              {byline.name}
+            </span>
           </p>
         )}
       </div>

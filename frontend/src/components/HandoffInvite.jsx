@@ -89,7 +89,11 @@ export default function HandoffInvite({
         rows={2}
         className="field resize-none mb-3"
       />
-      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+      {error && (
+        <p className="mb-3">
+          <span className="error-pill">{error}</span>
+        </p>
+      )}
       <button
         onClick={send}
         disabled={!email.trim() || sending}

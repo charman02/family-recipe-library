@@ -137,7 +137,9 @@ export default function Login() {
         </div>
 
         {error && (
-          <p className="text-red-600 text-sm mb-4 text-center">{error}</p>
+          <p className="mb-4 text-center">
+            <span className="error-pill">{error}</span>
+          </p>
         )}
 
         {tab === 'login' ? (

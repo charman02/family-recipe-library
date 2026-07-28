@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getInvitePreview } from '../api/lineage'
 import CoverImage from '../components/CoverImage'
+import Loader from '../components/Loader'
 
 // The soft-wall recipient landing (spec §4.3): a warm preview — name, who it's
 // from, the story, the dish's photo — then a signup gate to participate. The
@@ -27,11 +28,11 @@ export default function InviteLanding() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-cream flex flex-col items-center justify-center px-6 text-center">
-        <p className="font-display italic text-ink-soft">{error}</p>
+      <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-5 px-6 text-center">
+        <span className="error-pill">{error}</span>
         <Link
           to="/login"
-          className="mt-5 inline-block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream shadow-[0_6px_0_#7c351a] active:translate-y-[3px] active:shadow-[0_3px_0_#7c351a] transition"
+          className="inline-block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform"
         >
           Go to issei
         </Link>
@@ -39,11 +40,7 @@ export default function InviteLanding() {
     )
   }
   if (!preview) {
-    return (
-      <div className="min-h-screen bg-cream flex items-center justify-center">
-        <p className="font-display italic text-ink-soft">Opening…</p>
-      </div>
-    )
+    return <Loader label="Opening…" />
   }
 
   return (
@@ -69,19 +66,22 @@ export default function InviteLanding() {
         {preview.name}
       </h2>
       {preview.origin_attribution && (
-        <p className="font-display italic text-[14px] text-plum mt-1">
-          from {preview.origin_attribution.split('·')[0].trim()}
+        <p className="text-[14px] mt-1">
+          <span className="font-display italic text-ink-soft">from </span>
+          <span className="font-display font-bold italic text-plum">
+            {preview.origin_attribution.split('·')[0].trim()}
+          </span>
         </p>
       )}
       {preview.story && (
-        <p className="font-hand text-[21px] text-plum mt-5 max-w-sm leading-snug">
+        <p className="font-hand text-[22px] text-ink mt-5 max-w-sm leading-snug">
           {preview.story}
         </p>
       )}
       <div className="mt-8 w-full max-w-sm">
         <Link
           to={`/login?tab=signup&invite=${token}`}
-          className="block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream shadow-[0_6px_0_#7c351a] active:translate-y-[3px] active:shadow-[0_3px_0_#7c351a] transition"
+          className="block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform"
         >
           Keep this recipe →
         </Link>

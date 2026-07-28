@@ -40,19 +40,14 @@ describe('RecipeForm voice-notes', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     render(<RecipeForm mode="add" onSubmit={onSubmit} />)
 
-    fireEvent.change(
-      screen.getByPlaceholderText('Name the dish — e.g. “Adobo”'),
-      {
-        target: { value: 'Adobo' },
-      },
-    )
+    fireEvent.change(screen.getByPlaceholderText('e.g. “Adobo”'), {
+      target: { value: 'Adobo' },
+    })
     fireEvent.change(screen.getByPlaceholderText('Describe this step…'), {
       target: { value: 'Brown the meat' },
     })
     fireEvent.change(
-      screen.getByPlaceholderText(
-        'Their words for this step (optional) — "don\'t rush the onions"',
-      ),
+      screen.getByPlaceholderText('“don\'t rush the onions”'),
       { target: { value: "don't rush the onions" } },
     )
 
@@ -70,12 +65,9 @@ describe('RecipeForm voice-notes', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     render(<RecipeForm mode="add" onSubmit={onSubmit} />)
 
-    fireEvent.change(
-      screen.getByPlaceholderText('Name the dish — e.g. “Adobo”'),
-      {
-        target: { value: 'Adobo' },
-      },
-    )
+    fireEvent.change(screen.getByPlaceholderText('e.g. “Adobo”'), {
+      target: { value: 'Adobo' },
+    })
     fireEvent.change(screen.getByPlaceholderText('Describe this step…'), {
       target: { value: 'Brown the meat' },
     })

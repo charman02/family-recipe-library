@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import RecipeCard from '../components/RecipeCard'
 import IconField from '../components/IconField'
+import MarkerTitle from '../components/MarkerTitle'
+import EmptyState from '../components/EmptyState'
 
 export default function MyRecipes() {
   const [recipes, setRecipes] = useState([])
@@ -24,10 +26,13 @@ export default function MyRecipes() {
 
   return (
     <div className="min-h-screen bg-cream px-5 pt-6 pb-6">
-      <h1 className="font-display font-black text-[32px] leading-none text-ink inline-block border-b-[3px] border-ink pb-1">
+      <MarkerTitle
+        color="bg-saffron"
+        className="font-display font-black text-[32px] leading-none text-ink"
+      >
         Your kitchen<span className="text-terra">.</span>
-      </h1>
-      <p className="font-display italic text-[15px] text-ink-soft mt-2">
+      </MarkerTitle>
+      <p className="font-display italic text-[15px] text-ink-soft mt-3">
         Everything you&rsquo;ve kept.
       </p>
 
@@ -60,14 +65,21 @@ export default function MyRecipes() {
       </div>
 
       {searching && filtered.length === 0 && (
-        <p className="text-center font-display italic text-ink-soft text-[15px] mt-10">
-          No recipes match “{query}”.
-        </p>
+        <EmptyState
+          icon="🔍"
+          badge="bg-coral"
+          title={`No recipes match “${query}”`}
+          sub="Try a different word."
+          className="mt-8"
+        />
       )}
       {!searching && recipes.length === 0 && (
-        <p className="text-center font-display italic text-ink-soft text-[15px] mt-10">
-          Your kitchen&rsquo;s empty — keep your first recipe.
-        </p>
+        <EmptyState
+          icon="🍲"
+          title="Your kitchen's empty"
+          sub="Keep your first recipe to get started."
+          className="mt-8"
+        />
       )}
     </div>
   )

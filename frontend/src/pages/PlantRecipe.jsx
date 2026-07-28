@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/RecipeForm'
 import HandoffInvite from '../components/HandoffInvite'
+import BackButton from '../components/BackButton'
 import { buildOriginPayload } from '../lib/lineagePayload'
 import { plantRecipe } from '../api/lineage'
 
@@ -26,6 +27,15 @@ export default function PlantRecipe() {
     setStep('origin')
   }
 
+  // Step-aware back: doorway exits the flow (→ Home); each later step returns to
+  // the one before it.
+  function goBack() {
+    if (step === 'doorway') navigate('/')
+    else if (step === 'origin') setStep('doorway')
+    else if (step === 'form') setStep('origin')
+    else navigate('/')
+  }
+
   async function handleFormSubmit(formPayload) {
     const payload = { ...formPayload }
     if (originMode === 'ancestor') {
@@ -43,7 +53,10 @@ export default function PlantRecipe() {
 
   if (step === 'doorway') {
     return (
-      <div className="min-h-screen bg-cream px-[18px] pt-8">
+      <div className="min-h-screen bg-cream px-[18px] pt-5">
+        <div className="mb-4">
+          <BackButton to="/" label="Home" />
+        </div>
         <h1 className="font-display font-black text-[30px] text-ink leading-tight">
           Where does this
           <br />
@@ -80,7 +93,10 @@ export default function PlantRecipe() {
 
   if (step === 'origin') {
     return (
-      <div className="min-h-screen bg-cream px-[18px] pt-8">
+      <div className="min-h-screen bg-cream px-[18px] pt-5">
+        <div className="mb-4">
+          <BackButton onClick={goBack} label="Back" />
+        </div>
         {originMode === 'ancestor' ? (
           <>
             <h1 className="font-display font-black text-[28px] text-ink leading-tight">
@@ -165,6 +181,7 @@ export default function PlantRecipe() {
           mode="add"
           initialValues={initialValues}
           onSubmit={handleFormSubmit}
+          topSlot={<BackButton onClick={goBack} label="Back" />}
           intro={
             <p className="font-display italic text-[14px] text-ink-soft -mt-2 mb-4">
               Add what you&rsquo;ve got — &ldquo;a splash of vinegar&rdquo; is

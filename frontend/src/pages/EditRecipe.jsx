@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import RecipeForm from '../components/RecipeForm'
+import BackButton from '../components/BackButton'
+import Loader from '../components/Loader'
 
 // Loads an existing recipe, maps it to RecipeForm's initial-value shape, and
 // PATCHes on save. Editing is owner-only: the backend PATCH already scopes to
@@ -61,13 +63,15 @@ export default function EditRecipe() {
 
   async function handleSave(payload) {
     await client.patch(`/recipes/${id}`, payload)
-    navigate(`/recipes/${id}`)
+    // Return to the recipe we came from (pop), so history stays clean and the
+    // detail page remounts + refetches the updated recipe.
+    navigate(-1)
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-cream p-6 text-center">
-        <p className="text-red-600 mb-4">{error}</p>
+      <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <span className="error-pill">{error}</span>
         <button
           onClick={() => navigate('/my-recipes')}
           className="font-display font-bold text-[13px] text-terra"
@@ -79,7 +83,7 @@ export default function EditRecipe() {
   }
 
   if (!initialValues) {
-    return <div className="min-h-screen bg-cream p-6 text-center font-display italic text-ink-soft">Loading…</div>
+    return <Loader />
   }
 
   return (
@@ -87,6 +91,7 @@ export default function EditRecipe() {
       mode="edit"
       initialValues={initialValues}
       onSubmit={handleSave}
+      topSlot={<BackButton label="Back" />}
     />
   )
 }

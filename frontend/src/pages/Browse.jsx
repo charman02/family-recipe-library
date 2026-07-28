@@ -2,20 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import RecipeCard from '../components/RecipeCard'
-import SectionHeader from '../components/SectionHeader'
 import IconField from '../components/IconField'
+import MarkerTitle from '../components/MarkerTitle'
+import FilterSelect from '../components/FilterSelect'
+import Loader from '../components/Loader'
+import EmptyState from '../components/EmptyState'
 
-const DIET_FILTERS = [
-  'Vegetarian',
-  'Vegan',
-  'Gluten-Free',
-  'Dairy-Free',
-  'Halal',
-  'Kosher',
-]
-
-// Section definitions. Each has a predicate selecting matching recipes from the
-// full list, plus an optional sort. Cuisine sections match case-insensitively.
 const CUISINES = [
   'Japanese',
   'Korean',
@@ -31,6 +23,32 @@ const CUISINES = [
   'Caribbean',
 ]
 
+const DIETS = [
+  'Vegetarian',
+  'Vegan',
+  'Gluten-Free',
+  'Dairy-Free',
+  'Halal',
+  'Kosher',
+]
+
+// "Ready In" buckets — max prep time in minutes (0 = any).
+const READY_IN = [
+  { value: '0', label: 'Any time' },
+  { value: '15', label: 'Under 15 min' },
+  { value: '30', label: 'Under 30 min' },
+  { value: '60', label: 'Under 1 hour' },
+]
+
+const withAny = (label, values) => [
+  { value: '', label: `All ${label}` },
+  ...values.map((v) => ({ value: v, label: v })),
+]
+
+// Marker-swipe colors cycled across the browse section headers for visual rhythm.
+const SECTION_COLORS = ['bg-saffron', 'bg-mint', 'bg-coral', 'bg-periwinkle']
+
+// Curated section rows for the default (non-search) browse view.
 function buildSections(recipes) {
   const sections = CUISINES.map((cuisine) => ({
     title: cuisine,
@@ -59,7 +77,9 @@ function buildSections(recipes) {
 export default function Browse() {
   const [recipes, setRecipes] = useState(null)
   const [search, setSearch] = useState('')
-  const [activeDiets, setActiveDiets] = useState([])
+  const [cuisine, setCuisine] = useState('')
+  const [diet, setDiet] = useState('')
+  const [readyIn, setReadyIn] = useState('0')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -69,32 +89,37 @@ export default function Browse() {
       .catch(() => setRecipes([]))
   }, [])
 
-  function toggleDiet(diet) {
-    setActiveDiets((prev) =>
-      prev.includes(diet) ? prev.filter((d) => d !== diet) : [...prev, diet],
-    )
+  function clearAll() {
+    setSearch('')
+    setCuisine('')
+    setDiet('')
+    setReadyIn('0')
   }
 
   if (recipes === null) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 border-2 border-line border-t-terra rounded-full animate-spin" />
-      </div>
-    )
+    return <Loader />
   }
 
-  // Apply search + diet filters before splitting into sections, so filtering
-  // affects every section consistently.
-  const searchLower = search.toLowerCase()
+  // Apply search + dropdown filters uniformly.
+  const searchQuery = search.trim()
+  const maxPrep = Number(readyIn)
   const filteredRecipes = recipes.filter((r) => {
-    const matchesSearch = r.name.toLowerCase().includes(searchLower)
+    const matchesSearch =
+      !searchQuery || r.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesCuisine =
+      !cuisine || (r.cuisine || '').toLowerCase() === cuisine.toLowerCase()
     const matchesDiet =
-      activeDiets.length === 0 ||
-      activeDiets.every((diet) =>
-        (r.diet || '').toLowerCase().includes(diet.toLowerCase()),
-      )
-    return matchesSearch && matchesDiet
+      !diet || (r.diet || '').toLowerCase().includes(diet.toLowerCase())
+    const matchesReadyIn =
+      maxPrep === 0 ||
+      (r.prep_time_minutes != null && r.prep_time_minutes <= maxPrep)
+    return matchesSearch && matchesCuisine && matchesDiet && matchesReadyIn
   })
+
+  // Searching OR any dropdown active → flat results (no section rows). Only the
+  // default, unfiltered view shows the curated cuisine/recency sections.
+  const isFiltering =
+    searchQuery !== '' || cuisine !== '' || diet !== '' || maxPrep !== 0
 
   const sections = buildSections(filteredRecipes).filter(
     (section) => section.recipes.length > 0,
@@ -103,10 +128,13 @@ export default function Browse() {
   return (
     <div className="min-h-screen bg-cream pt-6">
       <div className="px-4">
-        <h1 className="font-display font-black text-[32px] text-ink leading-none inline-block border-b-[3px] border-ink pb-1">
+        <MarkerTitle
+          color="bg-coral"
+          className="font-display font-black text-[32px] text-ink leading-none"
+        >
           Browse<span className="text-terra">.</span>
-        </h1>
-        <p className="font-display italic text-[15px] text-ink-soft mt-2">
+        </MarkerTitle>
+        <p className="font-display italic text-[15px] text-ink-soft mt-3">
           Recipes from every kitchen.
         </p>
 
@@ -119,34 +147,91 @@ export default function Browse() {
           onChange={(e) => setSearch(e.target.value)}
           wrapperClassName="mt-3.5"
         />
+
+        {/* Dropdown filter row — the reference's Ready In / Type / Person shelf. */}
+        <div className="flex gap-2 mt-3">
+          <FilterSelect
+            label="Cuisine"
+            value={cuisine}
+            onChange={setCuisine}
+            options={withAny('cuisines', CUISINES)}
+          />
+          <FilterSelect
+            label="Diet"
+            value={diet}
+            onChange={setDiet}
+            options={withAny('diets', DIETS)}
+          />
+          <FilterSelect
+            label="Ready In"
+            value={readyIn}
+            onChange={setReadyIn}
+            options={READY_IN}
+          />
+        </div>
+
+        {isFiltering && (
+          <div className="flex items-center justify-between mt-3">
+            <span className="font-display font-bold text-[13px] text-ink">
+              {filteredRecipes.length}{' '}
+              {filteredRecipes.length === 1 ? 'result' : 'results'}
+            </span>
+            <button
+              onClick={clearAll}
+              className="font-display font-bold text-[12.5px] text-terra underline underline-offset-2"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Diet filter chips — wrap so all options stay visible on mobile */}
-      <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
-        {DIET_FILTERS.map((diet) => (
-          <button
-            key={diet}
-            onClick={() => toggleDiet(diet)}
-            className={`chip ${activeDiets.includes(diet) ? 'chip--active' : ''}`}
-          >
-            {diet}
-          </button>
-        ))}
-      </div>
-
-      {/* Sections */}
-      {sections.length === 0 ? (
-        <p className="text-center text-ink-soft text-sm mt-8 px-4">
-          No recipes found.
-        </p>
+      {/* RESULTS.
+          Filtering → one flat grid of matches (no section titles).
+          Default → curated horizontal-scroll section rows. */}
+      {isFiltering ? (
+        filteredRecipes.length === 0 ? (
+          <div className="px-4 mt-8">
+            <EmptyState
+              icon="🔍"
+              badge="bg-coral"
+              title="No recipes match"
+              sub="Try clearing a filter or two."
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6 px-4 pt-5">
+            {filteredRecipes.map((recipe) => (
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                variant="grid"
+                onClick={() => navigate(`/recipes/${recipe.id}`)}
+              />
+            ))}
+          </div>
+        )
+      ) : sections.length === 0 ? (
+        <div className="px-4 mt-8">
+          <EmptyState
+            icon="🍳"
+            title="Nothing here yet"
+            sub="Recipes people share will show up here."
+          />
+        </div>
       ) : (
         <div>
-          {sections.map((section) => (
+          {sections.map((section, i) => (
             <section key={section.title}>
-              <div className="px-4">
-                <SectionHeader seal={false} className="mt-5">
+              <div className="px-4 mt-6 mb-3">
+                <MarkerTitle
+                  as="h3"
+                  color={SECTION_COLORS[i % SECTION_COLORS.length]}
+                  rotate={i % 2 === 0 ? '-rotate-1' : 'rotate-1'}
+                  className="font-display font-black text-[21px] text-ink leading-none"
+                >
                   {section.title}
-                </SectionHeader>
+                </MarkerTitle>
               </div>
               <div className="flex gap-3.5 overflow-x-auto px-4 pb-1 scrollbar-hide">
                 {section.recipes.map((recipe) => (

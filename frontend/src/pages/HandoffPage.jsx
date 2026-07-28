@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import Icon from '../components/Icon'
 import HandoffInvite from '../components/HandoffInvite'
+import Loader from '../components/Loader'
 import { sourceNameOf } from '../lib/sourceName'
 
 // A dedicated, focused page for passing a recipe on to someone — its own route
@@ -22,12 +23,14 @@ export default function HandoffPage() {
       .catch(() => setError('Recipe not found'))
   }, [id])
 
-  const back = () => navigate(`/recipes/${id}`)
+  // Pop back to wherever we came from (usually the recipe page). Avoids pushing
+  // a new entry that would create a back-and-forth history loop.
+  const back = () => navigate(-1)
 
   if (error) {
     return (
-      <div className="min-h-screen bg-cream p-6 text-center">
-        <p className="text-red-600 mb-4">{error}</p>
+      <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <span className="error-pill">{error}</span>
         <button onClick={() => navigate('/my-recipes')} className="font-display font-bold text-[13px] text-terra">
           Back to your kitchen →
         </button>
@@ -36,7 +39,7 @@ export default function HandoffPage() {
   }
 
   if (!recipe) {
-    return <div className="min-h-screen bg-cream p-6 text-center font-display italic text-ink-soft">Loading…</div>
+    return <Loader />
   }
 
   const source = sourceNameOf(recipe)

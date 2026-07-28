@@ -4,6 +4,7 @@ import client from '../api/client'
 import VisibilityControl from '../components/VisibilityControl'
 import RecipeBody from '../components/RecipeBody'
 import Icon from '../components/Icon'
+import Loader from '../components/Loader'
 
 // RecipePage — the classic recipe detail page (kitchen, not garden). Loads the
 // recipe and renders a centered Fraunces title, the readable body (cover, byline,
@@ -28,8 +29,8 @@ export default function RecipePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-cream p-6 text-center">
-        <p className="text-red-600 mb-4">{error}</p>
+      <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <span className="error-pill">{error}</span>
         <button
           onClick={() => navigate('/my-recipes')}
           className="font-display font-bold text-[13px] text-terra"
@@ -41,11 +42,7 @@ export default function RecipePage() {
   }
 
   if (!recipe) {
-    return (
-      <div className="min-h-screen bg-cream p-6 text-center font-display italic text-ink-soft">
-        Loading…
-      </div>
-    )
+    return <Loader />
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import client from '../api/client'
 import Icon from './Icon'
+import MarkerTitle from './MarkerTitle'
 import { parseQuantity } from '../utils/quantity'
 
 // Shared Add/Edit recipe form. Owns all field state, photo upload, ingredient/
@@ -24,6 +25,40 @@ function hasAcceptedExtension(filename) {
   return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
 }
 
+// A section heading for the form — a chunky Fraunces title with a highlighter
+// swipe, so the form reads as playful sections rather than a flat field list.
+function FormSection({ children }) {
+  return (
+    <div className="mt-7 mb-3">
+      <MarkerTitle
+        as="h2"
+        color="bg-saffron"
+        className="font-display font-black text-[22px] text-ink leading-none"
+      >
+        {children}
+      </MarkerTitle>
+    </div>
+  )
+}
+
+// A persistent field label — stays visible after the field is filled, so a
+// value never loses its meaning (the placeholder-only problem). `accent` tints
+// the label + a leading dot to mark the "secondary" field in a pair (the
+// measurement beside an ingredient, the personal note beside a step).
+function FieldLabel({ children, accent }) {
+  const color = accent === 'plum' ? 'text-plum' : accent === 'terra' ? 'text-terra' : 'text-ink-soft'
+  return (
+    <span className={`flex items-center gap-1 font-display font-bold text-[10.5px] uppercase tracking-[0.1em] mb-1 ${color}`}>
+      {accent && (
+        <span
+          className={`inline-block w-1.5 h-1.5 rounded-full ${accent === 'plum' ? 'bg-plum' : 'bg-terra'}`}
+        />
+      )}
+      {children}
+    </span>
+  )
+}
+
 export default function RecipeForm({
   mode = 'add',
   initialValues = {},
@@ -31,6 +66,7 @@ export default function RecipeForm({
   submitLabel,
   beforeSubmitSlot = null,
   intro = null,
+  topSlot = null,
 }) {
   const [name, setName] = useState(initialValues.name || '')
   const [servings, setServings] = useState(
@@ -175,14 +211,19 @@ export default function RecipeForm({
   }
 
   return (
-    <div className="min-h-screen bg-cream px-[18px] pt-6 pb-8">
-      <h1 className="font-display font-black text-[30px] text-ink mb-4 inline-block border-b-[3px] border-ink pb-1">
+    <div className="min-h-screen bg-cream px-[18px] pt-5 pb-8">
+      {topSlot && <div className="mb-4">{topSlot}</div>}
+      <h1 className="font-display font-black text-[30px] text-ink mb-4">
         {heading}
       </h1>
 
       {intro}
 
-      {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+      {error && (
+        <p className="mb-4">
+          <span className="error-pill">{error}</span>
+        </p>
+      )}
 
       <form onSubmit={handleSubmit}>
         {/* Cover photo */}
@@ -197,7 +238,7 @@ export default function RecipeForm({
               type="button"
               onClick={removePhoto}
               aria-label="Remove photo"
-              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/70"
+              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-cream border-2 border-ink text-ink flex items-center justify-center shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform"
             >
               <Icon name="close" className="w-4 h-4" />
             </button>
@@ -223,7 +264,9 @@ export default function RecipeForm({
           </label>
         )}
         {photoError ? (
-          <p className="text-red-600 text-xs mb-4">{photoError}</p>
+          <p className="mb-4">
+            <span className="error-pill">{photoError}</span>
+          </p>
         ) : (
           <p className="font-sans text-[11px] text-ink-soft mb-4">
             JPEG, PNG, or WebP · max 10 MB
@@ -231,69 +274,85 @@ export default function RecipeForm({
         )}
 
         {/* Recipe details */}
-        <p className="section-label mb-2.5">Recipe details</p>
-        <div className="space-y-2.5">
+        <FormSection>The dish</FormSection>
+        <div className="space-y-3">
           {/* dish-led naming: the person is captured separately as the origin */}
-          <input
-            type="text"
-            placeholder="Name the dish — e.g. “Adobo”"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="field"
-          />
-          <p className="font-sans text-[11px] text-ink-soft -mt-1">
-            You’ll say whose recipe it is next.
-          </p>
-          <input
-            type="number"
-            placeholder="Servings"
-            value={servings}
-            onChange={(e) => setServings(e.target.value)}
-            className="field"
-          />
-          <input
-            type="text"
-            placeholder="Cuisine"
-            value={cuisine}
-            onChange={(e) => setCuisine(e.target.value)}
-            className="field"
-          />
-          <textarea
-            placeholder="Description — what is this dish?"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="field resize-none"
-          />
+          <label className="block">
+            <FieldLabel>Dish name</FieldLabel>
+            <input
+              type="text"
+              placeholder="e.g. “Adobo”"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="field"
+            />
+            <p className="font-display italic text-[12px] text-ink-soft mt-1">
+              You’ll say whose recipe it is next.
+            </p>
+          </label>
+          <div className="flex gap-3">
+            <label className="block flex-1">
+              <FieldLabel>Servings</FieldLabel>
+              <input
+                type="number"
+                placeholder="4"
+                value={servings}
+                onChange={(e) => setServings(e.target.value)}
+                className="field"
+              />
+            </label>
+            <label className="block flex-1">
+              <FieldLabel>Cuisine</FieldLabel>
+              <input
+                type="text"
+                placeholder="Filipino"
+                value={cuisine}
+                onChange={(e) => setCuisine(e.target.value)}
+                className="field"
+              />
+            </label>
+          </div>
+          <label className="block">
+            <FieldLabel>Description</FieldLabel>
+            <textarea
+              placeholder="What is this dish?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              className="field resize-none"
+            />
+          </label>
         </div>
 
         {/* The Story */}
-        <p className="section-label mt-[18px] mb-1">The Story</p>
-        <p className="font-sans text-[11px] text-ink-soft mb-2.5">
-          Who taught you, when you make it, the memories it holds.
-        </p>
-        <textarea
-          placeholder="My grandmother made this every Lunar New Year…"
-          value={story}
-          onChange={(e) => setStory(e.target.value)}
-          rows={3}
-          className="field resize-none"
-        />
+        <FormSection>The story</FormSection>
+        <label className="block">
+          <FieldLabel accent="plum">In their words</FieldLabel>
+          <p className="font-display italic text-[12px] text-ink-soft mb-1.5">
+            Who taught you, when you make it, the memories it holds.
+          </p>
+          <textarea
+            placeholder="My grandmother made this every Lunar New Year…"
+            value={story}
+            onChange={(e) => setStory(e.target.value)}
+            rows={3}
+            className="field resize-none"
+          />
+        </label>
 
-        {/* Ingredients */}
-        <p className="section-label mt-[18px] mb-1">Ingredients</p>
-        <p className="font-sans text-[11px] text-ink-soft mb-2.5">
-          Write quantities naturally — "1 1/2 cups", "a dash".
+        {/* Ingredients — each row pairs a bold NAME field with a tinted
+            MEASUREMENT field, each with a persistent label so the two are never
+            confused. */}
+        <FormSection>Ingredients</FormSection>
+        <p className="font-display italic text-[12px] text-ink-soft mb-3">
+          Write amounts naturally — “1 1/2 cups”, “a good splash”, “to taste”.
         </p>
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {ingredients.map((ing, idx) => (
-            <div
-              key={idx}
-              className="border border-line bg-card rounded-[9px] p-2.5"
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-sans text-[11px] text-ink-soft">
+            <div key={idx} className="sticker-sm bg-card p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-display font-black text-[13px] text-ink">
                   #{idx + 1}
                 </span>
                 {ingredients.length > 1 && (
@@ -303,44 +362,51 @@ export default function RecipeForm({
                     aria-label={`Remove ingredient ${idx + 1}`}
                     className="text-ink-soft/70 hover:text-red-500"
                   >
-                    <Icon name="close" className="w-3.5 h-3.5" />
+                    <Icon name="close" className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              <input
-                type="text"
-                placeholder="Ingredient name"
-                value={ing.name}
-                onChange={(e) => updateIngredient(idx, 'name', e.target.value)}
-                className="w-full font-sans text-[12.5px] text-ink bg-card border border-line rounded-[7px] px-2.5 py-2 mb-1.5 placeholder:text-ink-soft/70 focus:outline-none focus:border-terra"
-              />
-              <input
-                type="text"
-                placeholder="Quantity — e.g. 1 1/2 cups, a dash"
-                value={ing.quantity}
-                onChange={(e) =>
-                  updateIngredient(idx, 'quantity', e.target.value)
-                }
-                className="w-full font-sans text-[12.5px] text-ink bg-card border border-line rounded-[7px] px-2.5 py-2 placeholder:text-ink-soft/70 focus:outline-none focus:border-terra"
-              />
+              <label className="block mb-2">
+                <FieldLabel>Ingredient</FieldLabel>
+                <input
+                  type="text"
+                  placeholder="e.g. soy sauce"
+                  value={ing.name}
+                  onChange={(e) => updateIngredient(idx, 'name', e.target.value)}
+                  className="field"
+                />
+              </label>
+              <label className="block">
+                <FieldLabel accent="terra">How much</FieldLabel>
+                <input
+                  type="text"
+                  placeholder="1/2 cup · a dash · to taste"
+                  value={ing.quantity}
+                  onChange={(e) =>
+                    updateIngredient(idx, 'quantity', e.target.value)
+                  }
+                  className="field bg-peach/50"
+                />
+              </label>
             </div>
           ))}
         </div>
         <button
           type="button"
           onClick={() => setIngredients((prev) => [...prev, emptyIngredient()])}
-          className="mt-2.5 font-sans font-medium text-[13px] text-terra"
+          className="mt-3 font-display font-bold text-[13px] text-terra"
         >
-          + Add Ingredient
+          + Add ingredient
         </button>
 
-        {/* Steps */}
-        <p className="section-label mt-[18px] mb-2.5">Steps</p>
-        <div className="space-y-2.5">
+        {/* Steps — each row pairs the STEP itself with an optional "in their
+            words" personal note, distinctly tinted + labeled. */}
+        <FormSection>Steps</FormSection>
+        <div className="space-y-3">
           {steps.map((step, idx) => (
-            <div key={idx}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-sans text-[11px] text-ink-soft">
+            <div key={idx} className="sticker-sm bg-card p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-display font-black text-[13px] text-ink">
                   Step {idx + 1}
                 </span>
                 {steps.length > 1 && (
@@ -350,35 +416,39 @@ export default function RecipeForm({
                     aria-label={`Remove step ${idx + 1}`}
                     className="text-ink-soft/70 hover:text-red-500"
                   >
-                    <Icon name="close" className="w-3.5 h-3.5" />
+                    <Icon name="close" className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              <textarea
-                placeholder="Describe this step…"
-                value={step.content}
-                onChange={(e) => updateStep(idx, 'content', e.target.value)}
-                rows={2}
-                className="field resize-none"
-              />
-              <input
-                type="text"
-                placeholder={
-                  'Their words for this step (optional) — "don\'t rush the onions"'
-                }
-                value={step.voice_note || ''}
-                onChange={(e) => updateStep(idx, 'voice_note', e.target.value)}
-                className="field mt-1.5"
-              />
+              <label className="block mb-2">
+                <FieldLabel>What to do</FieldLabel>
+                <textarea
+                  placeholder="Describe this step…"
+                  value={step.content}
+                  onChange={(e) => updateStep(idx, 'content', e.target.value)}
+                  rows={2}
+                  className="field resize-none"
+                />
+              </label>
+              <label className="block">
+                <FieldLabel accent="plum">Their words (optional)</FieldLabel>
+                <input
+                  type="text"
+                  placeholder={'“don\'t rush the onions”'}
+                  value={step.voice_note || ''}
+                  onChange={(e) => updateStep(idx, 'voice_note', e.target.value)}
+                  className="field bg-plum/[0.06]"
+                />
+              </label>
             </div>
           ))}
         </div>
         <button
           type="button"
           onClick={() => setSteps((prev) => [...prev, emptyStep()])}
-          className="mt-2.5 font-sans font-medium text-[13px] text-terra"
+          className="mt-3 font-display font-bold text-[13px] text-terra"
         >
-          + Add Step
+          + Add step
         </button>
 
         {beforeSubmitSlot}
