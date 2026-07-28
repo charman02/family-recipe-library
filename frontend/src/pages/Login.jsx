@@ -94,22 +94,38 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-cream flex flex-col items-center justify-center px-6 py-12">
+      {/* Wordmark — kept clean & classy, no ornamentation. */}
       <div className="text-center mb-2">
         <h1 className="font-display font-black text-[52px] leading-none tracking-[-0.01em] text-ink">
           issei<span className="text-terra">.</span>
         </h1>
       </div>
-      <p className="font-display italic text-[16px] text-ink-soft mb-6 text-center max-w-xs">
+      <p className="font-display italic text-[16px] text-ink-soft mb-7 text-center max-w-xs">
         Recipes that live in memory, not cookbooks.
       </p>
 
-      {/* The meaning of the name — a peach story-callout sticker every newcomer
-          meets before signing up. */}
-      <div className="w-full max-w-sm mb-8 story-callout">
-        <p className="font-display font-bold text-xs text-terra tracking-[0.2em] mb-1.5">
+      {/* The meaning of the name — a peach sticker card. One small pop of color:
+          a coral heart stamp straddling the corner (heritage/heart, not a repeat
+          of the Home dish discs). */}
+      <div className="relative w-full max-w-sm mb-8 sticker bg-peach p-5">
+        <span
+          aria-hidden="true"
+          className="absolute -top-3 -right-3 flex items-center justify-center w-10 h-10 rounded-full bg-coral border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] rotate-12"
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
+            <path
+              d="M12 20s-7-4.6-7-9.4A3.6 3.6 0 0 1 12 8a3.6 3.6 0 0 1 7 2.6C19 15.4 12 20 12 20Z"
+              fill="#FCF8EE"
+              stroke="#2E3A24"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+        <span className="inline-block font-display font-black text-[13px] text-ink bg-cream border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24] mb-3">
           一世 · issei
-        </p>
-        <p className="font-display italic text-sm leading-relaxed text-ink">
+        </span>
+        <p className="font-display italic text-[15px] leading-relaxed text-ink">
           The first of a family to arrive somewhere new — the ones who carry the
           recipes no one wrote down. This is where they stay alive, passed from
           one generation to the next.
@@ -132,7 +148,7 @@ export default function Login() {
               tab === 'signup' ? 'bg-terra text-cream' : 'text-ink-soft'
             }`}
           >
-            Start your kitchen
+            Open your kitchen
           </button>
         </div>
 
@@ -220,7 +236,7 @@ export default function Login() {
               disabled={loading}
               className="btn-primary !mt-4"
             >
-              {loading ? 'Setting up…' : 'Start your kitchen'}
+              {loading ? 'Setting up…' : 'Open your kitchen'}
             </button>
           </form>
         )}

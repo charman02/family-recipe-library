@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import client from '../api/client'
+import { deleteRecipe } from '../api/lineage'
 import VisibilityControl from '../components/VisibilityControl'
 import RecipeBody from '../components/RecipeBody'
 import Icon from '../components/Icon'
@@ -16,6 +17,8 @@ export default function RecipePage() {
   const navigate = useNavigate()
   const [recipe, setRecipe] = useState(null)
   const [error, setError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     client
@@ -26,6 +29,19 @@ export default function RecipePage() {
 
   const currentUser = JSON.parse(localStorage.getItem('issei_user') || '{}')
   const isOwner = recipe && currentUser.id === recipe.user_id
+
+  async function handleDelete() {
+    if (deleting) return
+    setDeleting(true)
+    try {
+      await deleteRecipe(id)
+      navigate('/my-recipes')
+    } catch {
+      setError('Could not delete this recipe. Please try again.')
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
 
   if (error) {
     return (
@@ -100,9 +116,56 @@ export default function RecipePage() {
               </svg>
               Pass it on
             </button>
+
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 font-display font-bold text-[14px] text-terra bg-cream rounded-full px-3.5 py-2.5 border-2 border-ink shadow-[0_3px_0_#2E3A24] active:translate-y-[2px] active:shadow-[0_1px_0_#2E3A24] transition-transform"
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="w-[15px] h-[15px]">
+                <path
+                  d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M10 11v6M14 11v6"
+                  stroke="#B5502A"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Delete recipe
+            </button>
           </div>
         )}
       </div>
+
+      {/* DELETE CONFIRM — a sticker dialog; delete is permanent from the user's
+          view (soft-deleted server-side, but there's no un-delete UI). */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-ink/30 flex items-center justify-center z-50 px-6">
+          <div className="sticker bg-cream p-5 max-w-xs w-full text-center">
+            <p className="font-display font-black text-ink text-[20px] leading-tight">
+              Delete {recipe.name}?
+            </p>
+            <p className="font-display text-[13px] text-ink-soft mt-1.5 mb-4">
+              This removes it from your kitchen. You can&rsquo;t undo this.
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="flex-1 rounded-full bg-cream border-2 border-ink text-ink font-display font-bold text-[14px] py-2.5 shadow-[0_3px_0_#2E3A24] active:translate-y-[2px] active:shadow-[0_1px_0_#2E3A24] transition-transform disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-full bg-coral border-2 border-ink text-cream font-display font-bold text-[14px] py-2.5 shadow-[0_3px_0_#2E3A24] active:translate-y-[2px] active:shadow-[0_1px_0_#2E3A24] transition-transform disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

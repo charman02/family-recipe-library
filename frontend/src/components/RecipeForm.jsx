@@ -26,6 +26,19 @@ function hasAcceptedExtension(filename) {
   return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
 }
 
+// iPhones shoot HEIC/HEIF by default, which the backend rejects. Detect it by
+// extension or MIME (browsers often report an empty type for HEIC).
+function isHeic(file) {
+  const t = (file.type || '').toLowerCase()
+  const n = (file.name || '').toLowerCase()
+  return (
+    t === 'image/heic' ||
+    t === 'image/heif' ||
+    n.endsWith('.heic') ||
+    n.endsWith('.heif')
+  )
+}
+
 // A section heading for the form — a chunky Fraunces title with a highlighter
 // swipe, so the form reads as playful sections rather than a flat field list.
 function FormSection({ children }) {
@@ -83,28 +96,55 @@ export default function RecipeForm({
   const loadingLabel = mode === 'edit' ? 'Saving…' : 'Keeping…'
 
   async function handlePhotoSelect(e) {
-    const file = e.target.files?.[0]
+    let file = e.target.files?.[0]
     if (!file) return
     setPhotoError('')
-
-    // Validate client-side first for instant feedback, matching the backend.
-    // Check both MIME type and extension: some browsers report an empty or
-    // unexpected file.type, so the extension is a reliable fallback.
-    const typeOk = ACCEPTED_IMAGE_TYPES.includes(file.type)
-    const extOk = hasAcceptedExtension(file.name)
-    if (!typeOk && !extOk) {
-      setPhotoError('Please choose a JPEG, PNG, or WebP image.')
-      e.target.value = ''
-      return
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setPhotoError('That image is too large (max 10 MB).')
-      e.target.value = ''
-      return
-    }
-
     setUploading(true)
+
     try {
+      // iPhone HEIC → convert to JPEG in the browser so the upload just works.
+      if (isHeic(file)) {
+        try {
+          const { default: heic2any } = await import('heic2any')
+          const blob = await heic2any({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.9,
+          })
+          const out = Array.isArray(blob) ? blob[0] : blob
+          file = new File(
+            [out],
+            file.name.replace(/\.hei[cf]$/i, '.jpg'),
+            { type: 'image/jpeg' },
+          )
+        } catch {
+          setPhotoError(
+            "Couldn't read that iPhone photo. Try again, or pick a JPEG.",
+          )
+          setUploading(false)
+          e.target.value = ''
+          return
+        }
+      }
+
+      // Validate (post-conversion) for instant feedback, matching the backend.
+      // Check both MIME type and extension: some browsers report an empty or
+      // unexpected file.type, so the extension is a reliable fallback.
+      const typeOk = ACCEPTED_IMAGE_TYPES.includes(file.type)
+      const extOk = hasAcceptedExtension(file.name)
+      if (!typeOk && !extOk) {
+        setPhotoError('Please choose a JPEG, PNG, or WebP image.')
+        setUploading(false)
+        e.target.value = ''
+        return
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setPhotoError('That image is too large (max 10 MB).')
+        setUploading(false)
+        e.target.value = ''
+        return
+      }
+
       const formData = new FormData()
       formData.append('file', file)
       const { data } = await client.post('/upload/recipe-photo', formData, {
@@ -230,7 +270,7 @@ export default function RecipeForm({
           <label className="flex flex-col items-center justify-center w-full h-[120px] rounded-xl border-2 border-dashed border-ink/45 bg-peach text-terra cursor-pointer mb-1.5">
             <input
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
               onChange={handlePhotoSelect}
               className="hidden"
             />
@@ -252,7 +292,7 @@ export default function RecipeForm({
           </p>
         ) : (
           <p className="font-sans text-[11px] text-ink-soft mb-4">
-            JPEG, PNG, or WebP · max 10 MB
+            JPEG, PNG, WebP, or iPhone (HEIC) · max 10 MB
           </p>
         )}
 

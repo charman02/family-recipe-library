@@ -84,6 +84,10 @@ export default function Profile() {
     .charAt(0)
     .toUpperCase()
 
+  // External feedback form (Tally / Google Forms). Set VITE_FEEDBACK_URL to
+  // enable the button; left unset, the button stays hidden.
+  const feedbackUrl = import.meta.env.VITE_FEEDBACK_URL
+
   return (
     <div className="min-h-screen bg-cream px-5 pt-6">
       <MarkerTitle
@@ -138,12 +142,32 @@ export default function Profile() {
         <SettingRow label="Change password" soon />
       </div>
 
+      {/* Send feedback — opens an external hosted form (Tally/Google Forms) in
+          a new tab. Wired to VITE_FEEDBACK_URL; hidden until that's set so it
+          never links to nothing. Lightweight for launch; a native stored form
+          is a tracked future to-do. */}
+      {feedbackUrl && (
+        <a
+          href={feedbackUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full mt-6 inline-flex items-center justify-center gap-2 py-3 rounded-full bg-saffron border-[2.5px] border-ink text-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
+        >
+          💬 Send feedback
+        </a>
+      )}
+
       <button
         onClick={handleLogout}
-        className="w-full py-3 mt-6 mb-2 rounded-full bg-cream border-[2.5px] border-ink text-terra font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
+        className="w-full py-3 mt-3 mb-2 rounded-full bg-cream border-[2.5px] border-ink text-terra font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
       >
         Log out
       </button>
+
+      {/* A warm, deliberately-vague "this is alive" note — no dates, no list. */}
+      <p className="text-center font-display italic text-[13.5px] text-ink-soft mt-6 mb-2">
+        More ways to share and connect are on the way. 💛
+      </p>
     </div>
   )
 }

@@ -12,10 +12,10 @@ describe('Login', () => {
         <Login />
       </MemoryRouter>,
     )
-    // On the Sign In tab, only the signup TAB button reads "Start your kitchen"
+    // On the Sign In tab, only the signup TAB button reads "Open your kitchen"
     // (the submit button reads "Sign in"), so this is unambiguous.
     expect(
-      screen.getByRole('button', { name: /start your kitchen/i }),
+      screen.getByRole('button', { name: /open your kitchen/i }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /join the table/i }),
@@ -34,9 +34,9 @@ describe('Login', () => {
     expect(email).toHaveValue('stale@example.com')
     // switch to signup (click the signup tab), then back to Sign In
     fireEvent.click(
-      screen.getByRole('button', { name: /start your kitchen/i }),
+      screen.getByRole('button', { name: /open your kitchen/i }),
     )
-    // now on signup: TWO buttons read "start your kitchen" (tab + submit).
+    // now on signup: TWO buttons read "open your kitchen" (tab + submit).
     // Return to Sign In via its tab.
     fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
     // the email field is a fresh empty field
