@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/RecipeForm'
 import HandoffInvite from '../components/HandoffInvite'
 import BackButton from '../components/BackButton'
+import FieldLabel from '../components/FieldLabel'
 import { buildOriginPayload } from '../lib/lineagePayload'
 import { plantRecipe } from '../api/lineage'
 
@@ -57,7 +58,11 @@ export default function PlantRecipe() {
         <div className="mb-4">
           <BackButton to="/" label="Home" />
         </div>
-        <h1 className="font-display font-black text-[30px] text-ink leading-tight">
+        {/* eyebrow stamp — a small rotated "new recipe" badge for character */}
+        <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-saffron border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24]">
+          ✦ New recipe
+        </span>
+        <h1 className="font-display font-black text-[30px] text-ink leading-tight mt-4">
           Where does this
           <br />
           recipe begin?
@@ -65,26 +70,38 @@ export default function PlantRecipe() {
         <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-6">
           Every recipe has a first hand that made it.
         </p>
+
+        {/* Choice cards — each with a decorative emoji stamp badge. */}
         <button
           onClick={() => chooseDoor('ancestor')}
-          className="block w-full text-left sticker sticker-press bg-peach p-4 mb-4"
+          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-peach p-4 mb-4"
         >
-          <span className="font-display font-black text-[18px] text-ink">
-            Passed down to you
+          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-cream border-2 border-ink shadow-[0_3px_0_#2E3A24] text-[24px] leading-none rotate-[-6deg]">
+            👵
           </span>
-          <span className="block font-display text-[13px] text-ink-soft mt-0.5">
-            Someone taught you this. Honor them.
+          <span className="min-w-0">
+            <span className="font-display font-black text-[18px] text-ink">
+              Passed down to you
+            </span>
+            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
+              Someone taught you this. Honor them.
+            </span>
           </span>
         </button>
         <button
           onClick={() => chooseDoor('mine')}
-          className="block w-full text-left sticker sticker-press bg-card p-4"
+          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-card p-4"
         >
-          <span className="font-display font-black text-[18px] text-ink">
-            One of your own
+          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-mint border-2 border-ink shadow-[0_3px_0_#2E3A24] text-[24px] leading-none rotate-[6deg]">
+            🧑‍🍳
           </span>
-          <span className="block font-display text-[13px] text-ink-soft mt-0.5">
-            You are where this one begins.
+          <span className="min-w-0">
+            <span className="font-display font-black text-[18px] text-ink">
+              One of your own
+            </span>
+            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
+              You are where this one begins.
+            </span>
           </span>
         </button>
       </div>
@@ -99,7 +116,10 @@ export default function PlantRecipe() {
         </div>
         {originMode === 'ancestor' ? (
           <>
-            <h1 className="font-display font-black text-[28px] text-ink leading-tight">
+            <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-plum text-cream border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24]">
+              💛 The source
+            </span>
+            <h1 className="font-display font-black text-[28px] text-ink leading-tight mt-4">
               Who taught you
               <br />
               this recipe?
@@ -107,35 +127,47 @@ export default function PlantRecipe() {
             <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
               They&rsquo;ll be remembered as its source.
             </p>
-            <input
-              className="field mb-2.5"
-              placeholder="Their name"
-              value={origin.name}
-              onChange={(e) => setOrigin({ ...origin, name: e.target.value })}
-            />
-            <div className="flex gap-2.5 mb-2.5">
+            <label className="block mb-3">
+              <FieldLabel>Their name</FieldLabel>
               <input
                 className="field"
-                placeholder="Place (optional)"
-                value={origin.place}
-                onChange={(e) =>
-                  setOrigin({ ...origin, place: e.target.value })
-                }
+                placeholder="e.g. Lola Remedios"
+                value={origin.name}
+                onChange={(e) => setOrigin({ ...origin, name: e.target.value })}
               />
-              <input
-                className="field"
-                placeholder="Year (optional)"
-                value={origin.year}
-                onChange={(e) => setOrigin({ ...origin, year: e.target.value })}
-              />
+            </label>
+            <div className="flex gap-2.5 mb-3">
+              <label className="block flex-1">
+                <FieldLabel>Place</FieldLabel>
+                <input
+                  className="field"
+                  placeholder="Cebu"
+                  value={origin.place}
+                  onChange={(e) =>
+                    setOrigin({ ...origin, place: e.target.value })
+                  }
+                />
+              </label>
+              <label className="block flex-1">
+                <FieldLabel>Year</FieldLabel>
+                <input
+                  className="field"
+                  placeholder="1974"
+                  value={origin.year}
+                  onChange={(e) => setOrigin({ ...origin, year: e.target.value })}
+                />
+              </label>
             </div>
-            <textarea
-              className="field resize-none mb-4"
-              rows={3}
-              placeholder="A memory of them & this dish (optional)"
-              value={origin.memory}
-              onChange={(e) => setOrigin({ ...origin, memory: e.target.value })}
-            />
+            <label className="block mb-4">
+              <FieldLabel accent="plum">A memory of them</FieldLabel>
+              <textarea
+                className="field resize-none"
+                rows={3}
+                placeholder="A memory of them & this dish (optional)"
+                value={origin.memory}
+                onChange={(e) => setOrigin({ ...origin, memory: e.target.value })}
+              />
+            </label>
             <button
               className="btn-primary disabled:opacity-50"
               disabled={!origin.name.trim()}
@@ -146,7 +178,10 @@ export default function PlantRecipe() {
           </>
         ) : (
           <>
-            <h1 className="font-display font-black text-[28px] text-ink leading-tight">
+            <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-mint border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24]">
+              ✦ Your own
+            </span>
+            <h1 className="font-display font-black text-[28px] text-ink leading-tight mt-4">
               This one starts
               <br />
               with you.
@@ -154,13 +189,16 @@ export default function PlantRecipe() {
             <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
               You&rsquo;re where this dish begins.
             </p>
-            <textarea
-              className="field resize-none mb-4"
-              rows={4}
-              placeholder="What made this yours? (optional)"
-              value={selfMemory}
-              onChange={(e) => setSelfMemory(e.target.value)}
-            />
+            <label className="block mb-4">
+              <FieldLabel accent="plum">What made this yours</FieldLabel>
+              <textarea
+                className="field resize-none"
+                rows={4}
+                placeholder="What made this yours? (optional)"
+                value={selfMemory}
+                onChange={(e) => setSelfMemory(e.target.value)}
+              />
+            </label>
             <button className="btn-primary" onClick={() => setStep('form')}>
               Continue to the recipe →
             </button>

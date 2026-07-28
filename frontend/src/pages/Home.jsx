@@ -4,57 +4,13 @@ import client from '../api/client'
 import RecipeCard from '../components/RecipeCard'
 import MarkerTitle from '../components/MarkerTitle'
 import Loader from '../components/Loader'
+import HeroDiscs from '../components/HeroDiscs'
 
 function getGreeting() {
   const hour = new Date().getHours()
   if (hour < 12) return 'Good morning'
   if (hour < 18) return 'Good afternoon'
   return 'Good evening'
-}
-
-// Build a scalloped-badge outline (a bumpy "flower" circle) as one SVG path.
-function scallopPath(cx, cy, R, bumps) {
-  const rBump = R * Math.sin(Math.PI / bumps)
-  const pt = (k) => {
-    const a = -Math.PI / 2 + (k * 2 * Math.PI) / bumps
-    return [cx + R * Math.cos(a), cy + R * Math.sin(a)]
-  }
-  const [x0, y0] = pt(0)
-  let d = `M${x0.toFixed(2)},${y0.toFixed(2)}`
-  for (let k = 1; k <= bumps; k++) {
-    const [x, y] = pt(k)
-    d += `A${rBump.toFixed(2)},${rBump.toFixed(2)} 0 0 1 ${x.toFixed(2)},${y.toFixed(2)}`
-  }
-  return d + 'Z'
-}
-const BADGE_SCALLOP = scallopPath(50, 50, 40, 12)
-
-// A scalloped "sticker" badge with a chef-hat doodle inside — the reference's
-// badge motif (cf. "Tim's Specialty!"), a spot of character by the hero.
-function ChefBadge({ className = '' }) {
-  return (
-    <svg viewBox="0 0 100 100" fill="none" aria-hidden="true" className={className}>
-      <path d={BADGE_SCALLOP} fill="#FBE0A8" stroke="#2E3A24" strokeWidth="4" />
-      {/* chef's hat — puffy top over a tall banded base */}
-      <path
-        d="M35 58h30v-4c5 1.5 10-2 10-8s-5-9-9.5-8C65 31 58 27 50 27s-15 4-15.5 11C30 37 25 40 25 46s5 9.5 10 8z"
-        fill="#FCF8EE"
-        stroke="#2E3A24"
-        strokeWidth="3.4"
-        strokeLinejoin="round"
-      />
-      {/* the base band — tall, clean (no pleats), with a rounded bottom edge */}
-      <path
-        d="M35 58h30v11a3 3 0 0 1-3 3H38a3 3 0 0 1-3-3z"
-        fill="#FCF8EE"
-        stroke="#2E3A24"
-        strokeWidth="3.4"
-        strokeLinejoin="round"
-      />
-      {/* pleat hints on the puffy top */}
-      <path d="M40 52v-6M50 53v-7M60 52v-6" stroke="#2E3A24" strokeWidth="2.4" strokeLinecap="round" />
-    </svg>
-  )
 }
 
 // The "issei." masthead — chunky Fraunces wordmark with the signature orange
@@ -73,17 +29,28 @@ function Masthead() {
 }
 
 // Section header in the sticker language: a chunky Fraunces title with a
-// highlighter-marker swipe behind it.
-function SectionTitle({ children, color }) {
+// highlighter-marker swipe behind it. Optionally tappable (→ onClick), in which
+// case it gets a trailing arrow to signal it's a link.
+function SectionTitle({ children, color, onClick }) {
+  const title = (
+    <MarkerTitle
+      as="h3"
+      color={color}
+      className="font-display font-black text-[24px] text-ink leading-none"
+    >
+      {children}
+      {onClick && <span className="ml-1.5">&rarr;</span>}
+    </MarkerTitle>
+  )
   return (
     <div className="mb-4">
-      <MarkerTitle
-        as="h3"
-        color={color}
-        className="font-display font-black text-[24px] text-ink leading-none"
-      >
-        {children}
-      </MarkerTitle>
+      {onClick ? (
+        <button onClick={onClick} className="text-left">
+          {title}
+        </button>
+      ) : (
+        title
+      )}
     </div>
   )
 }
@@ -150,20 +117,27 @@ export default function Home() {
     <div className="min-h-screen bg-cream pb-6">
       <Masthead />
 
-      {/* HERO — a big peach color-block sticker with a mixed-weight headline and
-          a steaming-bowl doodle tucked in the corner for character. */}
-      <div className="mx-4 sticker bg-peach px-5 pt-6 pb-7 relative overflow-hidden">
-        {eyebrow}
-        <div className="flex items-start justify-between gap-1">
+      {/* HERO — a big peach color-block sticker; tapping it opens the kitchen.
+          A trio of emoji discs sits INSIDE the box down the free right side,
+          clear of the left-aligned text. */}
+      <div className="relative mx-4">
+        <button
+          onClick={() => navigate('/my-recipes')}
+          aria-label="Go to your kitchen"
+          className="w-full text-left sticker sticker-press bg-peach px-5 pt-6 pb-7"
+        >
+          {eyebrow}
           <h2 className="font-display text-[38px] leading-[1.0] text-ink mt-4 max-w-[12rem]">
             What&rsquo;s cooking{' '}
             <span className="font-black italic">tonight?</span>
           </h2>
-          <ChefBadge className="w-[86px] h-[86px] flex-none mt-6 mr-12 rotate-[8deg] drop-shadow-[0_3px_0_#2E3A24]" />
-        </div>
-        <p className="font-display italic text-[15px] text-ink-soft mt-3">
-          Everything you&rsquo;ve kept, in one kitchen.
-        </p>
+          <p className="font-display italic text-[15px] text-ink-soft mt-3 max-w-[13rem]">
+            Everything you&rsquo;ve kept, in one kitchen. &rarr;
+          </p>
+        </button>
+        {/* Decorative emoji discs — config-driven, with a ?discs drag editor.
+            See HeroDiscs.jsx. */}
+        <HeroDiscs />
       </div>
 
       {/* CORAL ACCENT — an outlined coral sticker bar (the reference's red strip). */}
@@ -198,7 +172,9 @@ export default function Home() {
       )}
 
       <section className="px-5 pt-8">
-        <SectionTitle color="bg-mint">Your kitchen</SectionTitle>
+        <SectionTitle color="bg-mint" onClick={() => navigate('/my-recipes')}>
+          Your kitchen
+        </SectionTitle>
         <div className="grid grid-cols-2 gap-x-4 gap-y-6">
           {mine.slice(0, 12).map((recipe) => (
             <RecipeCard

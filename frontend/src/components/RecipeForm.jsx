@@ -2,6 +2,7 @@ import { useState } from 'react'
 import client from '../api/client'
 import Icon from './Icon'
 import MarkerTitle from './MarkerTitle'
+import FieldLabel from './FieldLabel'
 import { parseQuantity } from '../utils/quantity'
 
 // Shared Add/Edit recipe form. Owns all field state, photo upload, ingredient/
@@ -38,24 +39,6 @@ function FormSection({ children }) {
         {children}
       </MarkerTitle>
     </div>
-  )
-}
-
-// A persistent field label — stays visible after the field is filled, so a
-// value never loses its meaning (the placeholder-only problem). `accent` tints
-// the label + a leading dot to mark the "secondary" field in a pair (the
-// measurement beside an ingredient, the personal note beside a step).
-function FieldLabel({ children, accent }) {
-  const color = accent === 'plum' ? 'text-plum' : accent === 'terra' ? 'text-terra' : 'text-ink-soft'
-  return (
-    <span className={`flex items-center gap-1 font-display font-bold text-[10.5px] uppercase tracking-[0.1em] mb-1 ${color}`}>
-      {accent && (
-        <span
-          className={`inline-block w-1.5 h-1.5 rounded-full ${accent === 'plum' ? 'bg-plum' : 'bg-terra'}`}
-        />
-      )}
-      {children}
-    </span>
   )
 }
 
