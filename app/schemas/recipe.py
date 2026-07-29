@@ -1,6 +1,6 @@
 from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict
 
 
 class OriginIn(BaseModel):
@@ -141,15 +141,14 @@ class RecipeResponse(BaseModel):
 
 
 class HandoffIn(BaseModel):
+    # A recipient is OPTIONAL. With neither field the handoff is "link-only": it
+    # mints a token the sender shares however they already talk to that person
+    # (share sheet / iMessage / etc.) — the fastest way to pass a recipe on.
+    # Supplying to_email additionally enables auto-accept when that address signs
+    # up; to_user_id grants an existing user access instantly.
     to_email: Optional[str] = None
     to_user_id: Optional[int] = None
     note: Optional[str] = None
-
-    @model_validator(mode="after")
-    def _require_recipient(self):
-        if not self.to_email and not self.to_user_id:
-            raise ValueError("Provide to_email or to_user_id")
-        return self
 
 
 class HandoffResponse(BaseModel):

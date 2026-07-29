@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 
 vi.mock('../api/lineage', () => ({
   handoffRecipe: vi.fn(() =>
-    Promise.resolve({ data: { id: 1, state: 'pending' } }),
+    Promise.resolve({ data: { id: 1, state: 'pending', token: 'tok123' } }),
   ),
 }))
 import { handoffRecipe } from '../api/lineage'
@@ -13,7 +13,7 @@ import HandoffInvite from './HandoffInvite'
 beforeEach(() => handoffRecipe.mockClear())
 
 describe('HandoffInvite', () => {
-  it('sends the handoff and calls onSent', async () => {
+  it('sends the handoff and then shows the shareable invite link', async () => {
     const onSent = vi.fn()
     render(<HandoffInvite recipeId={7} onSent={onSent} onSkip={() => {}} />)
     await userEvent.type(
@@ -29,6 +29,26 @@ describe('HandoffInvite', () => {
       to_email: 'mom@example.com',
       note: 'your adobo',
     })
+    // The whole point: the token must be surfaced, not discarded. onSent must NOT
+    // fire yet — that used to skip the share step entirely.
+    expect(await screen.findByText(/\/invite\/tok123/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /share the link/i })).toBeInTheDocument()
+    expect(onSent).not.toHaveBeenCalled()
+  })
+
+  it('does not require an email — a link-only handoff works', async () => {
+    render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
+    // no email typed at all
+    await userEvent.click(screen.getByRole('button', { name: /pass it on/i }))
+    expect(handoffRecipe).toHaveBeenCalledWith(7, { to_email: null, note: null })
+    expect(await screen.findByText(/\/invite\/tok123/)).toBeInTheDocument()
+  })
+
+  it('calls onSent when the sender taps Done on the share step', async () => {
+    const onSent = vi.fn()
+    render(<HandoffInvite recipeId={7} onSent={onSent} onSkip={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: /pass it on/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /done/i }))
     expect(onSent).toHaveBeenCalled()
   })
 

@@ -85,11 +85,17 @@ def test_handoff_creates_pending(client, make_user):
     assert body["to_email"] == "mom@example.com"
 
 
-def test_handoff_requires_a_recipient(client, make_user):
+def test_handoff_without_a_recipient_is_link_only(client, make_user):
+    """A recipient is optional: with no to_email/to_user_id the handoff mints a
+    shareable link the sender passes on themselves (share sheet / iMessage)."""
     _, owner = make_user()
     root = _make_root(client, owner)
     r = client.post(f"/recipes/{root['id']}/handoff", json={"note": "x"}, headers=owner)
-    assert r.status_code == 422
+    assert r.status_code == 201
+    body = r.json()
+    assert body["token"]
+    assert body["to_email"] is None
+    assert body["to_user_id"] is None
 
 
 def test_lineage_endpoint_returns_spine(client, make_user, db_session):

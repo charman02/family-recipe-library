@@ -68,6 +68,7 @@ export default function HandoffPage() {
       <div className="px-6 pb-10">
         <HandoffInvite
           recipeId={recipe.id}
+          recipeName={recipe.name}
           recipeVisibility={recipe.visibility}
           sourceName={source}
           onSent={back}

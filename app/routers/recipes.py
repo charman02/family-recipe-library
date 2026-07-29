@@ -205,13 +205,17 @@ def handoff_recipe(
             raise HTTPException(status_code=404, detail="User not found")
 
     # Idempotent per (root, grantee): return the existing grant if present.
-    existing_q = db.query(Handoff).filter(Handoff.recipe_id == root.id)
-    if resolved_user is not None:
-        existing = existing_q.filter(Handoff.to_user_id == resolved_user.id).first()
-    else:
-        existing = existing_q.filter(Handoff.to_email == to_email).first()
-    if existing is not None:
-        return existing
+    # Link-only handoffs (no recipient at all) are deliberately NOT deduped — each
+    # is an independent shareable grant, so two links can be claimed by two people
+    # without the second stealing the first's access.
+    if resolved_user is not None or to_email:
+        existing_q = db.query(Handoff).filter(Handoff.recipe_id == root.id)
+        if resolved_user is not None:
+            existing = existing_q.filter(Handoff.to_user_id == resolved_user.id).first()
+        else:
+            existing = existing_q.filter(Handoff.to_email == to_email).first()
+        if existing is not None:
+            return existing
 
     handoff = Handoff(
         recipe_id=root.id,
@@ -396,15 +400,48 @@ def claim_invite(
     # Authenticated claim: the token IS the authorization to accept, so any
     # signed-in user holding the link can claim it — this resolves the
     # mismatched-email orphan (an invite to a@x claimed by someone who signed up
-    # as b@y). Idempotent: re-claiming returns the accepted grant.
+    # as b@y). Idempotent: re-claiming returns the same accepted grant.
     h = db.query(Handoff).filter(Handoff.token == token).first()
     if h is None:
         raise HTTPException(status_code=404, detail="Invite not found")
-    h.to_user_id = current_user.id
-    h.state = "accepted"
+
+    # Already this user's grant (or an unclaimed one) → accept it in place.
+    if h.to_user_id is None or h.to_user_id == current_user.id:
+        h.to_user_id = current_user.id
+        h.state = "accepted"
+        db.commit()
+        db.refresh(h)
+        return h
+
+    # A DIFFERENT user already claimed this link. Do NOT overwrite to_user_id —
+    # that silently revoked the first claimer's access (can_view matches on
+    # to_user_id). Instead give this user their own grant on the same recipe, so a
+    # link shared with several people works for all of them.
+    mine = (
+        db.query(Handoff)
+        .filter(Handoff.recipe_id == h.recipe_id, Handoff.to_user_id == current_user.id)
+        .first()
+    )
+    if mine is not None:
+        if mine.state != "accepted":
+            mine.state = "accepted"
+            db.commit()
+            db.refresh(mine)
+        return mine
+
+    grant = Handoff(
+        recipe_id=h.recipe_id,
+        from_user_id=h.from_user_id,
+        to_user_id=current_user.id,
+        to_email=None,
+        state="accepted",
+        note=h.note,
+        token=secrets.token_urlsafe(32),
+    )
+    db.add(grant)
     db.commit()
-    db.refresh(h)
-    return h
+    db.refresh(grant)
+    return grant
 
 
 @router.get("/{recipe_id}", response_model=RecipeResponse)

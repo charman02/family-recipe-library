@@ -281,6 +281,7 @@ export default function PlantRecipe() {
     <div className="min-h-screen bg-cream">
       <HandoffInvite
         recipeId={saved.id}
+        recipeName={saved.name}
         sourceName={
           originMode === 'ancestor' && origin.name.trim()
             ? origin.name.trim()

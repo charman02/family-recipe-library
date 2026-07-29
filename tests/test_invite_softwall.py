@@ -78,3 +78,66 @@ def test_claim_requires_auth(client, make_user):
     _root, token = _handoff(client, oheaders)
     r = client.post(f"/recipes/invite/{token}/claim")
     assert r.status_code == 401
+
+
+def test_handoff_without_email_mints_a_shareable_link(client, make_user):
+    """Link-only handoff: passing a recipe on must not require typing an email —
+    the sender shares the returned token however they already talk to the person."""
+    owner, oheaders = make_user()
+    root = client.post("/recipes", json=_payload(), headers=oheaders).json()
+    r = client.post(f"/recipes/{root['id']}/handoff", json={}, headers=oheaders)
+    assert r.status_code == 201
+    body = r.json()
+    assert body["token"]  # a shareable token exists
+    assert body["to_email"] is None
+    assert body["to_user_id"] is None
+    assert body["state"] == "pending"
+
+
+def test_link_only_handoffs_are_not_deduped_into_one_row(client, make_user):
+    """Two link-only handoffs must be separate grants — otherwise the second
+    person to claim would hijack the first person's row."""
+    owner, oheaders = make_user()
+    root = client.post("/recipes", json=_payload(), headers=oheaders).json()
+    a = client.post(f"/recipes/{root['id']}/handoff", json={}, headers=oheaders).json()
+    b = client.post(f"/recipes/{root['id']}/handoff", json={}, headers=oheaders).json()
+    assert a["id"] != b["id"]
+    assert a["token"] != b["token"]
+
+
+def test_second_claimer_does_not_revoke_the_first(client, make_user, db_session):
+    """A shared link claimed by two people must grant BOTH access. Previously the
+    claim overwrote to_user_id on the single row, silently revoking the first."""
+    from app.services.lineage import can_view
+    from app.models.recipe import Recipe
+
+    owner, oheaders = make_user()
+    root, token = _handoff(client, oheaders, email="aunt@example.com")
+
+    first, fheaders = make_user()
+    second, sheaders = make_user()
+    assert client.post(f"/recipes/invite/{token}/claim", headers=fheaders).status_code == 200
+    assert client.post(f"/recipes/invite/{token}/claim", headers=sheaders).status_code == 200
+
+    root_obj = db_session.query(Recipe).filter_by(id=root["id"]).one()
+    # BOTH keep access — the second claim must not steal the first's grant
+    assert can_view(root_obj, first, db_session) is True
+    assert can_view(root_obj, second, db_session) is True
+
+
+def test_reclaiming_is_idempotent_for_the_same_user(client, make_user, db_session):
+    """Re-claiming the same link as the same user must not pile up duplicate grants."""
+    from app.models.handoff import Handoff
+
+    owner, oheaders = make_user()
+    root, token = _handoff(client, oheaders, email="aunt@example.com")
+    claimer, cheaders = make_user()
+    client.post(f"/recipes/invite/{token}/claim", headers=cheaders)
+    client.post(f"/recipes/invite/{token}/claim", headers=cheaders)
+
+    grants = (
+        db_session.query(Handoff)
+        .filter(Handoff.recipe_id == root["id"], Handoff.to_user_id == claimer.id)
+        .all()
+    )
+    assert len(grants) == 1
