@@ -33,4 +33,11 @@ describe('RecipeBody', () => {
     // CoverImage's no-photo fallback renders the issei. wordmark text
     expect(container.textContent.toLowerCase()).toContain('issei')
   })
+  it('displays servings and description when present', () => {
+    const { getByText } = render(
+      <RecipeBody recipe={{ ...base, servings: 4, description: 'A tangy braise.' }} />,
+    )
+    expect(getByText(/serves 4/i)).toBeTruthy()
+    expect(getByText('A tangy braise.')).toBeTruthy()
+  })
 })

@@ -91,10 +91,10 @@ export default function RecipeBody({ recipe }) {
         </div>
       )}
 
-      {/* Byline + cuisine — whose recipe this is, and what kind. Fraunces
-          throughout to match the design (plum heart for the person, fork+knife
-          for cuisine). Hidden in cooking mode. */}
-      {!cooking && (byline || recipe.cuisine) && (
+      {/* Byline + cuisine + servings — whose recipe this is, what kind, how many
+          it serves. Fraunces throughout (plum heart for the person, fork+knife
+          for cuisine, bowl for servings). Hidden in cooking mode. */}
+      {!cooking && (byline || recipe.cuisine || recipe.servings) && (
         <div className="flex items-center justify-center gap-[9px] flex-wrap mt-3 mb-1">
           {byline && (
             <span className="inline-flex items-center gap-[5px] text-[13px] tracking-[0.2px]">
@@ -123,7 +123,27 @@ export default function RecipeBody({ recipe }) {
               {recipe.cuisine}
             </span>
           )}
+          {(byline || recipe.cuisine) && recipe.servings && (
+            <span className="w-px h-[13px] bg-line inline-block" />
+          )}
+          {recipe.servings && (
+            <span className="inline-flex items-center gap-1.5 font-display font-bold text-[11.5px] tracking-[0.5px] uppercase text-ink-soft">
+              {/* serving bowl */}
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="w-3.5 h-3.5 opacity-90">
+                <path d="M4 11h16a8 8 0 0 1-16 0Z" stroke="#4A5540" strokeWidth="1.7" strokeLinejoin="round" />
+                <path d="M12 4v3M9.5 5v2M14.5 5v2" stroke="#4A5540" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+              Serves {recipe.servings}
+            </span>
+          )}
         </div>
+      )}
+
+      {/* Description — a short "what is this dish" line. Hidden in cooking mode. */}
+      {!cooking && recipe.description && (
+        <p className="font-display text-[14.5px] leading-[1.4] text-ink-soft text-center mt-2 mb-1 px-2">
+          {recipe.description}
+        </p>
       )}
 
       {/* THE STORY — the heart of the recipe: the person's voice, treated as a
