@@ -21,11 +21,17 @@ vi.mock('../api/lineage', () => ({
 // exposes initialValues so we can assert the mine-path seed is passed through.
 let lastInitialValues = null
 vi.mock('../components/RecipeForm', () => ({
-  default: ({ onSubmit, initialValues = {}, intro = null }) => {
+  default: ({
+    onSubmit,
+    initialValues = {},
+    intro = null,
+    beforeSubmitSlot = null,
+  }) => {
     lastInitialValues = initialValues
     return (
       <div>
         {intro}
+        {beforeSubmitSlot}
         <button
           onClick={() =>
             onSubmit({
@@ -118,5 +124,44 @@ describe('PlantRecipe', () => {
     const payload = plantRecipe.mock.calls[0][0]
     expect(payload.story).toBe('a richer, edited story')
     expect(payload.origin ?? null).toBeNull()
+  })
+})
+
+// The create-time visibility choice is the ONLY thing that can ever put a recipe
+// in Browse, so these lock both directions: the safe default, and the opt-in.
+describe('PlantRecipe visibility', () => {
+  async function reachTheForm() {
+    render(
+      <MemoryRouter>
+        <PlantRecipe />
+      </MemoryRouter>,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /one of your own/i }),
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /continue to the recipe/i }),
+    )
+  }
+
+  it('renders the choice on the form step with "Only me" preselected', async () => {
+    await reachTheForm()
+    expect(screen.getByText(/who can see this\?/i)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /only me/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /everyone/i })).not.toBeChecked()
+  })
+
+  it('sends visibility private without the user touching the choice', async () => {
+    await reachTheForm()
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+    expect(plantRecipe.mock.calls[0][0].visibility).toBe('private')
+  })
+
+  it('sends visibility public once the user opts in', async () => {
+    await reachTheForm()
+    await userEvent.click(screen.getByRole('radio', { name: /everyone/i }))
+    expect(screen.getByRole('radio', { name: /everyone/i })).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+    expect(plantRecipe.mock.calls[0][0].visibility).toBe('public')
   })
 })

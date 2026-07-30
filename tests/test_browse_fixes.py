@@ -22,8 +22,9 @@ def test_browse_does_not_leak_owner_activity(client, make_user, db_session):
 
     _, owner = make_user()
     root = _make_root(client, owner)
-    # Make it public directly (the create API has no visibility field yet — the
-    # public-visibility path is deferred work; here we set the row to exercise browse).
+    # Belt-and-braces: _make_root already POSTs visibility="public" (the create
+    # API accepts it), but pin the row so this test is about browse's leak
+    # surface and can't silently pass on an empty feed.
     db_session.query(Recipe).filter(Recipe.id == root["id"]).update({"visibility": "public"})
     db_session.commit()
     # owner cooks their own recipe a few times

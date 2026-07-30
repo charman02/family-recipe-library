@@ -97,6 +97,23 @@ def test_branch_of_private_root_stays_hidden(client, make_user, db_session):
     assert client.get(f"/recipes/{child.id}", headers=other).status_code == 404
 
 
+def test_browse_membership_is_decided_by_the_create_payload(client, make_user):
+    # The add-recipe flow's only lever on Browse is the `visibility` it POSTs, so
+    # pin that end-to-end: one create per value, then one browse read asserting
+    # exactly which of the two came back. This is the regression that made Browse
+    # unreachable — the client omitted the field and every recipe fell to the
+    # private default, leaving the feed empty for everyone, forever.
+    _, owner = make_user()
+    public = client.post("/recipes", json=_payload("Sinigang", visibility="public"), headers=owner)
+    default = client.post("/recipes", json=_payload("Kare-kare"), headers=owner)
+    assert public.status_code == 201 and default.status_code == 201
+    assert default.json()["visibility"] == "private"
+
+    ids = {r["id"] for r in client.get("/recipes/browse").json()}
+    assert public.json()["id"] in ids
+    assert default.json()["id"] not in ids
+
+
 def test_branch_of_public_root_is_visible_to_non_owner(client, make_user, db_session):
     # A child's OWN row is private-by-default, but its PUBLIC root must make it
     # visible to a non-owner via effective_visibility (root-binds). This fails if the

@@ -4,6 +4,7 @@ import RecipeForm from '../components/RecipeForm'
 import HandoffInvite from '../components/HandoffInvite'
 import BackButton from '../components/BackButton'
 import FieldLabel from '../components/FieldLabel'
+import VisibilityChoice from '../components/VisibilityChoice'
 import { buildOriginPayload } from '../lib/lineagePayload'
 import { plantRecipe } from '../api/lineage'
 
@@ -21,6 +22,9 @@ export default function PlantRecipe() {
     memory: '',
   })
   const [selfMemory, setSelfMemory] = useState('')
+  // Private-by-default, matching the column default: sharing is a deliberate act,
+  // never something the flow does on the user's behalf.
+  const [visibility, setVisibility] = useState('private')
   const [saved, setSaved] = useState(null)
 
   function chooseDoor(mode) {
@@ -38,7 +42,7 @@ export default function PlantRecipe() {
   }
 
   async function handleFormSubmit(formPayload) {
-    const payload = { ...formPayload }
+    const payload = { ...formPayload, visibility }
     if (originMode === 'ancestor') {
       // The doorway memory belongs to the SOURCE (origin.memory), which is
       // distinct from the dish's own story — leave payload.story from the form.
@@ -220,6 +224,11 @@ export default function PlantRecipe() {
           initialValues={initialValues}
           onSubmit={handleFormSubmit}
           topSlot={<BackButton onClick={goBack} label="Back" />}
+          // Sits just above "Keep this recipe" — the last thing you decide before
+          // saving, and no extra step in a flow testers already found effortful.
+          beforeSubmitSlot={
+            <VisibilityChoice value={visibility} onChange={setVisibility} />
+          }
           intro={
             <p className="font-display italic text-[14px] text-ink-soft -mt-2 mb-4">
               Add what you&rsquo;ve got — &ldquo;a splash of vinegar&rdquo; is
