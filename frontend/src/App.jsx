@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
+import PublicOnlyRoute from './components/PublicOnlyRoute'
 import BottomNav from './components/BottomNav'
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -25,7 +26,14 @@ function Layout({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      <Route
+        path="/login"
+        element={
+          <PublicOnlyRoute>
+            <Login />
+          </PublicOnlyRoute>
+        }
+      />
       <Route path="/invite/:token" element={<InviteLanding />} />
       <Route
         path="/"
