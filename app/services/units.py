@@ -25,16 +25,17 @@ def convert(
     from_unit = from_unit.lower().strip() if from_unit else None
     to_unit = to_unit.lower().strip() if to_unit else None
 
-    # volume conversion
+    # volume conversion. The ratio is from/to, not to/from: going to a LARGER unit
+    # must yield a smaller number (8 tbsp -> 0.5 cup, not 128).
     if from_unit in VOLUME_TO_ML and to_unit in VOLUME_TO_ML:
         from_ml, to_ml = VOLUME_TO_ML[from_unit], VOLUME_TO_ML[to_unit]
-        unit_ratio = to_ml / from_ml
+        unit_ratio = from_ml / to_ml
         return value * unit_ratio
 
     # weight conversion
     elif from_unit in WEIGHT_TO_G and to_unit in WEIGHT_TO_G:
         from_g, to_g = WEIGHT_TO_G[from_unit], WEIGHT_TO_G[to_unit]
-        unit_ratio = to_g / from_g
+        unit_ratio = from_g / to_g
         return value * unit_ratio
 
     # volume to weight
