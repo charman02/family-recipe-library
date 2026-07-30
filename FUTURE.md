@@ -1,20 +1,20 @@
 # Future Roadmap
 
-This document outlines planned features and improvements for Issei — a full-stack app for preserving the family recipes immigrant elders carry but never wrote down (*issei* = "first generation"). The current build (FastAPI backend + React frontend) centers on the **living recipe**: a recipe as a vessel for a person — the cook's voice and story woven in, their imprecise measurements preserved verbatim — kept in a warm, playful "kitchen" UI and **handed down** to family. It includes recipe management, serving-size scaling, shopping lists, photo upload, and the handoff/sharing flow with private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
+This document outlines planned features and improvements for Issei — a full-stack app for preserving the family recipes immigrant elders carry but never wrote down (*issei* = "first generation"). The current build (FastAPI backend + React frontend) centers on the **living recipe**: a recipe as a vessel for a person — the cook's voice and story woven in, their imprecise measurements preserved verbatim — kept in a warm, playful "kitchen" UI and **handed down** to family. It includes recipe management, serving-size scaling (which preserves folk measures like "3 soup spoons" rather than normalizing them), shopping lists, cover-photo upload, and the handoff flow — shareable capability links that let a recipient read and cook the full recipe with no account — over private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
 
 ---
 
 ## Multi-User Family Sharing
 
-**Current state:** The schema is designed with `user_id` on every entity and a `families` table sketched but not implemented. Only single-user access exists in v1.
+**Current state:** Ownership is per-user — `Recipe.user_id` scopes every owner query — and there is no `families` table. Cross-user access does exist, but only through the handoff/grant path (per-recipe `visibility` plus `handoffs`, described below): someone can be *given* a recipe, but there is no shared library that several people co-own.
 
-**What this adds:** Multiple family members share a recipe library. Mom adds recipes, children and grandchildren access them. Invitations sent via email or shareable link. Role-based access (owner can edit, members can read).
+**What this adds:** Multiple family members share a recipe library. Mom adds recipes, children and grandchildren access them. Role-based access (owner can edit, members can read) rather than a grant per recipe per person.
 
 **Why it matters:** The core use case — preserving family cooking across generations — requires multiple people to access the same library. A recipe added by mom should be visible to her children without manual sharing.
 
-**Implementation notes:** Add `families` and `family_members` tables. Update authorization checks from `user_id == current_user.id` to `family_id in current_user.families`. Add invitation endpoints with token-based acceptance.
+**Implementation notes:** Add `families` and `family_members` tables. Update authorization checks from `user_id == current_user.id` to `family_id in current_user.families` — in practice that means extending `can_view` in `services/lineage.py`, which is already the single read-authorization rule.
 
-**Note:** Lineage now introduces a lightweight cross-user sharing path — per-recipe `visibility` (public roots that bind descendants) plus handoffs — so the families-table design should account for this overlap rather than duplicate it.
+**Note:** The token-based invitation machinery this would have needed is **already shipped** — email invites that auto-accept on signup, plus shareable capability links (`/invite/:token`) claimable by any signed-in holder. So this feature is now specifically the *shared-library* half: a group that co-owns recipes, rather than a grant issued per recipe per person. The families design should build on the existing `handoffs`/`visibility` path rather than duplicate it.
 
 ---
 
@@ -48,15 +48,15 @@ This document outlines planned features and improvements for Issei — a full-st
 
 ---
 
-## Photo/Video Support
+## Richer Photo/Video Support
 
-**Current state:** Recipes are text-only — no image or video fields exist on any model.
+**Current state:** A single cover photo per recipe is **shipped** — `Recipe.cover_photo_url`, uploaded via `POST /upload/recipe-photo` to Cloudinary, including automatic iPhone HEIC → JPEG conversion in the browser. `CookEvent.photo_url` also exists on the model. What's missing is everything beyond one still image per recipe: no per-step media, no video, no gallery.
 
-**What this adds:** Support for photos and videos attached to a recipe at multiple levels: a photo of the finished dish, photos, or short videos for individual steps (especially useful for techniques that are hard to describe in words), and a community gallery where people who cooked the recipe can share their own results.
+**What this adds:** Media at more levels than the cover shot: photos or short videos for individual steps (especially useful for techniques that are hard to describe in words), and a community gallery where people who cooked the recipe can share their own results.
 
 **Why it matters:** Some cooking techniques are much easier to show than describe — how to fold a dumpling, what "until the onions are translucent" actually looks like, the right consistency for a sauce. Photos of the final dish also help confirm "did I make this right?" A gallery of other people's attempts adds a community dimension that text alone can't.
 
-**Implementation notes:** Would require file storage (e.g., S3 or Cloudinary) and new media tables linked to recipes, steps, and a new "gallery post" entity. Video would need size/length limits and probably compression on upload.
+**Implementation notes:** The Cloudinary upload path already exists and can be reused; what's new is media tables linked to steps and a "gallery post" entity, rather than a single URL column on the recipe. Video would need size/length limits and probably compression on upload.
 
 ---
 
@@ -80,5 +80,5 @@ In order of priority:
 2. **Multi-user family sharing** — without this, the product can't fully fulfill its actual purpose. A recipe my mom adds should be visible to me and my siblings without needing separate accounts and manual copying. Lineage's per-recipe `visibility` + handoffs now provide a lightweight sharing path, but a proper families model is still closer to a missing core feature than an enhancement, so it ranks above the more exploratory additions below.
 3. **iOS mobile app** — now that the web frontend is live, a native mobile experience makes sense given that the real use case (checking a recipe while cooking, contributing a recipe from a phone) is fundamentally mobile-first.
 4. **Translation** — highest priority among the "deeper feature" additions, since it directly addresses the core audience: families where the cooking generation and the reading generation may not share a primary language.
-5. **Photo/video support** — photo upload already exists via Cloudinary; richer support (step videos, community gallery) meaningfully improves usability for techniques that are hard to describe in text.
+5. **Richer photo/video support** — a cover photo per recipe already ships via Cloudinary; going further (per-step media, video, community gallery) meaningfully improves usability for techniques that are hard to describe in text.
 6. **Ingredient canonicalization** — the most clearly-scoped technical improvement, but lower priority than the others since the shopping list already works correctly for the common case (exact or near-exact name matches); this fixes an edge case rather than unlocking new usage.

@@ -11,7 +11,7 @@ Instead of treating a recipe as a static list of grams and steps, Issei treats i
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling, shopping-list consolidation, photo upload (with automatic iPhone HEIC → JPEG conversion), and a lineage + sharing system with private → shared → public visibility.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 19 endpoints, 8 data models, ~125 automated tests (pytest + Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 20 endpoints, 8 data models, 227 automated tests (128 pytest + 99 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -28,9 +28,9 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - automated tests for the scaling service, auth endpoints, and unit conversion logic.
+**pytest** - backend tests for the scaling and unit-conversion services, shopping-list consolidation, and the authorization surface (visibility, sharing/grants, the invite-token flow).
 
-**Vitest + React Testing Library** - frontend unit/component tests (growth-state logic, lineage payload builders, form and page components). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -40,6 +40,8 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 ## Key Engineering Decisions
 **Fuzzy quantity modeling:** Ingredients store both `quantity_text` (always preserved verbatim) and optional `quantity_value` and `unit` fields, with a `quantity_type` of "precise", "imprecise", or "unmeasured". The alternative was storing only exact measurements, but Asian home cooking rarely uses precise quantities — "a dash of fish sauce" and "3 soup spoons" are how recipes are actually passed down. The three-type model lets the scaling service handle each case appropriately: precise quantities scale mathematically, imprecise quantities scale approximately, unmeasured quantities don't scale at all.
+
+Classification is deliberately not just hedge-word detection ("about", "roughly", "~"). It also recognizes **folk, body, and vessel units** — "3 soup spoons", "a pinch", "a good splash", "two fingers of water" — because a clean number in front of a fuzzy vessel is still a fuzzy amount. Those split further at scale time (`app/services/folk_units.py`): a *countable* folk unit has a real count, so "3 soup spoons" doubled honestly is "6 soup spoons"; a *non-linear* one describes a geometry rather than a quantity, so "3 fingers of water" is kept verbatim and the cook is handed the multiplier instead of an invented number. Without this, the app's own headline example would be normalized into "7.5 soup spoons" — exactly the behavior it exists to refuse.
 
 **Denormalized `recipe_id` on ingredients:** Ingredients store `recipe_id` directly even though they could derive it through `section_id → ingredient_sections → recipe_id`. This is a deliberate denormalization. Without it, fetching all ingredients for a recipe requires a join through sections — and sectionless ingredients (where `section_id` is null) would be unreachable entirely. The direct `recipe_id` makes the common query simple and fast: `WHERE recipe_id = ?`.
 
@@ -52,6 +54,7 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 ## API Endpoints
 | Method | Endpoint | Auth Required | Description |
 |--------|----------|---------------|-------------|
+| GET | /health | No | Liveness check. Returns `{"status": "ok"}`. |
 | POST | /auth/signup | No | Creates a new user account. Returns id, email, and created_at. |
 | POST | /auth/login | No | Verifies credentials and returns a JWT access token. |
 | GET | /auth/me | Yes | Returns the currently authenticated user. |
@@ -62,17 +65,19 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 | PATCH | /recipes/{recipe_id} | Yes | Modifies the queried recipe. |
 | DELETE | /recipes/{recipe_id} | Yes | Deletes the queried recipe. |
 | POST | /recipes/{recipe_id}/cook | Yes | Logs a cook event; returns updated cook_count. |
-| POST | /recipes/{recipe_id}/handoff | Yes | Passes the recipe to a person (in-app user or email invite). On a **private** recipe this grants the recipient access (view + cook); the grant attaches to the lineage root. |
+| POST | /recipes/{recipe_id}/handoff | Yes | Passes the recipe on. A recipient is **optional**: with an in-app user or an email the grant is addressed to them; with neither it is "link-only" — it mints a shareable invite token the sender passes along however they already talk to that person. On a **private** recipe the grant confers access (view + cook) and attaches to the lineage root. |
 | GET | /recipes/{recipe_id}/lineage | Yes | Returns the walkable lineage spine + tree counts. |
 | GET | /recipes/shared | Yes | Returns recipes shared *with* the current user (accepted grants; excludes their own). |
 | POST | /recipes/handoffs/{handoff_id}/accept | Yes | Claims a pending invite for the current user (backend-only; the two auto-accept paths cover the in-app cases, so there is no MVP UI for this). |
-| GET | /recipes/invite/{token} | No | Unauthenticated soft-wall preview of a handed-off recipe (name, who it's from, story, cover photo — never the body). |
+| GET | /recipes/invite/{token} | No | Unauthenticated read of a handed-off recipe — the **full** recipe (ingredients, steps, per-step remarks, story, servings, description), no account required. The owner's private `notes` and account ids are the only things withheld. |
 | POST | /recipes/invite/{token}/claim | Yes | Claims an invite by its token, granting the current user access (resolves the mismatched-email case). |
 | GET | /recipes/browse | No | Public discovery feed (root-visibility gated). |
 | POST | /shopping-list | Yes | Creates a shopping list. |
 | POST | /upload/recipe-photo | Yes | Uploads a photo to Cloudinary. |
 
 **Three visibility tiers — Private → Shared → Public.** A recipe is viewable by a user when: the root recipe's visibility is `public`, **or** they own it, **or** they hold an accepted handoff (grant) on its root. "Shared" is not a stored enum value — `visibility` stays `private | public`; a private recipe with ≥1 accepted grant *is* shared with those people. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `GET /recipes/{recipe_id}` and `/lineage` apply this same `can_view` rule.
+
+**The invite token is a capability.** Those three tiers govern *accounts*; a handoff link is a separate axis. `secrets.token_urlsafe(32)` is unguessable, and holding it is the permission to read — so `/recipes/invite/{token}` serves the whole recipe with no account at all. The recipient of a handoff has never tasted the dish and wants to cook it, so gating ingredients behind a signup form would be friction at the moment of highest intent. Signing up is what lets them *keep* it (save, cook, add to it), not what lets them read it.
 
 ## Setup Instructions
 1. **Clone the repo:**
