@@ -315,3 +315,114 @@ def test_endpoint_will_not_shop_someone_elses_recipe(client, make_user):
     _other, xheaders = make_user()
     r = client.post("/shopping-list", json={"recipe_ids": [a["id"]]}, headers=xheaders)
     assert r.status_code == 404
+
+
+# --- which ids the endpoint accepts ---
+#
+# The "not found" check counts rows against requested ids, which is also the check
+# that enforces ownership (the query filters on user_id). Both properties are
+# asserted here together because a fix to one is exactly how the other regresses.
+
+
+def test_a_repeated_recipe_id_is_not_a_missing_recipe(client, make_user):
+    """`[5, 5]` used to 404: the query returns one row for two requested ids. The
+    request names a *set* of recipes to shop for, so a repeat is a no-op, not a
+    missing recipe."""
+    _user, headers = make_user()
+    a = _recipe(
+        client,
+        headers,
+        "Adobo",
+        [
+            {
+                "name": "vinegar",
+                "quantity_text": "2 cups",
+                "quantity_value": 2,
+                "unit": "cup",
+                "quantity_type": "precise",
+            }
+        ],
+    )
+
+    r = client.post(
+        "/shopping-list", json={"recipe_ids": [a["id"], a["id"]]}, headers=headers
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    # counted once: a repeat must not silently double what you buy
+    assert items[0]["quantity_value"] == 2
+    assert items[0]["breakdown"] == "2 cup (Adobo)"
+
+
+def test_a_repeated_id_alongside_a_second_recipe_still_consolidates(client, make_user):
+    _user, headers = make_user()
+    a = _recipe(client, headers, "Adobo", [{"name": "vinegar", "quantity_text": "a splash"}])
+    b = _recipe(client, headers, "Sinigang", [{"name": "vinegar", "quantity_text": "a glug"}])
+
+    r = client.post(
+        "/shopping-list",
+        json={"recipe_ids": [a["id"], b["id"], a["id"]]},
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["quantity_text"] == "a splash + a glug"
+
+
+def test_an_id_that_does_not_exist_is_still_404(client, make_user):
+    _user, headers = make_user()
+    a = _recipe(client, headers, "Adobo", [{"name": "vinegar", "quantity_type": "unmeasured"}])
+    r = client.post(
+        "/shopping-list", json={"recipe_ids": [a["id"], a["id"] + 9999]}, headers=headers
+    )
+    assert r.status_code == 404
+
+
+def test_a_repeated_id_belonging_to_someone_else_is_still_404(client, make_user):
+    """The dedupe fix rewrites the ownership comparison, so assert the repeat can't
+    be used to make the row count match while the recipe isn't the caller's."""
+    _owner, oheaders = make_user()
+    a = _recipe(client, oheaders, "Adobo", [{"name": "vinegar", "quantity_type": "unmeasured"}])
+    _other, xheaders = make_user()
+    r = client.post(
+        "/shopping-list", json={"recipe_ids": [a["id"], a["id"]]}, headers=xheaders
+    )
+    assert r.status_code == 404
+
+
+def test_mixing_in_someone_elses_recipe_is_404(client, make_user):
+    _other, xheaders = make_user()
+    theirs = _recipe(
+        client, xheaders, "Sinigang", [{"name": "tamarind", "quantity_type": "unmeasured"}]
+    )
+    _user, headers = make_user()
+    mine = _recipe(client, headers, "Adobo", [{"name": "vinegar", "quantity_type": "unmeasured"}])
+    r = client.post(
+        "/shopping-list", json={"recipe_ids": [mine["id"], theirs["id"]]}, headers=headers
+    )
+    assert r.status_code == 404
+
+
+def test_a_deleted_recipe_is_404(client, make_user):
+    """Soft delete is the app-wide rule; a recipe you threw away is not shoppable."""
+    _user, headers = make_user()
+    a = _recipe(client, headers, "Adobo", [{"name": "vinegar", "quantity_type": "unmeasured"}])
+    assert client.delete(f"/recipes/{a['id']}", headers=headers).status_code in (200, 204)
+    r = client.post("/shopping-list", json={"recipe_ids": [a["id"]]}, headers=headers)
+    assert r.status_code == 404
+
+
+def test_an_empty_recipe_ids_list_is_rejected(client, make_user):
+    """A shopping list for no recipes is a client bug, not an empty result: the only
+    honest answer is "you didn't ask for anything". Rejected at the schema (422),
+    matching how the codebase states other structural input rules."""
+    _user, headers = make_user()
+    r = client.post("/shopping-list", json={"recipe_ids": []}, headers=headers)
+    assert r.status_code == 422
+
+
+def test_a_missing_recipe_ids_field_is_rejected(client, make_user):
+    _user, headers = make_user()
+    assert client.post("/shopping-list", json={}, headers=headers).status_code == 422

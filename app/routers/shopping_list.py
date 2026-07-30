@@ -18,10 +18,16 @@ def create_shopping_list(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # The request names a *set* of recipes to shop for, so a repeated id is a no-op:
+    # one recipe's ingredients are needed once however many times it was listed.
+    # Deduplicating before the lookup is what makes the count below meaningful —
+    # comparing rows against the raw list read a repeat as a missing recipe and 404'd.
+    requested_ids = set(request.recipe_ids)
+
     recipes = (
         db.query(Recipe)
         .filter(
-            Recipe.id.in_(request.recipe_ids),
+            Recipe.id.in_(requested_ids),
             Recipe.user_id == current_user.id,
             Recipe.deleted_at == None,
         )
@@ -32,7 +38,10 @@ def create_shopping_list(
         .all()
     )
 
-    if len(recipes) != len(request.recipe_ids):
+    # Still the ownership gate: the filters above drop anything not the caller's own
+    # live recipe, so a short result means "not yours / not there" either way. 404
+    # rather than 403 so it doesn't confirm the id exists.
+    if len(recipes) != len(requested_ids):
         raise HTTPException(status_code=404, detail="One or more recipes not found")
 
     recipes_with_names = []
