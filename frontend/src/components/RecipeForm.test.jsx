@@ -80,6 +80,37 @@ describe('RecipeForm voice-notes', () => {
   })
 })
 
+describe('RecipeForm cover photo', () => {
+  it('offers a keyboard-reachable file input in the empty state', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const input = screen.getByLabelText('Add a cover photo')
+    expect(input).toHaveAttribute('type', 'file')
+    // Regression guard: the input used to be `hidden` (display:none), which
+    // drops it out of the tab order and made the photo step unreachable by
+    // keyboard. It must stay visually-hidden-but-focusable instead.
+    expect(input).toHaveClass('sr-only')
+    expect(screen.getByText('Add a photo')).toBeInTheDocument()
+  })
+
+  it('shows the chosen cover with a remove control instead of the picker', () => {
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{ coverPhotoUrl: 'https://img.test/adobo.jpg' }}
+        onSubmit={() => {}}
+      />,
+    )
+    expect(screen.getByAltText('Recipe cover')).toHaveAttribute(
+      'src',
+      'https://img.test/adobo.jpg',
+    )
+    expect(
+      screen.getByRole('button', { name: /remove photo/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Add a cover photo')).not.toBeInTheDocument()
+  })
+})
+
 describe('RecipeForm intro', () => {
   it('renders the intro node under the heading when provided', () => {
     render(

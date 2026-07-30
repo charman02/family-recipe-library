@@ -249,14 +249,23 @@ export default function RecipeForm({
       )}
 
       <form onSubmit={handleSubmit}>
-        {/* Cover photo */}
+        {/* Cover photo — a sticker photo target, matching the frame RecipeCard
+            and RecipeBody put around a real cover: ink outline, hard offset
+            shadow, and the same 150px photo height so the empty box previews
+            the space the picture will occupy. The old dashed-outline dropzone
+            was the one surface still speaking the pre-redesign language. */}
         {coverPhotoUrl ? (
-          <div className="relative w-full h-[120px] rounded-xl overflow-hidden mb-1.5">
+          <div className="relative sticker overflow-hidden bg-card w-full h-[150px] mb-1.5">
             <img
               src={coverPhotoUrl}
               alt="Recipe cover"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover block"
             />
+            {/* Corner stamp — same saffron tag RecipeCard pins on a cover, so a
+                chosen photo reads as finished rather than as a raw preview. */}
+            <span className="absolute top-2 left-2 font-display font-bold uppercase tracking-[0.06em] text-[9.5px] text-ink bg-saffron border-2 border-ink px-2 py-0.5 rounded-full">
+              Cover photo
+            </span>
             <button
               type="button"
               onClick={removePhoto}
@@ -267,20 +276,46 @@ export default function RecipeForm({
             </button>
           </div>
         ) : (
-          <label className="flex flex-col items-center justify-center w-full h-[120px] rounded-xl border-2 border-dashed border-ink/45 bg-peach text-terra cursor-pointer mb-1.5">
+          <label
+            aria-busy={uploading || undefined}
+            className={`relative sticker sticker-press flex flex-col items-center justify-center w-full h-[150px] mb-1.5 cursor-pointer focus-within:ring-4 focus-within:ring-terra/25 ${
+              // A failed pick tints the target itself, so the retry is obvious
+              // at the thing you tap — not only in the pill below it.
+              photoError ? 'bg-coral/20' : 'bg-peach'
+            }`}
+          >
+            {/* sr-only, NOT `hidden`: display:none drops the input out of the tab
+                order, which made the whole photo step keyboard-unreachable.
+                Clipping keeps it focusable, and focus-within rings the box the
+                user can actually see. aria-label keeps the accessible name
+                stable while the visible copy swaps between states. */}
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
               onChange={handlePhotoSelect}
-              className="hidden"
+              aria-label="Add a cover photo"
+              className="sr-only"
             />
             {uploading ? (
-              <span className="text-sm text-terra/70">Uploading…</span>
+              // Bobbing saffron badge — the same waiting signal as <Loader>.
+              <>
+                <span className="flex items-center justify-center w-14 h-14 rounded-full bg-saffron border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] text-ink animate-bounce">
+                  <Icon name="camera" className="w-7 h-7" />
+                </span>
+                <span className="font-display font-black text-[16px] text-ink mt-3 leading-none">
+                  Uploading…
+                </span>
+              </>
             ) : (
               <>
-                <Icon name="camera" className="w-[30px] h-[30px] mb-1.5" />
-                <span className="font-sans text-[13px]">
-                  Add a photo to bring this recipe to life
+                <span className="flex items-center justify-center w-14 h-14 rounded-full bg-cream border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] text-ink -rotate-[6deg]">
+                  <Icon name="camera" className="w-7 h-7" />
+                </span>
+                <span className="font-display font-black text-[17px] text-ink mt-3 leading-none">
+                  Add a photo
+                </span>
+                <span className="font-display italic text-[12.5px] text-ink-soft mt-1.5">
+                  It brings the dish to life
                 </span>
               </>
             )}
@@ -291,7 +326,7 @@ export default function RecipeForm({
             <span className="error-pill">{photoError}</span>
           </p>
         ) : (
-          <p className="font-sans text-[11px] text-ink-soft mb-4">
+          <p className="font-display italic text-[12px] text-ink-soft mb-4">
             JPEG, PNG, WebP, or iPhone (HEIC) · max 10 MB
           </p>
         )}
