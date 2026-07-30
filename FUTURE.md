@@ -1,6 +1,6 @@
 # Future Roadmap
 
-This document outlines planned features and improvements for Issei — a full-stack app for preserving the family recipes immigrant elders carry but never wrote down (*issei* = "first generation"). The current build (FastAPI backend + React frontend) centers on the **living recipe**: a recipe as a vessel for a person — the cook's voice and story woven in, their imprecise measurements preserved verbatim — kept in a warm, playful "kitchen" UI and **handed down** to family. It includes recipe management, serving-size scaling (which preserves folk measures like "3 soup spoons" rather than normalizing them), shopping lists, cover-photo upload, and the handoff flow — shareable capability links that let a recipient read and cook the full recipe with no account — over private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
+This document outlines planned features and improvements for Issei — a full-stack app for preserving the family recipes immigrant elders carry but never wrote down (*issei* = "first generation"). The current build (FastAPI backend + React frontend) centers on the **living recipe**: a recipe as a vessel for a person — the cook's voice and story woven in, their imprecise measurements preserved verbatim — kept in a warm, playful "kitchen" UI and **handed down** to family. It includes recipe management, serving-size scaling (which preserves folk measures like "3 soup spoons" rather than normalizing them), cover-photo upload, and the handoff flow — shareable capability links that let a recipient read and cook the full recipe with no account — over private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
 
 ---
 
@@ -60,15 +60,17 @@ This document outlines planned features and improvements for Issei — a full-st
 
 ---
 
-## Ingredient Canonicalization
+## Cook-From-Ingredients (and What the Shopping List Taught Us)
 
-**Current state:** Shopping list consolidation matches ingredients by normalized name (lowercase, stripped whitespace) only. "Garlic cloves" and "minced garlic" are treated as two different ingredients and never consolidated, even though they're the same shopping list item.
+**Current state:** There is no shopping list. One shipped, unreached by any UI, and was **removed** — see the note below, because the reason is the interesting part.
 
-**What this adds:** A canonicalization layer that recognizes when different ingredient names refer to the same underlying grocery item, so the shopping list can consolidate them correctly. If one recipe calls for "3 garlic cloves" and another calls for "1 tbsp minced garlic," the shopping list should tell you how much garlic to actually buy, not list them as two separate items.
+**What this could add:** The genuine job-to-be-done is "I want to cook this — what do I need, and what do I already have?" Two honest shapes for that:
+1. **Per-recipe checklist** — group the ingredients by recipe with checkboxes, no cross-recipe arithmetic. Delivers the actual store task with nothing that can lie.
+2. **Cook-from-what-I-have** — the inverse, and the more differentiated one: given what's in the kitchen, which kept recipes are within reach? A tester reached for this idea independently ("photo of your fridge → recipes").
 
-**Why it matters:** This is the most common real-world failure case of the current shopping list feature. Recipes from different sources (or even the same person on different days) describe the same ingredient differently, and the whole point of a shopping list is to tell you what to buy — not to require you to mentally merge entries yourself.
+**Why the consolidating shopping list was removed:** It summed ingredients across recipes — which means normalizing amounts, which is precisely what this app exists to refuse. On its most common data it produced `"a good splash + a glug"`: not a shopping list, just two source lines concatenated. Every *real* total also depended on the ingredient happening to appear in a hand-maintained density table, which only ever grew when someone noticed a wrong number. And because no screen ever called it, a crash bug, several wrong-total bugs, and an inverted unit-conversion ratio all lived in it undetected for its entire existence. Deleted rather than polished.
 
-**Implementation notes:** Could start with a manual mapping table (canonical name → list of known aliases) for common ingredients, similar in spirit to the density table already used for unit conversion. A more advanced version could use fuzzy string matching or an LLM-based normalization step, but a simple alias table would cover most real cases for v1.
+**Implementation notes:** Ingredient canonicalization ("garlic cloves" vs. "minced garlic" vs. "garlic") is the real prerequisite for either shape, and it's needed for search too — so it's worth building as its own layer rather than inside a list feature. Start with an alias table (canonical name → known aliases) for common ingredients; fuzzy matching or an LLM normalization pass is a later refinement.
 
 ---
 
@@ -81,4 +83,4 @@ In order of priority:
 3. **iOS mobile app** — now that the web frontend is live, a native mobile experience makes sense given that the real use case (checking a recipe while cooking, contributing a recipe from a phone) is fundamentally mobile-first.
 4. **Translation** — highest priority among the "deeper feature" additions, since it directly addresses the core audience: families where the cooking generation and the reading generation may not share a primary language.
 5. **Richer photo/video support** — a cover photo per recipe already ships via Cloudinary; going further (per-step media, video, community gallery) meaningfully improves usability for techniques that are hard to describe in text.
-6. **Ingredient canonicalization** — the most clearly-scoped technical improvement, but lower priority than the others since the shopping list already works correctly for the common case (exact or near-exact name matches); this fixes an edge case rather than unlocking new usage.
+6. **Ingredient canonicalization** — the most clearly-scoped technical improvement, and now a prerequisite rather than a nicety: it's what any cook-from-ingredients or ingredient-search feature would be built on. Lower priority than the above because nothing currently depends on it.
