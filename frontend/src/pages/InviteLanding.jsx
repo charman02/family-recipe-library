@@ -15,32 +15,70 @@ import Loader from '../components/Loader'
 // Signing up is what lets you KEEP it, cook it, and add what only you know — so
 // the CTA sits under the recipe (where intent is highest after reading) with a
 // light one at the top for anyone who already knows they want it.
+// Why a failure is NOT just "this link is dead": the recipient has no account
+// and no support path, so a wrong diagnosis here costs them the recipe entirely
+// — they conclude the sender's link is broken and give up. Only the server
+// saying 404 means the link is genuinely gone; everything else is our problem
+// and is worth retrying.
+function describeFailure(err) {
+  const status = err?.response?.status
+  if (status === 404) {
+    return {
+      message: 'This link is no longer good — ask whoever sent it to pass it on again.',
+      canRetry: false,
+    }
+  }
+  if (status >= 500) {
+    return { message: 'issei is having trouble right now.', canRetry: true }
+  }
+  if (!err?.response) {
+    // No response at all: offline, DNS, CORS, or a request that timed out.
+    return { message: "Couldn't reach issei — check your connection.", canRetry: true }
+  }
+  return { message: 'Something went wrong opening this recipe.', canRetry: true }
+}
+
 export default function InviteLanding() {
   const { token } = useParams()
   const [preview, setPreview] = useState(null)
-  const [error, setError] = useState('')
+  const [failure, setFailure] = useState(null)
+  // Bumping this re-runs the fetch effect — the retry button's whole mechanism.
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let live = true
+    setFailure(null)
     getInvitePreview(token)
       .then(({ data }) => {
         if (live) setPreview(data)
       })
-      .catch(() => {
-        if (live) setError('This invite link is not valid or has expired.')
+      .catch((err) => {
+        if (live) setFailure(describeFailure(err))
       })
     return () => {
       live = false
     }
-  }, [token])
+  }, [token, attempt])
 
-  if (error) {
+  if (failure) {
     return (
       <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-5 px-6 text-center">
-        <span className="error-pill">{error}</span>
+        <span className="error-pill">{failure.message}</span>
+        {failure.canRetry && (
+          <button
+            onClick={() => setAttempt((n) => n + 1)}
+            className="inline-block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform"
+          >
+            Try again
+          </button>
+        )}
         <Link
           to="/login"
-          className="inline-block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform"
+          className={
+            failure.canRetry
+              ? 'font-display font-bold text-[14px] text-terra underline'
+              : 'inline-block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform'
+          }
         >
           Go to issei
         </Link>

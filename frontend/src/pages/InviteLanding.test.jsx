@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 const PREVIEW = {
@@ -110,12 +110,53 @@ describe('InviteLanding', () => {
     expect(screen.getAllByText(/their way/i).length).toBe(1)
   })
 
-  it('shows an error and a way into the app when the link is bad', async () => {
-    getInvitePreview.mockRejectedValueOnce(new Error('404'))
+  it('says the link is dead ONLY when the server says so (404)', async () => {
+    getInvitePreview.mockRejectedValueOnce({ response: { status: 404 } })
     renderAt('/invite/nope')
     await waitFor(() =>
-      expect(screen.getByText(/not valid or has expired/i)).toBeInTheDocument(),
+      expect(screen.getByText(/no longer/i)).toBeInTheDocument(),
     )
+    // no false hope of retrying something that genuinely doesn't exist
+    expect(
+      screen.queryByRole('button', { name: /try again/i }),
+    ).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /issei/i })).toBeInTheDocument()
+  })
+
+  it('offers a RETRY when the request never reached the server', async () => {
+    // No `response` = the request died in transit: offline, DNS, CORS, timeout.
+    // Telling this recipient their link expired is a lie that costs them the
+    // recipe — they have no account and no way to ask the sender about it.
+    getInvitePreview.mockRejectedValueOnce({ request: {} })
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText(/couldn't reach issei/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/expired/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+  })
+
+  it('offers a RETRY when the server is up but broken (5xx)', async () => {
+    getInvitePreview.mockRejectedValueOnce({ response: { status: 503 } })
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText(/having trouble/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/expired/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+  })
+
+  it('recovers the recipe when the retry succeeds', async () => {
+    getInvitePreview.mockRejectedValueOnce({ request: {} })
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument(),
+    )
+    getInvitePreview.mockResolvedValueOnce({ data: PREVIEW })
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }))
+    await waitFor(() =>
+      expect(screen.getByText('chicken thighs')).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 })
