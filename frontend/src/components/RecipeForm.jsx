@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import client from '../api/client'
 import Icon from './Icon'
 import MarkerTitle from './MarkerTitle'
@@ -89,6 +89,21 @@ export default function RecipeForm({
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Cover-photo upload concurrency. The picker stays enabled during an upload
+  // on purpose — on a slow phone connection a disabled input that sits there
+  // "Uploading…" for 30s is indistinguishable from a hung app, and the user's
+  // instinct (pick again) has to keep working. So instead of locking the input
+  // we make a second pick unambiguously win:
+  //   • uploadSeq — every pick claims a ticket; only the newest ticket may write
+  //     state. Without it whichever response lands LAST wins, which on a flaky
+  //     link is often the FIRST photo, so replacing A with B silently kept A.
+  //   • abortRef — cancel the superseded request so it stops competing for the
+  //     phone's uplink, making the photo the user actually wants arrive sooner.
+  // The seq guard is what makes correctness not depend on the abort landing in
+  // time: a response already in flight when we abort is still ignored.
+  const uploadSeq = useRef(0)
+  const abortRef = useRef(null)
+
   const heading = mode === 'edit' ? 'Edit recipe' : 'Keep a recipe'
   const defaultSubmitLabel =
     mode === 'edit' ? 'Save changes' : 'Keep this recipe'
@@ -98,6 +113,27 @@ export default function RecipeForm({
   async function handlePhotoSelect(e) {
     let file = e.target.files?.[0]
     if (!file) return
+    const input = e.target
+
+    const seq = ++uploadSeq.current
+    // Any pick supersedes the one before it, so drop the older request.
+    abortRef.current?.abort()
+    const controller =
+      typeof AbortController === 'function' ? new AbortController() : null
+    abortRef.current = controller
+    // Superseded picks must not touch state (that's the race) — and must not
+    // clear `uploading`/reset the input either, or the newer upload's spinner
+    // would vanish while it's still running.
+    const isCurrent = () => uploadSeq.current === seq
+
+    // A rejected pick only reports itself if it's still the current one.
+    function reject(message) {
+      if (!isCurrent()) return
+      setPhotoError(message)
+      setUploading(false)
+      input.value = ''
+    }
+
     setPhotoError('')
     setUploading(true)
 
@@ -118,11 +154,7 @@ export default function RecipeForm({
             { type: 'image/jpeg' },
           )
         } catch {
-          setPhotoError(
-            "Couldn't read that iPhone photo. Try again, or pick a JPEG.",
-          )
-          setUploading(false)
-          e.target.value = ''
+          reject("Couldn't read that iPhone photo. Try again, or pick a JPEG.")
           return
         }
       }
@@ -133,15 +165,11 @@ export default function RecipeForm({
       const typeOk = ACCEPTED_IMAGE_TYPES.includes(file.type)
       const extOk = hasAcceptedExtension(file.name)
       if (!typeOk && !extOk) {
-        setPhotoError('Please choose a JPEG, PNG, or WebP image.')
-        setUploading(false)
-        e.target.value = ''
+        reject('Please choose a JPEG, PNG, or WebP image.')
         return
       }
       if (file.size > MAX_UPLOAD_BYTES) {
-        setPhotoError('That image is too large (max 10 MB).')
-        setUploading(false)
-        e.target.value = ''
+        reject('That image is too large (max 10 MB).')
         return
       }
 
@@ -149,19 +177,38 @@ export default function RecipeForm({
       formData.append('file', file)
       const { data } = await client.post('/upload/recipe-photo', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        signal: controller?.signal,
       })
+      if (!isCurrent()) return // a newer pick owns the cover now
       setCoverPhotoUrl(data.url)
     } catch (err) {
+      // Includes the abort of a superseded request, which isn't a user-facing
+      // failure — isCurrent() filters it out along with any other stale error.
+      if (!isCurrent()) return
       setPhotoError(
         err.response?.data?.detail || 'Photo upload failed. Please try again.',
       )
     } finally {
-      setUploading(false)
-      e.target.value = '' // reset so re-selecting the same file fires onChange
+      if (isCurrent()) {
+        setUploading(false)
+        input.value = '' // reset so re-selecting the same file fires onChange
+      }
     }
   }
 
   function removePhoto() {
+    // Local-state only: the uploaded Cloudinary asset is deliberately left in
+    // place. Deleting here would be wrong, not just incomplete — on the edit
+    // form this URL belongs to the *saved* recipe, so removing and then
+    // abandoning the form would leave the still-saved recipe pointing at a
+    // deleted image. Orphan cleanup has to be server-side and reference-aware;
+    // see the note in app/routers/upload.py.
+    // Retiring the ticket is defensive: today the remove button and the picker
+    // never render at once, so no upload can be in flight here. If that ever
+    // changes (e.g. previewing the new photo while it uploads) a landing
+    // response would silently re-fill the cover the user just cleared.
+    uploadSeq.current++
+    abortRef.current?.abort()
     setCoverPhotoUrl('')
     setPhotoError('')
   }

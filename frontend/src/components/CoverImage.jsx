@@ -1,7 +1,8 @@
 // Renders a recipe cover photo, or — when no photo is set — a warm peach
 // placeholder carrying the issei. wordmark, in the sticker design language.
-// The prompt text shows at md/lg (form dropzone, detail hero) but is suppressed
-// at sm so small cards read cleanly with just the mark.
+// The prompt text shows at md/lg (recipe cards, the detail hero) but is
+// suppressed at sm so small cards read cleanly with just the mark. Read
+// surfaces only — the add/edit form renders its own photo picker, not this.
 const sizes = {
   sm: { mark: 'text-2xl', text: 'text-[10px]', prompt: false },
   md: { mark: 'text-4xl', text: 'text-xs', prompt: true },
