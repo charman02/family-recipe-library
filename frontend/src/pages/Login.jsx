@@ -41,7 +41,10 @@ export default function Login() {
         // A bad/expired token shouldn't block sign-in; just proceed home.
       }
     }
-    navigate('/')
+    // REPLACE, not push: a pushed entry leaves /login sitting behind Home, so the
+    // first thing a new user does — swipe/press back — lands them on the sign-in
+    // screen while already signed in. Replacing drops it from history entirely.
+    navigate('/', { replace: true })
   }
 
   async function handleLogin(e) {

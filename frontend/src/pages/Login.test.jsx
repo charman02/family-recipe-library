@@ -1,11 +1,50 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../api/client', () => ({ default: { post: vi.fn() } }))
+import client from '../api/client'
+
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async () => ({
+  ...(await vi.importActual('react-router-dom')),
+  useNavigate: () => mockNavigate,
+}))
 import Login from './Login'
 
+beforeEach(() => {
+  localStorage.clear()
+  mockNavigate.mockClear()
+  client.post.mockReset()
+})
+
 describe('Login', () => {
+  it('REPLACES history on sign-in so back does not return to /login', async () => {
+    // The bug this guards: a pushed entry left /login behind Home, so the very
+    // first back gesture a new user made showed them the sign-in screen while
+    // already signed in — which reads as "back is broken".
+    client.post.mockResolvedValue({
+      data: { access_token: 'tok', user: { id: 1, first_name: 'Charlie' } },
+    })
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    )
+    fireEvent.change(screen.getByPlaceholderText('Email'), {
+      target: { value: 'a@b.com' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('Password'), {
+      target: { value: 'pw123456' },
+    })
+    // both the tab and the submit read "Sign in", so submit the form itself
+    fireEvent.submit(screen.getByPlaceholderText('Password').closest('form'))
+
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true }),
+    )
+  })
+
   it('uses kitchen signup copy, not the cookbook "Join the table"', () => {
     render(
       <MemoryRouter>
