@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getInvitePreview } from '../api/lineage'
-import CoverImage from '../components/CoverImage'
+import RecipeBody from '../components/RecipeBody'
 import Loader from '../components/Loader'
 
-// The soft-wall recipient landing (spec §4.3): a warm preview — name, who it's
-// from, the story, the dish's photo — then a signup gate to participate. The
-// emotional hook lands BEFORE the ask. Public route; no account required to view.
+// The recipient landing (/invite/:token) — the far end of the handoff.
+//
+// This used to be a soft wall: name, who it's from, story, photo, then a signup
+// gate before you could read a single ingredient. That inverted the point. The
+// person holding this link has never tasted the dish and wants to cook it, so
+// the recipe is OPEN here — the same <RecipeBody> the owner reads, cooking mode
+// and all. The token is the permission.
+//
+// Signing up is what lets you KEEP it, cook it, and add what only you know — so
+// the CTA sits under the recipe (where intent is highest after reading) with a
+// light one at the top for anyone who already knows they want it.
 export default function InviteLanding() {
   const { token } = useParams()
   const [preview, setPreview] = useState(null)
@@ -43,52 +51,48 @@ export default function InviteLanding() {
     return <Loader label="Opening…" />
   }
 
+  const signupHref = `/login?tab=signup&invite=${token}`
+
   return (
-    <div className="min-h-screen bg-cream flex flex-col items-center px-6 py-12 text-center">
-      <h1 className="font-display font-black text-[30px] leading-none text-ink mb-6">
-        issei<span className="text-terra">.</span>
-      </h1>
+    <div className="min-h-screen bg-cream">
+      <div className="max-w-[430px] mx-auto px-5 pt-10 pb-10">
+        {/* Whose hand this came from — the framing, before the dish. */}
+        <div className="text-center">
+          <h1 className="font-display font-black text-[26px] leading-none text-ink">
+            issei<span className="text-terra">.</span>
+          </h1>
+          {preview.from_name && (
+            <p className="font-display font-bold uppercase tracking-[0.18em] text-[11px] text-terra mt-5">
+              {preview.from_name} passed you
+            </p>
+          )}
+          <h2 className="font-display font-black text-[32px] leading-[1.05] text-ink mt-1.5">
+            {preview.name}
+          </h2>
+          <p className="font-display text-[13px] text-ink-soft mt-3">
+            Yours to read and cook — no account needed.
+          </p>
+        </div>
 
-      <div className="sticker overflow-hidden w-[230px] h-[156px]">
-        <CoverImage
-          url={preview.cover_photo_url}
-          size="md"
-          className="w-full h-full object-cover"
-        />
-      </div>
+        {/* The recipe itself, exactly as the keeper reads it. */}
+        <RecipeBody recipe={preview} />
 
-      {preview.from_name && (
-        <p className="font-display font-bold uppercase tracking-[0.18em] text-[11px] text-terra mt-5 mb-1">
-          {preview.from_name} passed you
-        </p>
-      )}
-      <h2 className="font-display font-black text-[28px] text-ink leading-tight">
-        {preview.name}
-      </h2>
-      {preview.origin_attribution && (
-        <p className="text-[14px] mt-1">
-          <span className="font-display italic text-ink-soft">from </span>
-          <span className="font-display font-bold italic text-plum">
-            {preview.origin_attribution.split('·')[0].trim()}
-          </span>
-        </p>
-      )}
-      {preview.story && (
-        <p className="font-hand text-[22px] text-ink mt-5 max-w-sm leading-snug">
-          {preview.story}
-        </p>
-      )}
-      <div className="mt-8 w-full max-w-sm">
-        <Link
-          to={`/login?tab=signup&invite=${token}`}
-          className="block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform"
-        >
-          Keep this recipe →
-        </Link>
-        <p className="font-display text-[13px] text-ink-soft mt-3">
-          Make a free account to cook it, keep it, and add the parts only you
-          know.
-        </p>
+        {/* The ask, placed AFTER the reading — once they know they want it. */}
+        <div className="sticker bg-peach px-5 py-5 mt-8 text-center">
+          <p className="font-display font-black text-[19px] text-ink leading-tight">
+            Keep it in your kitchen
+          </p>
+          <p className="font-display text-[13.5px] text-ink-soft leading-snug mt-1.5">
+            Make a free account to save this recipe, mark it cooked, and add the
+            parts only you know.
+          </p>
+          <Link
+            to={signupHref}
+            className="block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform mt-4"
+          >
+            Keep this recipe →
+          </Link>
+        </div>
       </div>
     </div>
   )

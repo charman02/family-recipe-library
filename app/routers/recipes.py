@@ -18,6 +18,7 @@ from app.schemas.recipe import (
     RecipeResponse,
     RecipeUpdate,
     IngredientResponse,
+    IngredientSectionResponse,
     StepResponse,
     CookIn,
     HandoffIn,
@@ -360,15 +361,22 @@ def accept_handoff(
 
 @router.get("/invite/{token}", response_model=InvitePreview)
 def preview_invite(token: str, db: Session = Depends(get_db)):
-    # Unauthenticated soft-wall preview (spec §4.3). Limited by construction — this
-    # response model cannot carry ingredients/steps. The token is the capability.
+    # Unauthenticated read of a handed-off recipe. The token IS the capability:
+    # whoever holds the link was given the dish, so they can read all of it
+    # without an account — that's the handoff. What stays out of reach is bounded
+    # by InvitePreview (no private `notes`, no account ids), not by a signup gate.
     h = db.query(Handoff).filter(Handoff.token == token).first()
     if h is None:
         raise HTTPException(status_code=404, detail="Invite not found")
     recipe = (
         db.query(Recipe)
         .filter(Recipe.id == h.recipe_id, Recipe.deleted_at == None)
-        .options(selectinload(Recipe.user))
+        .options(
+            selectinload(Recipe.ingredient_sections).selectinload(IngredientSection.ingredients),
+            selectinload(Recipe.ingredients),
+            selectinload(Recipe.steps),
+            selectinload(Recipe.user),
+        )
         .first()
     )
     if recipe is None:
@@ -388,6 +396,16 @@ def preview_invite(token: str, db: Session = Depends(get_db)):
         growth_stage=recipe.growth_stage,
         growth_vitality=recipe.growth_vitality,
         cover_photo_url=recipe.cover_photo_url,
+        description=recipe.description,
+        servings=recipe.servings,
+        prep_time_minutes=recipe.prep_time_minutes,
+        cuisine=recipe.cuisine,
+        diet=recipe.diet,
+        ingredient_sections=[
+            IngredientSectionResponse.model_validate(s) for s in recipe.ingredient_sections
+        ],
+        ingredients=[IngredientResponse.model_validate(i) for i in recipe.ingredients],
+        steps=[StepResponse.model_validate(s) for s in recipe.steps],
     )
 
 

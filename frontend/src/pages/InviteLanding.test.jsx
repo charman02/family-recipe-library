@@ -2,25 +2,59 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
+const PREVIEW = {
+  recipe_id: 5,
+  name: 'Lola’s Adobo',
+  from_name: 'Yoko Matsuda',
+  origin_attribution: 'Lola Remedios · Cebu',
+  story: 'Every Sunday.',
+  growth_stage: 'sprout',
+  growth_vitality: 'bare',
+  cover_photo_url: null,
+  description: 'A braise that tastes like her kitchen.',
+  servings: 4,
+  cuisine: 'Filipino',
+  diet: null,
+  prep_time_minutes: 45,
+  ingredients: [
+    {
+      id: 1,
+      name: 'chicken thighs',
+      quantity_text: '2 lbs',
+      quantity_type: 'precise',
+      position: 1,
+    },
+    {
+      id: 2,
+      name: 'cane vinegar',
+      quantity_text: 'a good splash',
+      quantity_type: 'imprecise',
+      position: 2,
+    },
+  ],
+  ingredient_sections: [],
+  steps: [
+    {
+      id: 1,
+      content: 'Brown the chicken skin-side down.',
+      position: 1,
+      voice_note: 'Don’t crowd the pan or it steams.',
+    },
+    { id: 2, content: 'Add soy and vinegar, simmer.', position: 2 },
+  ],
+}
+
 vi.mock('../api/lineage', () => ({
-  getInvitePreview: vi.fn(() =>
-    Promise.resolve({
-      data: {
-        recipe_id: 5,
-        name: 'Lola’s Adobo',
-        from_name: 'Yoko Matsuda',
-        origin_attribution: 'Lola Remedios · Cebu',
-        story: 'Every Sunday.',
-        growth_stage: 'sprout',
-        growth_vitality: 'bare',
-        cover_photo_url: null,
-      },
-    }),
-  ),
+  getInvitePreview: vi.fn(() => Promise.resolve({ data: PREVIEW })),
 }))
+import { getInvitePreview } from '../api/lineage'
 import InviteLanding from './InviteLanding'
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => {
+  localStorage.clear()
+  getInvitePreview.mockClear()
+  getInvitePreview.mockResolvedValue({ data: PREVIEW })
+})
 
 function renderAt(path) {
   return render(
@@ -32,16 +66,56 @@ function renderAt(path) {
   )
 }
 
-describe('InviteLanding (soft wall)', () => {
-  it('previews name, who-it-from, and story, then invites signup', async () => {
+describe('InviteLanding', () => {
+  it('leads with who passed it and the story', async () => {
     renderAt('/invite/abc123')
     await waitFor(() =>
       expect(screen.getByText('Lola’s Adobo')).toBeInTheDocument(),
     )
     expect(screen.getByText(/Yoko Matsuda/)).toBeInTheDocument()
     expect(screen.getByText(/Every Sunday\./)).toBeInTheDocument()
-    // the gate: a link/button to sign up carrying the token
+  })
+
+  it('offers a signup CTA carrying the invite token', async () => {
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText('Lola’s Adobo')).toBeInTheDocument(),
+    )
     const cta = screen.getByRole('link', { name: /sign up|join|keep this/i })
     expect(cta.getAttribute('href')).toContain('invite=abc123')
+  })
+
+  it('lets the recipient READ the whole recipe with no account', async () => {
+    // The bridge: they have never had the dish and want to cook it. No gate.
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText('chicken thighs')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('2 lbs')).toBeInTheDocument()
+    expect(screen.getByText('cane vinegar')).toBeInTheDocument()
+    expect(screen.getByText('Brown the chicken skin-side down.')).toBeInTheDocument()
+    expect(screen.getByText('Add soy and vinegar, simmer.')).toBeInTheDocument()
+    // the per-step remark — the thing a novice cooking blind needs most
+    expect(screen.getByText(/crowd the pan/)).toBeInTheDocument()
+    // servings + description
+    expect(screen.getByText(/serves 4/i)).toBeInTheDocument()
+    expect(screen.getByText(/tastes like her kitchen/)).toBeInTheDocument()
+  })
+
+  it('keeps imprecise amounts verbatim, badged as theirs', async () => {
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText('a good splash')).toBeInTheDocument(),
+    )
+    expect(screen.getAllByText(/their way/i).length).toBe(1)
+  })
+
+  it('shows an error and a way into the app when the link is bad', async () => {
+    getInvitePreview.mockRejectedValueOnce(new Error('404'))
+    renderAt('/invite/nope')
+    await waitFor(() =>
+      expect(screen.getByText(/not valid or has expired/i)).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('link', { name: /issei/i })).toBeInTheDocument()
   })
 })

@@ -164,8 +164,18 @@ class HandoffResponse(BaseModel):
 
 
 class InvitePreview(BaseModel):
-    # The soft-wall preview (spec §4.3). DELIBERATELY LIMITED: name, who-it's-from,
-    # story, growth plant — NEVER ingredients/steps/notes. Viewable without an account.
+    # The recipient's view of a handed-off recipe, readable WITHOUT an account.
+    #
+    # This used to be a soft wall (name/story/photo only) that made the recipient
+    # sign up before reading the ingredients. That inverted the whole point: the
+    # person on the other end of a handoff has never tasted the dish and wants to
+    # COOK it, so gating the body is friction at the moment of highest intent.
+    # The token is the capability; holding the link IS the permission to read.
+    #
+    # Still deliberately NOT exposed — the recipient gets the dish, not the
+    # account: the owner's private `notes` scratchpad, user_id/author ids, and
+    # anything else that isn't the recipe as cooked. Signing up is what unlocks
+    # keeping, cooking, and adding to it.
     recipe_id: int
     name: str
     from_name: Optional[str] = None
@@ -174,6 +184,14 @@ class InvitePreview(BaseModel):
     growth_stage: str = "seed"
     growth_vitality: str = "bare"
     cover_photo_url: Optional[str] = None
+    description: Optional[str] = None
+    servings: Optional[int] = None
+    prep_time_minutes: Optional[int] = None
+    cuisine: Optional[str] = None
+    diet: Optional[str] = None
+    ingredient_sections: list[IngredientSectionResponse] = []
+    ingredients: list[IngredientResponse] = []
+    steps: list[StepResponse] = []
 
 
 class RecipeUpdate(BaseModel):
