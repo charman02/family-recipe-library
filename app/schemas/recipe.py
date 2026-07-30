@@ -52,6 +52,11 @@ class IngredientResponse(BaseModel):
     quantity_type: str
     notes: Optional[str] = None
     position: int
+    # Only set by the scale endpoint, and only when an amount was deliberately
+    # NOT scaled (a folk unit that would land on a fraction, or a non-linear
+    # measure like "3 fingers of water"). Carries the multiplier — e.g. "×2.5" —
+    # so the UI can show the cook's own words plus what to adjust by feel.
+    scale_note: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
