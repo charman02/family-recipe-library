@@ -29,7 +29,12 @@ export default function Login() {
     setLastName('')
   }
 
-  async function finishAuth(data) {
+  // `isNew` is what separates the two callers: only handleSignup passes it, so a
+  // returning sign-in can never trip the welcome no matter how empty their
+  // kitchen looks. The alternative — inferring "new" from having no recipes —
+  // would re-teach anyone who signed up and hasn't kept a dish yet, every single
+  // time they came back.
+  async function finishAuth(data, { isNew = false } = {}) {
     localStorage.setItem('issei_token', data.access_token)
     localStorage.setItem('issei_user', JSON.stringify(data.user))
     if (inviteToken) {
@@ -41,10 +46,16 @@ export default function Login() {
         // A bad/expired token shouldn't block sign-in; just proceed home.
       }
     }
+    // An invite recipient is deliberately exempt even when brand new: they have
+    // just scrolled a real recipe on /invite/:token and signed up to keep that
+    // one dish. A tutorial standing between them and it would be the app talking
+    // over the thing it's trying to explain — and Home leads with their recipe,
+    // which teaches it better than any panel.
+    const destination = isNew && !inviteToken ? '/welcome' : '/'
     // REPLACE, not push: a pushed entry leaves /login sitting behind Home, so the
     // first thing a new user does — swipe/press back — lands them on the sign-in
     // screen while already signed in. Replacing drops it from history entirely.
-    navigate('/', { replace: true })
+    navigate(destination, { replace: true })
   }
 
   async function handleLogin(e) {
@@ -87,7 +98,7 @@ export default function Login() {
       const { data } = await client.post('/auth/login', params, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       })
-      await finishAuth(data)
+      await finishAuth(data, { isNew: true })
     } catch (err) {
       setError(err.response?.data?.detail || 'Signup failed')
     } finally {
@@ -103,37 +114,31 @@ export default function Login() {
           issei<span className="text-terra">.</span>
         </h1>
       </div>
-      <p className="font-display italic text-[16px] text-ink-soft mb-7 text-center max-w-xs">
-        Recipes that live in memory, not cookbooks.
+      {/* One line, and only one. The explaining moved to /welcome after signup:
+          a sign-in screen's job is to get a returning user past it, and an
+          earlier pass that stacked a pitch, a sample recipe and a glossary here
+          made the form itself something you had to scroll to reach. This line
+          stays because a wordmark alone leaves a first-time visitor with no idea
+          what they're signing into. */}
+      <p className="font-display italic text-[16px] leading-snug text-ink-soft mb-7 text-center max-w-[19rem]">
+        For the dish someone cooked you that you&rsquo;d never had before.
       </p>
 
-      {/* The meaning of the name — a peach sticker card. One small pop of color:
-          a coral heart stamp straddling the corner (heritage/heart, not a repeat
-          of the Home dish discs). */}
-      <div className="relative w-full max-w-sm mb-8 sticker bg-peach p-5">
-        <span
-          aria-hidden="true"
-          className="absolute -top-3 -right-3 flex items-center justify-center w-10 h-10 rounded-full bg-coral border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] rotate-12"
-        >
-          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
-            <path
-              d="M12 20s-7-4.6-7-9.4A3.6 3.6 0 0 1 12 8a3.6 3.6 0 0 1 7 2.6C19 15.4 12 20 12 20Z"
-              fill="#FCF8EE"
-              stroke="#2E3A24"
-              strokeWidth="1.6"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-        <span className="inline-block font-display font-black text-[13px] text-ink bg-cream border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24] mb-3">
-          一世 · issei
-        </span>
-        <p className="font-display italic text-[15px] leading-relaxed text-ink">
-          The first of a family to arrive somewhere new — the ones who carry the
-          recipes no one wrote down. This is where they stay alive, passed from
-          one generation to the next.
-        </p>
-      </div>
+      {inviteToken && (
+        /* COLD INVITE RECIPIENT — they arrive here having just read a real
+           recipe on /invite/:token, so they already know what the app is. What
+           they need is the thread back to the dish they were reading, not a
+           general introduction. (They skip /welcome after signup too, for the
+           same reason — see finishAuth.) */
+        <div className="w-full max-w-sm mb-7 sticker bg-peach px-5 py-4 text-center">
+          <p className="font-display font-black text-[17px] leading-tight text-ink">
+            One more step to keep that recipe.
+          </p>
+          <p className="font-display text-[13.5px] leading-snug text-ink-soft mt-1.5">
+            Make an account and it&rsquo;s yours — in your kitchen, for good.
+          </p>
+        </div>
+      )}
 
       <div className="w-full max-w-sm">
         <div className="flex bg-cream border-2 border-ink rounded-full p-1 mb-6">
