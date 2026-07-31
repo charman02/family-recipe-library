@@ -3,17 +3,21 @@ import { useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/RecipeForm'
 import HandoffInvite from '../components/HandoffInvite'
 import BackButton from '../components/BackButton'
-import FieldLabel from '../components/FieldLabel'
 import VisibilityChoice from '../components/VisibilityChoice'
+import SourceFields from '../components/SourceFields'
 import { buildOriginPayload } from '../lib/lineagePayload'
 import { plantRecipe } from '../api/lineage'
 
-// The add-a-recipe flow (route /add). A short heritage doorway (who this recipe
-// came from) → capture → the recipe form → a "saved" confirmation → an optional
-// hand-off. Kitchen look: cream, Fraunces, recipe-first — no plants, no growth.
+// The add-a-recipe flow (route /add): doorway (where did this come from?) → the
+// recipe form → a "saved" confirmation → an optional hand-off.
+//
+// There used to be a third screen between the doorway and the form, collecting the
+// source's name/place/year/memory. Testers found the flow too effortful and one
+// abandoned mid-way, so that screen is now folded into the top of the form itself
+// (SourceFields) — one less page to get through, same fields.
 export default function PlantRecipe() {
   const navigate = useNavigate()
-  const [step, setStep] = useState('doorway') // doorway|origin|form|saved|handoff
+  const [step, setStep] = useState('doorway') // doorway|form|saved|handoff
   const [originMode, setOriginMode] = useState(null) // 'ancestor'|'mine'
   const [origin, setOrigin] = useState({
     name: '',
@@ -21,7 +25,6 @@ export default function PlantRecipe() {
     year: '',
     memory: '',
   })
-  const [selfMemory, setSelfMemory] = useState('')
   // Private-by-default, matching the column default: sharing is a deliberate act,
   // never something the flow does on the user's behalf.
   const [visibility, setVisibility] = useState('private')
@@ -29,28 +32,22 @@ export default function PlantRecipe() {
 
   function chooseDoor(mode) {
     setOriginMode(mode)
-    setStep('origin')
+    setStep('form')
   }
 
-  // Step-aware back: doorway exits the flow (→ Home); each later step returns to
-  // the one before it.
+  // Step-aware back: doorway exits the flow (→ Home); the form returns to it.
   function goBack() {
-    if (step === 'doorway') navigate('/')
-    else if (step === 'origin') setStep('doorway')
-    else if (step === 'form') setStep('origin')
+    if (step === 'form') setStep('doorway')
     else navigate('/')
   }
 
   async function handleFormSubmit(formPayload) {
     const payload = { ...formPayload, visibility }
-    if (originMode === 'ancestor') {
-      // The doorway memory belongs to the SOURCE (origin.memory), which is
-      // distinct from the dish's own story — leave payload.story from the form.
+    if (originMode === 'ancestor' && origin.name.trim()) {
+      // Attribution only — the dish's story lives in payload.story from the form,
+      // so there is a single story input rather than two that could disagree.
       payload.origin = buildOriginPayload(origin)
     }
-    // On the 'mine' path the doorway memory seeds the form's Story field via
-    // initialValues below, so formPayload.story is already authoritative — no
-    // override here (that would silently discard edits made in the form).
     const { data } = await plantRecipe(payload)
     setSaved(data)
     setStep('saved')
@@ -112,118 +109,26 @@ export default function PlantRecipe() {
     )
   }
 
-  if (step === 'origin') {
-    return (
-      <div className="min-h-screen bg-cream px-[18px] pt-5">
-        <div className="mb-4">
-          <BackButton onClick={goBack} label="Back" />
-        </div>
-        {originMode === 'ancestor' ? (
-          <>
-            <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-plum text-cream border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24]">
-              💛 The source
-            </span>
-            <h1 className="font-display font-black text-[28px] text-ink leading-tight mt-4">
-              Who taught you
-              <br />
-              this recipe?
-            </h1>
-            <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
-              They&rsquo;ll be remembered as its source.
-            </p>
-            <label className="block mb-3">
-              <FieldLabel>Their name</FieldLabel>
-              <input
-                className="field"
-                placeholder="e.g. Lola Remedios"
-                value={origin.name}
-                onChange={(e) => setOrigin({ ...origin, name: e.target.value })}
-              />
-            </label>
-            <div className="flex gap-2.5 mb-3">
-              <label className="block flex-1">
-                <FieldLabel>Place</FieldLabel>
-                <input
-                  className="field"
-                  placeholder="Cebu"
-                  value={origin.place}
-                  onChange={(e) =>
-                    setOrigin({ ...origin, place: e.target.value })
-                  }
-                />
-              </label>
-              <label className="block flex-1">
-                <FieldLabel>Year</FieldLabel>
-                <input
-                  className="field"
-                  placeholder="1974"
-                  value={origin.year}
-                  onChange={(e) => setOrigin({ ...origin, year: e.target.value })}
-                />
-              </label>
-            </div>
-            <label className="block mb-4">
-              <FieldLabel accent="plum">A memory of them</FieldLabel>
-              <textarea
-                className="field resize-none"
-                rows={3}
-                placeholder="A memory of them & this dish (optional)"
-                value={origin.memory}
-                onChange={(e) => setOrigin({ ...origin, memory: e.target.value })}
-              />
-            </label>
-            <button
-              className="btn-primary disabled:opacity-50"
-              disabled={!origin.name.trim()}
-              onClick={() => setStep('form')}
-            >
-              Continue to the recipe →
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-mint border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24]">
-              ✦ Your own
-            </span>
-            <h1 className="font-display font-black text-[28px] text-ink leading-tight mt-4">
-              This one starts
-              <br />
-              with you.
-            </h1>
-            <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
-              You&rsquo;re where this dish begins.
-            </p>
-            <label className="block mb-4">
-              <FieldLabel accent="plum">What made this yours</FieldLabel>
-              <textarea
-                className="field resize-none"
-                rows={4}
-                placeholder="What made this yours? (optional)"
-                value={selfMemory}
-                onChange={(e) => setSelfMemory(e.target.value)}
-              />
-            </label>
-            <button className="btn-primary" onClick={() => setStep('form')}>
-              Continue to the recipe →
-            </button>
-          </>
-        )}
-      </div>
-    )
-  }
-
   if (step === 'form') {
-    // Mine path: pre-fill the Story field with the doorway memory so there's
-    // ONE story input. Ancestor path: no seed — the doorway memory is the
-    // source's (captured in origin.memory), not the dish's story.
-    const initialValues = originMode === 'mine' ? { story: selfMemory } : {}
+    const inherited = originMode === 'ancestor'
     return (
       <div className="min-h-screen bg-cream">
         <RecipeForm
           mode="add"
-          initialValues={initialValues}
           onSubmit={handleFormSubmit}
-          topSlot={<BackButton onClick={goBack} label="Back" />}
+          // Branch the story prompt: only the inherited path asks about the
+          // person who taught you.
+          storyVariant={inherited ? 'inherited' : 'own'}
+          topSlot={
+            <>
+              <BackButton onClick={goBack} label="Back" />
+              {inherited && (
+                <div className="mt-4">
+                  <SourceFields value={origin} onChange={setOrigin} />
+                </div>
+              )}
+            </>
+          }
           // Sits just above "Keep this recipe" — the last thing you decide before
           // saving, and no extra step in a flow testers already found effortful.
           beforeSubmitSlot={
@@ -232,7 +137,7 @@ export default function PlantRecipe() {
           intro={
             <p className="font-display italic text-[14px] text-ink-soft -mt-2 mb-4">
               Add what you&rsquo;ve got — &ldquo;a splash of vinegar&rdquo; is
-              perfect. Only the name is required.
+              perfect. Only the dish name is required.
             </p>
           }
         />
@@ -268,16 +173,19 @@ export default function PlantRecipe() {
           {saved.name} is saved.
         </h1>
         <p className="font-display italic text-[15px] text-ink-soft mt-3 mb-8 max-w-[17rem]">
-          Cook it, {storyAct}, or pass it on.
+          Cook it, {storyAct}, or send it to someone.
         </p>
         <button className="btn-primary" onClick={() => setStep('handoff')}>
-          Pass it on →
+          Send it to someone →
         </button>
         <button
           className="mt-3 font-display italic text-ink-soft text-sm"
           onClick={() => navigate(`/recipes/${saved.id}`)}
         >
-          Take me to it →
+          {/* Was "Take me to it →" — testers couldn't tell what "it" was (the
+              recipe? the kitchen? the send flow?). Naming the destination costs
+              nothing. */}
+          View {saved.name} →
         </button>
       </div>
     )

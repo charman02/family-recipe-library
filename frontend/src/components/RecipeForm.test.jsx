@@ -64,11 +64,11 @@ describe('RecipeForm voice-notes', () => {
     fireEvent.change(screen.getByPlaceholderText('e.g. “Adobo”'), {
       target: { value: 'Adobo' },
     })
-    fireEvent.change(screen.getByPlaceholderText('Describe this step…'), {
+    fireEvent.change(screen.getAllByPlaceholderText('Describe this step…')[0], {
       target: { value: 'Brown the meat' },
     })
     fireEvent.change(
-      screen.getByPlaceholderText('“don\'t rush the onions”'),
+      screen.getAllByPlaceholderText('“don\'t rush the onions”')[0],
       { target: { value: "don't rush the onions" } },
     )
 
@@ -89,7 +89,7 @@ describe('RecipeForm voice-notes', () => {
     fireEvent.change(screen.getByPlaceholderText('e.g. “Adobo”'), {
       target: { value: 'Adobo' },
     })
-    fireEvent.change(screen.getByPlaceholderText('Describe this step…'), {
+    fireEvent.change(screen.getAllByPlaceholderText('Describe this step…')[0], {
       target: { value: 'Brown the meat' },
     })
 
@@ -260,5 +260,127 @@ describe('RecipeForm intro', () => {
     expect(
       screen.queryByText('splash-of-vinegar-framing'),
     ).not.toBeInTheDocument()
+  })
+})
+
+// The add flow's friction fixes. Each of these is a specific reported failure
+// from user testing, not a hypothetical.
+describe('RecipeForm capture friction', () => {
+  it('starts an ADD with several blank rows so the list shape is visible', () => {
+    // A tester typed their entire method into step 1 and every ingredient into
+    // ingredient 1, because one empty box gave no hint they were meant to be
+    // separate entries. Seeing the shape before typing is the fix.
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(screen.getAllByPlaceholderText(/describe this step/i).length).toBe(3)
+    expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i).length).toBe(3)
+    expect(screen.getByText(/one step per box/i)).toBeInTheDocument()
+  })
+
+  it('does NOT pad blank rows when editing an existing recipe', () => {
+    // Editing must show exactly what's saved — inventing empty rows would read
+    // as data the user didn't write.
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{
+          steps: [{ content: 'Brown the chicken.', voice_note: '' }],
+          ingredients: [{ name: 'soy sauce', quantity: '3 soup spoons' }],
+        }}
+        onSubmit={() => {}}
+      />,
+    )
+    expect(screen.getAllByPlaceholderText(/describe this step/i).length).toBe(1)
+    expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i).length).toBe(1)
+  })
+
+  it('drops the blank padding rows from the payload', async () => {
+    // Padding must cost nothing: three empty boxes must not become three empty
+    // steps on the saved recipe.
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByPlaceholderText(/“Adobo”/i), {
+      target: { value: 'Adobo' },
+    })
+    fireEvent.change(screen.getAllByPlaceholderText(/describe this step/i)[0], {
+      target: { value: 'Brown the chicken.' },
+    })
+    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
+      target: { value: 'soy sauce' },
+    })
+    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const payload = onSubmit.mock.calls[0][0]
+    expect(payload.steps).toHaveLength(1)
+    expect(payload.ingredients).toHaveLength(1)
+    expect(payload.steps[0].position).toBe(1)
+  })
+
+  it('Enter in a step opens and focuses the next one', () => {
+    // Testers found the TAPPING more tiring than the typing, so a whole list
+    // should be enterable from the keyboard without reaching for "+ Add".
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const stepFields = screen.getAllByPlaceholderText(/describe this step/i)
+    stepFields[0].focus()
+    fireEvent.keyDown(stepFields[0], { key: 'Enter' })
+    expect(screen.getAllByPlaceholderText(/describe this step/i)[1]).toHaveFocus()
+  })
+
+  it('Enter on the LAST step adds a new one', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const before = screen.getAllByPlaceholderText(/describe this step/i)
+    fireEvent.keyDown(before[before.length - 1], { key: 'Enter' })
+    expect(screen.getAllByPlaceholderText(/describe this step/i).length).toBe(
+      before.length + 1,
+    )
+  })
+
+  it('Shift+Enter in a step does NOT advance — a step can run long', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const stepFields = screen.getAllByPlaceholderText(/describe this step/i)
+    stepFields[0].focus()
+    fireEvent.keyDown(stepFields[0], { key: 'Enter', shiftKey: true })
+    expect(stepFields[0]).toHaveFocus()
+    expect(screen.getAllByPlaceholderText(/describe this step/i).length).toBe(3)
+  })
+
+  it('Enter moves name → amount within an ingredient row, not to the next row', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const names = screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)
+    names[0].focus()
+    fireEvent.keyDown(names[0], { key: 'Enter' })
+    expect(
+      screen.getAllByPlaceholderText(/1\/2 cup · a dash · to taste/i)[0],
+    ).toHaveFocus()
+  })
+
+  it('Enter on an amount advances to the next ingredient', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const amounts = screen.getAllByPlaceholderText(
+      /1\/2 cup · a dash · to taste/i,
+    )
+    fireEvent.keyDown(amounts[0], { key: 'Enter' })
+    expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[1]).toHaveFocus()
+  })
+})
+
+describe('RecipeForm story prompt', () => {
+  it('asks about the person who taught you on the inherited path', () => {
+    render(<RecipeForm mode="add" storyVariant="inherited" onSubmit={() => {}} />)
+    expect(screen.getByText(/their story \(optional\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/who taught you/i)).toBeInTheDocument()
+  })
+
+  it('never says "who taught you" when the recipe starts with the user', () => {
+    // Asking a self-authored cook who taught them is the kind of thing that makes
+    // the app feel like it isn't listening — testers noticed.
+    render(<RecipeForm mode="add" storyVariant="own" onSubmit={() => {}} />)
+    expect(screen.getByText(/what makes it yours \(optional\)/i)).toBeInTheDocument()
+    expect(screen.queryByText(/who taught you/i)).not.toBeInTheDocument()
+  })
+
+  it('marks the story optional so nobody stalls on it', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(screen.getByText(/their story \(optional\)/i)).toBeInTheDocument()
   })
 })

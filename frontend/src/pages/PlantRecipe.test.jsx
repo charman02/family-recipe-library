@@ -15,21 +15,23 @@ vi.mock('../api/lineage', () => ({
     }),
   ),
 }))
-// RecipeForm is heavy; stub it to immediately submit a minimal payload. The
-// stub echoes back initialValues.story (seeded from the doorway memory) so the
-// test proves the form's story — not a separate override — is what's sent, and
-// exposes initialValues so we can assert the mine-path seed is passed through.
-let lastInitialValues = null
+// RecipeForm is heavy; stub it to immediately submit a minimal payload. The stub
+// renders the slots (topSlot carries the source fields, beforeSubmitSlot the
+// visibility choice) and records storyVariant, since branching that prompt by
+// path is part of what this flow owes the user.
+let lastProps = null
 vi.mock('../components/RecipeForm', () => ({
-  default: ({
-    onSubmit,
-    initialValues = {},
-    intro = null,
-    beforeSubmitSlot = null,
-  }) => {
-    lastInitialValues = initialValues
+  default: (props) => {
+    lastProps = props
+    const {
+      onSubmit,
+      intro = null,
+      topSlot = null,
+      beforeSubmitSlot = null,
+    } = props
     return (
       <div>
+        {topSlot}
         {intro}
         {beforeSubmitSlot}
         <button
@@ -38,7 +40,7 @@ vi.mock('../components/RecipeForm', () => ({
               name: 'Congee',
               ingredients: [],
               steps: [],
-              story: initialValues.story || null,
+              story: 'typed in the form',
             })
           }
         >
@@ -53,77 +55,97 @@ import PlantRecipe from './PlantRecipe'
 
 beforeEach(() => {
   plantRecipe.mockClear()
-  lastInitialValues = null
+  lastProps = null
 })
 
+function renderFlow() {
+  render(
+    <MemoryRouter>
+      <PlantRecipe />
+    </MemoryRouter>,
+  )
+}
+
+const enterDoor = (name) => userEvent.click(screen.getByRole('button', { name }))
+
 describe('PlantRecipe', () => {
-  it('walks doorway → mine → form → saved, sending story not origin', async () => {
-    render(
-      <MemoryRouter>
-        <PlantRecipe />
-      </MemoryRouter>,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /one of your own/i }),
-    )
-    await userEvent.type(
-      screen.getByPlaceholderText(/what made this yours/i),
-      'I riffed on it for years',
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /continue to the recipe/i }),
-    )
+  it('goes doorway → form in ONE hop (the source step was folded in)', async () => {
+    // The flow used to be doorway → source → form. Testers found it too
+    // effortful, so the source fields moved into the top of the form itself.
+    renderFlow()
+    await enterDoor(/passed down to you/i)
+    // No intermediate "continue to the recipe" screen any more: the form is here.
+    expect(
+      screen.getByRole('button', { name: /submit-form/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/whose recipe is this\?/i)).toBeInTheDocument()
+  })
 
-    // Mine path seeds RecipeForm's Story field with the doorway memory, so
-    // there is a single, editable story input (no competing second field).
-    expect(lastInitialValues).toEqual({ story: 'I riffed on it for years' })
+  it('self-authored path never asks who taught you', async () => {
+    renderFlow()
+    await enterDoor(/one of your own/i)
+    expect(screen.queryByText(/whose recipe is this\?/i)).not.toBeInTheDocument()
+    expect(lastProps.storyVariant).toBe('own')
+  })
 
-    // The capture flow frames the recipe step as low-pressure (spec §3.2.3).
-    expect(screen.getByText(/a splash of vinegar/i)).toBeInTheDocument()
+  it('inherited path asks for the source and sends it as attribution', async () => {
+    renderFlow()
+    await enterDoor(/passed down to you/i)
+    expect(lastProps.storyVariant).toBe('inherited')
 
+    await userEvent.type(screen.getByPlaceholderText(/lola remedios/i), 'Lola')
+    await userEvent.type(screen.getByPlaceholderText(/cebu/i), 'Cebu')
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
-    expect(plantRecipe).toHaveBeenCalled()
+
     const payload = plantRecipe.mock.calls[0][0]
-    expect(payload.origin ?? null).toBeNull()
-    // Story comes straight from the form payload (seeded from selfMemory),
-    // with no silent override in handleFormSubmit.
-    expect(payload.story).toBe('I riffed on it for years')
-    // The saved beat confirms the recipe and names the next acts.
+    expect(payload.origin.name).toBe('Lola')
+    expect(payload.origin.place).toBe('Cebu')
+    // ONE story input: the dish's story comes from the form, never from a
+    // separate source-memory field that could disagree with it.
+    expect(payload.story).toBe('typed in the form')
+  })
+
+  it('sends no origin when the source name is left blank', async () => {
+    // Attribution is optional even on the inherited path — a half-filled source
+    // block must not create an origin record with an empty name.
+    renderFlow()
+    await enterDoor(/passed down to you/i)
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+    expect(plantRecipe.mock.calls[0][0].origin ?? null).toBeNull()
+  })
+
+  it('sends no origin on the self-authored path', async () => {
+    renderFlow()
+    await enterDoor(/one of your own/i)
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+    expect(plantRecipe.mock.calls[0][0].origin ?? null).toBeNull()
+  })
+
+  it('confirms the save and names the next acts', async () => {
+    renderFlow()
+    await enterDoor(/one of your own/i)
+    // The capture step frames itself as low-pressure.
+    expect(screen.getByText(/a splash of vinegar/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+
     expect(await screen.findByText('Congee is saved.')).toBeInTheDocument()
     expect(screen.getByText(/saved to your kitchen/i)).toBeInTheDocument()
-    // Mine path has no source name → generic "add a memory"
+    // no source name on this path → the generic act
     expect(screen.getByText(/add a memory/i)).toBeInTheDocument()
-    // a secondary CTA takes you straight to the recipe
+    // The CTA names its destination — "Take me to it" left testers unsure what
+    // "it" was.
     expect(
-      screen.getByRole('button', { name: /take me to it/i }),
+      screen.getByRole('button', { name: /view congee/i }),
     ).toBeInTheDocument()
   })
 
-  it('mine path: an edited form story is authoritative (no doorway override)', async () => {
-    render(
-      <MemoryRouter>
-        <PlantRecipe />
-      </MemoryRouter>,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /one of your own/i }),
-    )
-    await userEvent.type(
-      screen.getByPlaceholderText(/what made this yours/i),
-      'seed memory',
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /continue to the recipe/i }),
-    )
-
-    // Simulate the user editing the pre-filled Story field in the real form:
-    // the payload the form emits — not selfMemory — is what must be sent.
-    lastInitialValues.story = 'a richer, edited story'
-    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
-
-    const payload = plantRecipe.mock.calls[0][0]
-    expect(payload.story).toBe('a richer, edited story')
-    expect(payload.origin ?? null).toBeNull()
+  it('back from the form returns to the doorway, not out of the flow', async () => {
+    renderFlow()
+    await enterDoor(/passed down to you/i)
+    await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(
+      screen.getByRole('button', { name: /passed down to you/i }),
+    ).toBeInTheDocument()
   })
 })
 
@@ -131,17 +153,8 @@ describe('PlantRecipe', () => {
 // in Browse, so these lock both directions: the safe default, and the opt-in.
 describe('PlantRecipe visibility', () => {
   async function reachTheForm() {
-    render(
-      <MemoryRouter>
-        <PlantRecipe />
-      </MemoryRouter>,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /one of your own/i }),
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /continue to the recipe/i }),
-    )
+    renderFlow()
+    await enterDoor(/one of your own/i)
   }
 
   it('renders the choice on the form step with "Only me" preselected', async () => {

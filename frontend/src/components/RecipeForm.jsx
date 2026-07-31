@@ -16,6 +16,16 @@ import { parseQuantity } from '../utils/quantity'
 const emptyIngredient = () => ({ name: '', quantity: '' })
 const emptyStep = () => ({ content: '', voice_note: '' })
 
+// How many empty rows a NEW recipe starts with. More than one because a single
+// empty box gave no visual cue that entries were meant to be separate — a tester
+// typed their whole method into step 1 and every ingredient into ingredient 1.
+// Seeing the shape of the list before typing is what prevents that; blank rows
+// are filtered out on submit, so extras cost nothing.
+const STARTING_INGREDIENTS = 3
+const STARTING_STEPS = 3
+
+const emptyRows = (make, n) => Array.from({ length: n }, make)
+
 // Keep in sync with the backend's accepted formats in app/routers/upload.py.
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const ACCEPTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
@@ -55,6 +65,22 @@ function FormSection({ children }) {
   )
 }
 
+// The story prompt changes with where the recipe came from. Asking "who taught
+// you?" of someone who invented the dish is a small thing that makes the app feel
+// like it isn't listening — testers noticed.
+const STORY_COPY = {
+  inherited: {
+    label: 'Their story',
+    help: 'Who taught you, when they made it, what you remember.',
+    placeholder: 'My grandmother made this every Lunar New Year…',
+  },
+  own: {
+    label: 'What makes it yours',
+    help: 'How you came to it, when you make it, who you make it for.',
+    placeholder: 'I started making this the winter I moved out…',
+  },
+}
+
 export default function RecipeForm({
   mode = 'add',
   initialValues = {},
@@ -63,6 +89,8 @@ export default function RecipeForm({
   beforeSubmitSlot = null,
   intro = null,
   topSlot = null,
+  // 'inherited' — someone taught them this. 'own' — the recipe starts with them.
+  storyVariant = 'inherited',
 }) {
   const [name, setName] = useState(initialValues.name || '')
   const [servings, setServings] = useState(
@@ -73,13 +101,17 @@ export default function RecipeForm({
     initialValues.description || '',
   )
   const [story, setStory] = useState(initialValues.story || '')
+  // Editing shows exactly what's saved; adding pre-seeds blank rows so the
+  // list's shape is visible before typing (see STARTING_* above).
   const [ingredients, setIngredients] = useState(
     initialValues.ingredients?.length
       ? initialValues.ingredients
-      : [emptyIngredient()],
+      : emptyRows(emptyIngredient, mode === 'add' ? STARTING_INGREDIENTS : 1),
   )
   const [steps, setSteps] = useState(
-    initialValues.steps?.length ? initialValues.steps : [emptyStep()],
+    initialValues.steps?.length
+      ? initialValues.steps
+      : emptyRows(emptyStep, mode === 'add' ? STARTING_STEPS : 1),
   )
   const [coverPhotoUrl, setCoverPhotoUrl] = useState(
     initialValues.coverPhotoUrl || '',
@@ -104,6 +136,7 @@ export default function RecipeForm({
   const uploadSeq = useRef(0)
   const abortRef = useRef(null)
 
+  const storyCopy = STORY_COPY[storyVariant] || STORY_COPY.inherited
   const heading = mode === 'edit' ? 'Edit recipe' : 'Keep a recipe'
   const defaultSubmitLabel =
     mode === 'edit' ? 'Save changes' : 'Keep this recipe'
@@ -232,6 +265,32 @@ export default function RecipeForm({
 
   function removeStep(index) {
     setSteps((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Enter advances to the next row instead of doing nothing (in a textarea it
+  // would insert a newline, and on a phone the keyboard's "return" key is right
+  // there). Adding a row when you're on the last one means a whole list can be
+  // entered without ever reaching for "+ Add" — testers found the tapping, not
+  // the typing, to be the tiring part.
+  //
+  // Shift+Enter still inserts a real newline, since a step legitimately runs long.
+  function advanceOnEnter(e, { container, index, addRow, selector }) {
+    if (e.key !== 'Enter' || e.shiftKey) return
+    e.preventDefault()
+    const isLast = index === container.length - 1
+    const focusNext = () => {
+      const fields = document.querySelectorAll(selector)
+      fields[index + 1]?.focus()
+    }
+    if (isLast) {
+      addRow()
+      // The new row doesn't exist until React commits, so wait a tick. On a phone
+      // this also keeps the keyboard up — focusing an existing element in the same
+      // gesture is what stops iOS from dismissing it.
+      setTimeout(focusNext, 0)
+    } else {
+      focusNext()
+    }
   }
 
   async function handleSubmit(e) {
@@ -430,15 +489,18 @@ export default function RecipeForm({
           </label>
         </div>
 
-        {/* The Story */}
+        {/* The story — optional, and prompted differently depending on whether
+            the recipe was inherited or invented (see STORY_COPY). Marked optional
+            explicitly: testers treated an unlabeled textarea as required and
+            stalled on it, which is the worst place to lose someone. */}
         <FormSection>The story</FormSection>
         <label className="block">
-          <FieldLabel accent="plum">In their words</FieldLabel>
+          <FieldLabel accent="plum">{storyCopy.label} (optional)</FieldLabel>
           <p className="font-display italic text-[12px] text-ink-soft mb-1.5">
-            Who taught you, when you make it, the memories it holds.
+            {storyCopy.help}
           </p>
           <textarea
-            placeholder="My grandmother made this every Lunar New Year…"
+            placeholder={storyCopy.placeholder}
             value={story}
             onChange={(e) => setStory(e.target.value)}
             rows={3}
@@ -455,7 +517,7 @@ export default function RecipeForm({
         </p>
         <div className="space-y-3">
           {ingredients.map((ing, idx) => (
-            <div key={idx} className="sticker-sm bg-card p-3">
+            <div key={idx} data-ingredient-row className="sticker-sm bg-card p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-display font-black text-[13px] text-ink">
                   #{idx + 1}
@@ -475,9 +537,21 @@ export default function RecipeForm({
                 <FieldLabel>Ingredient</FieldLabel>
                 <input
                   type="text"
+                  data-ingredient-name
                   placeholder="e.g. soy sauce"
                   value={ing.name}
                   onChange={(e) => updateIngredient(idx, 'name', e.target.value)}
+                  onKeyDown={(e) => {
+                    // Within a row, Enter moves name → amount rather than
+                    // skipping to the next ingredient.
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      e.currentTarget
+                        .closest('[data-ingredient-row]')
+                        ?.querySelector('[data-ingredient-qty]')
+                        ?.focus()
+                    }
+                  }}
                   className="field"
                 />
               </label>
@@ -485,10 +559,20 @@ export default function RecipeForm({
                 <FieldLabel accent="terra">How much</FieldLabel>
                 <input
                   type="text"
+                  data-ingredient-qty
                   placeholder="1/2 cup · a dash · to taste"
                   value={ing.quantity}
                   onChange={(e) =>
                     updateIngredient(idx, 'quantity', e.target.value)
+                  }
+                  onKeyDown={(e) =>
+                    advanceOnEnter(e, {
+                      container: ingredients,
+                      index: idx,
+                      addRow: () =>
+                        setIngredients((prev) => [...prev, emptyIngredient()]),
+                      selector: '[data-ingredient-name]',
+                    })
                   }
                   className="field bg-peach/50"
                 />
@@ -504,9 +588,19 @@ export default function RecipeForm({
           + Add ingredient
         </button>
 
-        {/* Steps — each row pairs the STEP itself with an optional "in their
-            words" personal note, distinctly tinted + labeled. */}
+        {/* Steps — each row pairs the STEP itself with an optional personal
+            remark, distinctly tinted + labeled.
+
+            A tester wrote their ENTIRE method into step 1, because with only one
+            empty step rendered there was nothing on screen suggesting steps were
+            meant to be separate. The fix is structural, not a hint: the add flow
+            starts with several empty steps (see STARTING_STEPS) so the pattern is
+            visible before you type, and pressing Enter in a step opens the next
+            one. The line below states the intent for anyone who still wonders. */}
         <FormSection>Steps</FormSection>
+        <p className="font-display italic text-[12px] text-ink-soft mb-3">
+          One step per box — press Enter to start the next one.
+        </p>
         <div className="space-y-3">
           {steps.map((step, idx) => (
             <div key={idx} className="sticker-sm bg-card p-3">
@@ -528,15 +622,24 @@ export default function RecipeForm({
               <label className="block mb-2">
                 <FieldLabel>What to do</FieldLabel>
                 <textarea
+                  data-step-content
                   placeholder="Describe this step…"
                   value={step.content}
                   onChange={(e) => updateStep(idx, 'content', e.target.value)}
+                  onKeyDown={(e) =>
+                    advanceOnEnter(e, {
+                      container: steps,
+                      index: idx,
+                      addRow: () => setSteps((prev) => [...prev, emptyStep()]),
+                      selector: '[data-step-content]',
+                    })
+                  }
                   rows={2}
                   className="field resize-none"
                 />
               </label>
               <label className="block">
-                <FieldLabel accent="plum">Their words (optional)</FieldLabel>
+                <FieldLabel accent="plum">A note on this step (optional)</FieldLabel>
                 <input
                   type="text"
                   placeholder={'“don\'t rush the onions”'}
