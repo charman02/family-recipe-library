@@ -11,8 +11,6 @@ describe('RecipeCard', () => {
       />,
     )
     expect(screen.getByText('Adobo')).toBeInTheDocument()
-    // The byline splits the verb from the emphasized name into two spans.
-    expect(screen.getByText(/kept by/i)).toBeInTheDocument()
     expect(screen.getByText('Yoko M.')).toBeInTheDocument()
   })
 
@@ -30,17 +28,18 @@ describe('RecipeCard', () => {
     )
     expect(screen.getByText(/^from$/i)).toBeInTheDocument()
     expect(screen.getByText('Lola Remedios')).toBeInTheDocument()
-    expect(screen.queryByText(/kept by/i)).not.toBeInTheDocument()
   })
 
-  it('falls back to "kept by {author}" when there is no origin', () => {
+  // "kept by" was app jargon testers couldn't decode; with no recorded origin the
+  // byline is now just the name, which reads as attribution on its own.
+  it('falls back to the bare author name — no "kept by" verb — with no origin', () => {
     render(
       <RecipeCard
         recipe={{ id: 2, name: 'Fried Rice', author_full_name: 'Yoko M.' }}
         onClick={() => {}}
       />,
     )
-    expect(screen.getByText(/kept by/i)).toBeInTheDocument()
     expect(screen.getByText('Yoko M.')).toBeInTheDocument()
+    expect(screen.queryByText(/kept by/i)).not.toBeInTheDocument()
   })
 })

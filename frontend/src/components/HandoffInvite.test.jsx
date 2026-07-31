@@ -24,7 +24,7 @@ describe('HandoffInvite', () => {
       screen.getByPlaceholderText(/a note in your words/i),
       'your adobo',
     )
-    await userEvent.click(screen.getByRole('button', { name: /pass it on/i }))
+    await userEvent.click(screen.getByRole('button', { name: /get a link to send/i }))
     expect(handoffRecipe).toHaveBeenCalledWith(7, {
       to_email: 'mom@example.com',
       note: 'your adobo',
@@ -39,7 +39,7 @@ describe('HandoffInvite', () => {
   it('does not require an email — a link-only handoff works', async () => {
     render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
     // no email typed at all
-    await userEvent.click(screen.getByRole('button', { name: /pass it on/i }))
+    await userEvent.click(screen.getByRole('button', { name: /get a link to send/i }))
     expect(handoffRecipe).toHaveBeenCalledWith(7, { to_email: null, note: null })
     expect(await screen.findByText(/\/invite\/tok123/)).toBeInTheDocument()
   })
@@ -47,7 +47,7 @@ describe('HandoffInvite', () => {
   it('calls onSent when the sender taps Done on the share step', async () => {
     const onSent = vi.fn()
     render(<HandoffInvite recipeId={7} onSent={onSent} onSkip={() => {}} />)
-    await userEvent.click(screen.getByRole('button', { name: /pass it on/i }))
+    await userEvent.click(screen.getByRole('button', { name: /get a link to send/i }))
     await userEvent.click(await screen.findByRole('button', { name: /done/i }))
     expect(onSent).toHaveBeenCalled()
   })
@@ -68,7 +68,7 @@ describe('HandoffInvite', () => {
         onSkip={() => {}}
       />,
     )
-    expect(screen.getByText(/cook it and keep it/i)).toBeInTheDocument()
+    expect(screen.getByText(/cook it, and keep a copy/i)).toBeInTheDocument()
     expect(screen.queryByText(/remix/i)).not.toBeInTheDocument()
   })
 
@@ -82,8 +82,54 @@ describe('HandoffInvite', () => {
       />,
     )
     expect(
-      screen.getByText(/let them know|already public/i),
+      screen.getByText(/already in Browse|don’t have to go looking/i),
     ).toBeInTheDocument()
+  })
+
+  // --- the privacy worry round-2 testers raised, answered only as far as the
+  // backend actually backs it up (handoff mints a grant; visibility is untouched,
+  // so browse's effective_visibility filter still excludes the recipe) ---
+
+  it('promises a private recipe stays out of Browse before you send', () => {
+    render(
+      <HandoffInvite
+        recipeId={1}
+        recipeVisibility="private"
+        onSent={() => {}}
+        onSkip={() => {}}
+      />,
+    )
+    expect(
+      screen.getByText(/doesn’t put your recipe in Browse/i),
+    ).toBeInTheDocument()
+  })
+
+  it('does NOT claim a private recipe stays out of Browse when it is public', () => {
+    render(
+      <HandoffInvite
+        recipeId={1}
+        recipeVisibility="public"
+        onSent={() => {}}
+        onSkip={() => {}}
+      />,
+    )
+    expect(screen.queryByText(/doesn’t put your recipe in Browse/i)).toBeNull()
+  })
+
+  it('warns on the share step that the link itself is the permission', async () => {
+    render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
+    await userEvent.click(
+      screen.getByRole('button', { name: /get a link to send/i }),
+    )
+    // /invite/{token} authorizes on the token alone, so a forwarded link works.
+    expect(
+      await screen.findByText(/anyone who has this link can open the recipe/i),
+    ).toBeInTheDocument()
+  })
+
+  it('does not claim we email the recipient — nothing in the app sends mail', () => {
+    render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
+    expect(screen.getByText(/we won’t email them/i)).toBeInTheDocument()
   })
 
   it('tapping a starter fills the note', async () => {

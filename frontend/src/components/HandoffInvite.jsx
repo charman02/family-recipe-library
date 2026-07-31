@@ -2,7 +2,21 @@ import { useState } from 'react'
 import { handoffRecipe } from '../api/lineage'
 import { HANDOFF_STARTERS, defaultStarterKey } from '../lib/handoffStarters'
 
-// Pass-it-on: hand this recipe to a specific person.
+// Hand this recipe to someone — send them a link that opens it.
+//
+// Copy note (round-2 user testing): "Pass it on" told people nothing about what
+// the button would DO, and several worried it published their family recipe. The
+// strings here state the mechanism instead, and every privacy claim below is one
+// verified in the backend:
+//   · POST /recipes/{id}/handoff only mints a Handoff token — it never touches
+//     `visibility`, and GET /recipes/browse filters on effective_visibility() ==
+//     "public", so a handed-off private recipe still cannot appear in Browse.
+//   · GET /recipes/invite/{token} returns the whole recipe to ANYONE holding the
+//     token, with no account required, and POST /invite/{token}/claim grants a
+//     second (and third) claimer their own grant on purpose. So the honest line
+//     is "whoever has the link", NOT "only the person you send it to" — the link
+//     is the permission, and a forwarded link works. We say so rather than
+//     implying a per-person lock the code doesn't enforce.
 //
 // Two stages:
 //   1. COMPOSE — an optional note (+ optional email, which enables auto-accept
@@ -101,10 +115,11 @@ export default function HandoffInvite({
           </svg>
         </span>
         <h1 className="font-display font-black text-[26px] text-ink leading-tight mt-5">
-          Ready to send
+          Your link is ready
         </h1>
         <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
-          Send them this link — they&rsquo;ll see {recipeName} and can keep it.
+          Send it however you text them. Opening it shows them {recipeName} —
+          no account needed to read and cook it.
         </p>
 
         {/* the link itself, visible so it never feels like nothing happened */}
@@ -128,8 +143,18 @@ export default function HandoffInvite({
           </p>
         )}
 
+        {/* Said here, at the moment the link exists, because this is when someone
+            decides who to forward it to. It's the literal rule the server
+            enforces: preview_invite authorizes on the token alone, so a
+            forwarded link opens the recipe too. Better they know than assume a
+            lock we don't have. */}
+        <p className="font-display italic text-[12.5px] text-ink-soft mt-4">
+          Anyone who has this link can open the recipe, so send it to the people
+          you mean it for.
+        </p>
+
         {email.trim() && (
-          <p className="font-display italic text-[12.5px] text-ink-soft mt-4">
+          <p className="font-display italic text-[12.5px] text-ink-soft mt-2">
             When {email.trim()} signs up, this recipe will be waiting for them.
           </p>
         )}
@@ -154,9 +179,19 @@ export default function HandoffInvite({
       </h1>
       <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
         {recipeVisibility === 'public'
-          ? 'Let them know about this — it’s already public.'
-          : 'You’ll get a link to send them. They’ll be able to cook it and keep it — and add the parts only they know.'}
+          ? 'You’ll get a link to send them, so they don’t have to go looking. This recipe is already in Browse for anyone to find.'
+          : 'You’ll get a link to send them. Whoever opens it can read this recipe, cook it, and keep a copy — and add the parts only they know.'}
       </p>
+      {/* The reassurance testers actually asked for, stated only as strongly as
+          the backend backs up: handing off mints a grant and leaves `visibility`
+          alone, so the recipe stays out of Browse. Shown for private recipes
+          only — for a public one it would be false. */}
+      {recipeVisibility !== 'public' && (
+        <p className="font-display text-[12.5px] text-ink leading-snug bg-mint/40 border-2 border-ink rounded-[12px] px-3 py-2 mb-4 text-left">
+          This doesn’t put your recipe in Browse — nobody can come across it on
+          their own. Only someone holding the link can open it.
+        </p>
+      )}
       <div className="flex gap-2 mb-2.5">
         {HANDOFF_STARTERS.map((s) => (
           <button
@@ -191,8 +226,13 @@ export default function HandoffInvite({
         onChange={(e) => setEmail(e.target.value)}
         className="field mb-1.5"
       />
+      {/* Deliberately does NOT say "we'll email them" — nothing in this app sends
+          mail. The email only pre-addresses the invite, which auth.py's signup
+          auto-accepts (pending handoffs matching the new user's email). You still
+          have to send the link yourself. */}
       <p className="font-display italic text-[12px] text-ink-soft mb-3">
-        Add their email and the recipe will be waiting when they sign up.
+        We won&rsquo;t email them — you send the link. Adding their address just
+        means the recipe is already waiting if they make an account.
       </p>
       {error && (
         <p className="mb-3">
@@ -204,7 +244,7 @@ export default function HandoffInvite({
         disabled={sending}
         className="btn-primary disabled:opacity-50"
       >
-        {sending ? 'Getting your link…' : 'Pass it on'}
+        {sending ? 'Getting your link…' : 'Get a link to send'}
       </button>
       <button
         onClick={onSkip}

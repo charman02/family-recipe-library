@@ -57,11 +57,11 @@ export default function HandoffPage() {
           </button>
         </div>
         <h1 className="font-display font-black text-[28px] leading-tight text-ink">
-          Pass on {recipe.name}
+          Send {recipe.name}
         </h1>
         <p className="font-display italic text-[14.5px] text-ink-soft mt-1">
-          Hand this recipe to someone — they&rsquo;ll be able to cook it, keep
-          it, and add their own memories.
+          You&rsquo;ll get a link to send. Whoever opens it can read this
+          recipe and cook it, with no account needed.
         </p>
       </header>
 

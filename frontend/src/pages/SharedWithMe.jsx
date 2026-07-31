@@ -31,14 +31,14 @@ export default function SharedWithMe() {
         Shared with you<span className="text-terra">.</span>
       </MarkerTitle>
       <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-5">
-        Recipes others have passed to you.
+        Recipes people have sent you.
       </p>
       {recipes.length === 0 ? (
         <EmptyState
           icon="💌"
           badge="bg-mint"
           title="Nothing shared yet"
-          sub="When someone passes you a recipe, it lands here."
+          sub="When someone sends you a recipe, it lands here."
           className="mt-6"
         />
       ) : (

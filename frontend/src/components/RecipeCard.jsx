@@ -10,12 +10,16 @@ import { sourceNameOf } from '../lib/sourceName'
 // horizontal-scroll rows on Browse). onClick navigates to the recipe.
 export default function RecipeCard({ recipe, onClick, variant = 'grid' }) {
   const widthClass = variant === 'row' ? 'w-[210px] flex-none' : 'w-full'
-  // Byline: a quiet verb ("from" / "kept by") + the person's name emphasized.
+  // Byline: "from {source}" when we know who the dish came from, otherwise just
+  // the name of whoever wrote it down. The old fallback, "kept by {author}", read
+  // as jargon in user testing — "kept" is the app's vocabulary, not a reader's —
+  // and a bare name under a dish title already reads as attribution. Mirrors the
+  // same decision in RecipeBody's byline; keep the two in step.
   const source = sourceNameOf(recipe)
   const byline = source
     ? { verb: 'from', name: source }
     : recipe.author_full_name
-      ? { verb: 'kept by', name: recipe.author_full_name }
+      ? { verb: null, name: recipe.author_full_name }
       : null
 
   return (
@@ -41,7 +45,9 @@ export default function RecipeCard({ recipe, onClick, variant = 'grid' }) {
         </p>
         {byline && (
           <p className="text-[13px] mt-0.5">
-            <span className="font-sans text-ink-soft/80">{byline.verb} </span>
+            {byline.verb && (
+              <span className="font-sans text-ink-soft/80">{byline.verb} </span>
+            )}
             <span className="font-display font-bold italic text-plum">
               {byline.name}
             </span>

@@ -14,18 +14,30 @@ function loadPrefs() {
   }
 }
 
-// A quiet toggle switch in the sticker language.
-function Toggle({ on, onChange, label }) {
+// A quiet toggle switch in the sticker language. `hint` is a plain-language line
+// under the label saying what flipping it actually changes — added because
+// testing showed the bare labels ("Reduce motion") were read as jargon and
+// skipped. Optional so a self-evident toggle isn't padded with a redundant line.
+function Toggle({ on, onChange, label, hint }) {
   return (
     <button
       onClick={() => onChange(!on)}
       role="switch"
       aria-checked={on}
-      className="flex items-center justify-between w-full py-2.5"
+      className="flex items-center justify-between gap-4 w-full py-2.5 text-left"
     >
-      <span className="font-display font-bold text-[14px] text-ink">{label}</span>
+      <span className="min-w-0">
+        <span className="block font-display font-bold text-[14px] text-ink">
+          {label}
+        </span>
+        {hint && (
+          <span className="block font-display italic text-[12px] text-ink-soft mt-0.5">
+            {hint}
+          </span>
+        )}
+      </span>
       <span
-        className={`relative w-12 h-7 rounded-full border-2 border-ink transition-colors ${
+        className={`relative flex-none w-12 h-7 rounded-full border-2 border-ink transition-colors ${
           on ? 'bg-mint' : 'bg-cream'
         }`}
       >
@@ -117,15 +129,23 @@ export default function Profile() {
       <h2 className="font-display font-black text-[19px] text-ink mt-7 mb-2">
         Settings
       </h2>
+      {/* Both labels say what you'd notice, and the hints say it again in full.
+          "Reduce motion" is accessibility-spec jargon that means nothing to a
+          cook, and "Cooking mode" was a name for a screen the user hadn't met
+          yet — so this mirrors RecipeBody's toggle wording exactly, which is the
+          control it actually presets. Rename them together or the setting starts
+          describing a button that no longer exists. */}
       <div className="sticker bg-card px-5 py-2">
         <Toggle
-          label="Reduce motion"
+          label="Turn off animations"
+          hint="Things appear right away instead of sliding or fading in."
           on={!!prefs.reduceMotion}
           onChange={(v) => setPref('reduceMotion', v)}
         />
         <div className="border-t-2 border-line">
           <Toggle
-            label="Cooking mode by default"
+            label="Open recipes at “Ingredients & steps”"
+            hint="Skip the photo and story and go straight to ingredients and steps."
             on={!!prefs.cookingByDefault}
             onChange={(v) => setPref('cookingByDefault', v)}
           />
