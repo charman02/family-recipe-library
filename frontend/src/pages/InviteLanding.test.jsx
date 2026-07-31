@@ -110,6 +110,74 @@ describe('InviteLanding', () => {
     expect(screen.getAllByText(/their way/i).length).toBe(1)
   })
 
+  it('orients a cold arrival with the sender, the dish, and the wordmark — and no explainer prose', async () => {
+    // This is often someone's very first contact with issei: an unfamiliar link
+    // in a text message. Two facts orient them — who sent it and what it is —
+    // plus the wordmark for "where am I". The page used to also explain itself
+    // above the recipe; that prose is what made the top feel scrunched, and the
+    // header now states the handoff instead of describing it.
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText('Lola’s Adobo')).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/passed you/i)).toBeInTheDocument()
+    // The dish is the page's headline, not the wordmark or the sender.
+    const dish = screen.getByRole('heading', { level: 1 })
+    expect(dish.textContent).toBe('Lola’s Adobo')
+    // The wordmark sits above the dish as its own line. Matched on the <p> tag
+    // because CoverImage's no-photo fallback renders an `issei.` mark too, and
+    // on full textContent because the terra period is a nested <span>.
+    const wordmark = screen.getAllByText(
+      (_, el) => el?.tagName === 'P' && el.textContent === 'issei.',
+    )[0]
+    expect(wordmark).toBeTruthy()
+    expect(
+      wordmark.compareDocumentPosition(dish) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      screen.queryByText(/the whole recipe, the way they make it/i),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/nothing to sign up for/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/just scroll/i)).not.toBeInTheDocument()
+  })
+
+  it('glosses "issei" at the BOTTOM, after the recipe has made the case', async () => {
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText(/一世 · issei/)).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText(/first of a family to arrive somewhere new/i),
+    ).toBeInTheDocument()
+  })
+
+  it('promises only what a granted account actually gets', async () => {
+    // Editing requires ownership (PATCH /recipes/{id} filters on user_id), so
+    // the old "add the parts only you know" would break at the first tap.
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText(/don.t lose this one/i)).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText(/keeps this recipe in your kitchen/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/add the parts only you know/i),
+    ).not.toBeInTheDocument()
+    // from_name is the SENDER (Yoko), not whose recipe this is (Lola) — so the
+    // ask must not attach a name to the recipe.
+    expect(screen.queryByText(/Yoko Matsuda’s recipe/i)).not.toBeInTheDocument()
+  })
+
+  it('makes no claim about voice or audio', async () => {
+    renderAt('/invite/abc123')
+    await waitFor(() =>
+      expect(screen.getByText('Lola’s Adobo')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/recording|audio|listen/i)).not.toBeInTheDocument()
+  })
+
   it('says the link is dead ONLY when the server says so (404)', async () => {
     getInvitePreview.mockRejectedValueOnce({ response: { status: 404 } })
     renderAt('/invite/nope')

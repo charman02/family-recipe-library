@@ -10,8 +10,18 @@ import Loader from '../components/Loader'
 // RecipePage — the classic recipe detail page (kitchen, not garden). Loads the
 // recipe and renders a centered Fraunces title, the readable body (cover, byline,
 // story, ingredients + steps via <RecipeBody>), and — for the owner — the
-// visibility control and a "Pass it on" handoff button. No plant hero, no growth,
-// no soul sheet: the recipe is a recipe.
+// visibility control and a handoff button. No plant hero, no growth, no soul
+// sheet: the recipe is a recipe.
+//
+// The handoff button used to read "Pass it on", which testers couldn't decode and
+// several read as publishing. It now says what tapping it produces.
+//
+// It carried an italic sub-line ruling out the publish fear ("It doesn't change
+// who else can see it"). Together with the visibility prose and the delete
+// button, the bottom of the page turned into paragraphs with buttons embedded in
+// them. The reassurance isn't lost: HandoffInvite — the very next screen, before
+// any link exists — states it outright ("This doesn't put your recipe in
+// Browse"), which is where it's actually load-bearing.
 export default function RecipePage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -114,7 +124,7 @@ export default function RecipePage() {
                   strokeLinecap="round"
                 />
               </svg>
-              Pass it on
+              Send this to someone
             </button>
 
             <button

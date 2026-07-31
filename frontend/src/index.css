@@ -76,23 +76,4 @@
 
 /* Recipe body — Steps numbering. A CSS counter drives the numerals: chunky
    Fraunces display, bold, terra, no circle, no period. */
-.r2-steps {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-  counter-reset: st;
-}
-.r2-steps > li {
-  counter-increment: st;
-}
-.r2-steps > li::before {
-  content: counter(st);
-  position: absolute;
-  left: 0;
-  top: 5px;
-  font-family: 'Fraunces', 'Cormorant Garamond', Georgia, serif;
-  font-weight: 900;
-  font-size: 22px;
-  line-height: 1;
-  color: #b5502a;
-}
+

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { getInvitePreview } from '../api/lineage'
 import RecipeBody from '../components/RecipeBody'
 import Loader from '../components/Loader'
+import IsseiMeaning from '../components/IsseiMeaning'
 
 // The recipient landing (/invite/:token) — the far end of the handoff.
 //
@@ -12,9 +13,13 @@ import Loader from '../components/Loader'
 // the recipe is OPEN here — the same <RecipeBody> the owner reads, cooking mode
 // and all. The token is the permission.
 //
-// Signing up is what lets you KEEP it, cook it, and add what only you know — so
-// the CTA sits under the recipe (where intent is highest after reading) with a
-// light one at the top for anyone who already knows they want it.
+// Signing up is what lets you KEEP it, so the one CTA sits under the recipe,
+// where intent is highest after reading.
+//
+// Everything above the recipe is rationed to two facts: who sent it, and what
+// the dish is. The page used to also explain itself ("the whole recipe, the way
+// they make it", "nothing to sign up for — just scroll") and that prose was the
+// thing standing between a cold arrival and the dish they came for.
 // Why a failure is NOT just "this link is dead": the recipient has no account
 // and no support path, so a wrong diagnosis here costs them the recipe entirely
 // — they conclude the sender's link is broken and give up. Only the server
@@ -24,7 +29,7 @@ function describeFailure(err) {
   const status = err?.response?.status
   if (status === 404) {
     return {
-      message: 'This link is no longer good — ask whoever sent it to pass it on again.',
+      message: 'This link is no longer good — ask whoever sent it for a new one.',
       canRetry: false,
     }
   }
@@ -93,43 +98,74 @@ export default function InviteLanding() {
 
   return (
     <div className="min-h-screen bg-cream">
-      <div className="max-w-[430px] mx-auto px-5 pt-10 pb-10">
-        {/* Whose hand this came from — the framing, before the dish. */}
+      <div className="max-w-[430px] mx-auto px-5 pt-7 pb-10">
+        {/* Two facts only: who sent it, and what it is. The wordmark is small
+            and quiet here — it answers "where am I" for someone who tapped an
+            unfamiliar link, but it is not the headline; the dish is. */}
         <div className="text-center">
-          <h1 className="font-display font-black text-[26px] leading-none text-ink">
+          <p className="font-display font-black text-[15px] leading-none text-ink">
             issei<span className="text-terra">.</span>
-          </h1>
-          {preview.from_name && (
-            <p className="font-display font-bold uppercase tracking-[0.18em] text-[11px] text-terra mt-5">
-              {preview.from_name} passed you
-            </p>
-          )}
-          <h2 className="font-display font-black text-[32px] leading-[1.05] text-ink mt-1.5">
-            {preview.name}
-          </h2>
-          <p className="font-display text-[13px] text-ink-soft mt-3">
-            Yours to read and cook — no account needed.
           </p>
+          {/* The eyebrow and the dish name are one sentence broken across two
+              type sizes ("Charlie passed you / Lola's Adobo"), so the handoff is
+              stated without a separate line of prose explaining it. Sentence
+              case, not uppercase tracking: this is a person, not a label. Plum
+              is the palette's person color. */}
+          <div className="mt-9">
+            {preview.from_name && (
+              <p className="font-display text-[14px] leading-none text-ink-soft">
+                <span className="font-bold text-plum">{preview.from_name}</span>{' '}
+                passed you
+              </p>
+            )}
+            <h1 className="font-display font-black text-[34px] leading-[1.1] text-ink text-balance mt-2.5">
+              {preview.name}
+            </h1>
+          </div>
         </div>
 
-        {/* The recipe itself, exactly as the keeper reads it. */}
-        <RecipeBody recipe={preview} />
+        {/* The recipe itself, exactly as the keeper reads it. RecipeBody opens
+            with its own chunky control and cover photo, so the header needs real
+            clearance here — butted straight up against the dish name, the two
+            bold elements read as one crowded mass. */}
+        <div className="mt-8">
+          {/* context="reader": a recipient can't upload anything, so the
+              no-photo fallback must not show the owner's "add a photo" prompt —
+              and it must not stamp a second issei. wordmark under the one in this
+              page's own header. */}
+          <RecipeBody recipe={preview} context="reader" />
+        </div>
 
-        {/* The ask, placed AFTER the reading — once they know they want it. */}
-        <div className="sticker bg-peach px-5 py-5 mt-8 text-center">
-          <p className="font-display font-black text-[19px] text-ink leading-tight">
-            Keep it in your kitchen
+        {/* The ask, placed AFTER the reading — once they know they want it.
+            The claim is exactly what a granted (non-owning) account gets: the
+            recipe stays reachable. It does NOT promise they can edit or add to
+            it — that requires ownership (PATCH /recipes/{id} filters on
+            user_id), so promising it here would break at the first tap. */}
+        <div className="sticker bg-peach px-5 py-6 mt-10 text-center">
+          <p className="font-display font-black text-[20px] text-ink leading-tight">
+            Don&rsquo;t lose this one
           </p>
-          <p className="font-display text-[13.5px] text-ink-soft leading-snug mt-1.5">
-            Make a free account to save this recipe, mark it cooked, and add the
-            parts only you know.
+          {/* Deliberately not "{from_name}'s recipe": from_name is whoever sent
+              the link, who is often NOT whose recipe it is (here Charlie passes
+              on Lola's). Naming the wrong person in the one line asking for
+              trust is worse than naming nobody. */}
+          <p className="font-display text-[14px] text-ink-soft leading-snug mt-2">
+            A free account keeps this recipe in your kitchen.
           </p>
           <Link
             to={signupHref}
-            className="block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform mt-4"
+            className="block rounded-full bg-terra px-7 py-3 font-display font-bold text-[15px] text-cream border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform mt-5"
           >
             Keep this recipe →
           </Link>
+        </div>
+
+        {/* THE NAME, at the very bottom. By now they've read a real recipe with
+            someone's amounts and someone's warnings in it, so the word lands
+            against something concrete. Putting it at the top would have been
+            vocabulary homework before the recipe they came for. */}
+        <div className="mt-10 pt-6 border-t-2 border-dashed border-line">
+          <IsseiMeaning />
         </div>
       </div>
     </div>

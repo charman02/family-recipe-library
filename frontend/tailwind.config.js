@@ -32,7 +32,30 @@ export default {
         // (matches the "Kamala's Recipes" reference). Serif stays Cormorant.
         display: ['Fraunces', 'Cormorant Garamond', 'Georgia', 'serif'],
         sans: ['Nunito Sans', 'system-ui', 'sans-serif'],
-        hand: ['Caveat', 'cursive'],
+        // NO handwritten face. Caveat, Shantell Sans, Patrick Hand, Architects
+        // Daughter and Kalam were each tried for a person's story and their step
+        // remarks, and all five were wrong for the same three reasons:
+        //
+        //   1. It's body content, not decoration. The story and the step remarks
+        //      are the most valuable text in the app — often read on a phone, in a
+        //      kitchen, by someone cooking the dish for the first time. A display
+        //      face for content you rely on is a legibility cost paid for a mood.
+        //   2. The handwriting is a lie. `Step.voice_note` is typed into a plain
+        //      <input> by whoever wrote the recipe down. Styling it as handwriting
+        //      implies a scanned card or the source person's own hand; neither
+        //      exists. A typeface shouldn't make a claim the data can't support.
+        //   3. It reads as a consumer novelty. No serious recipe product renders
+        //      user content in a script face — it's the visual shorthand for a
+        //      craft-store template, and it undercuts the care in the rest of this
+        //      design.
+        //
+        // A person's voice is signalled STRUCTURALLY instead — the saffron card,
+        // the quote stamp, the attributed heading, Fraunces italic at a size that
+        // sits apart from the instructions. Same intent, no legibility tax, and
+        // two families instead of three.
+        //
+        // If a handwritten face is ever wanted again, use it for a CHROME accent
+        // (a label, a badge) and never for content someone has to follow.
       },
       boxShadow: {
         warm: '0 2px 10px rgba(120, 80, 40, 0.10)',

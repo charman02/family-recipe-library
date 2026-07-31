@@ -46,4 +46,30 @@ describe('RecipePage', () => {
     await waitFor(() => screen.getByText('Adobo'))
     expect(document.querySelector('.plant')).toBeNull()
   })
+
+  // "Pass it on" was undecodable and read as publishing; the owner action now
+  // names its outcome.
+  it('names the handoff action by what it produces, not "Pass it on"', async () => {
+    localStorage.setItem('issei_user', JSON.stringify({ id: 9 })) // the owner
+    renderAt()
+    await waitFor(() => screen.getByText('Adobo'))
+    expect(
+      screen.getByRole('button', { name: /send this to someone/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/pass it on/i)).toBeNull()
+  })
+
+  // The owner surfaces used to be wrapped in explanatory italic sub-lines, which
+  // made the page bottom read as prose with buttons embedded in it. The buttons
+  // stand alone; the publish-fear reassurance lives on HandoffInvite, the next
+  // screen, where it's actually load-bearing.
+  it('leaves the owner buttons unwrapped by descriptor prose', async () => {
+    localStorage.setItem('issei_user', JSON.stringify({ id: 9 })) // the owner
+    renderAt()
+    await waitFor(() => screen.getByRole('button', { name: /send this to someone/i }))
+    expect(screen.getByRole('button', { name: /delete recipe/i })).toBeInTheDocument()
+    expect(screen.queryByText(/doesn’t change who else can see it/i)).toBeNull()
+    expect(screen.queryByText(/they get a link/i)).toBeNull()
+    expect(screen.queryByText(/don’t have to go looking/i)).toBeNull()
+  })
 })
