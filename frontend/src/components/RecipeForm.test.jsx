@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import client from '../api/client'
 import RecipeForm from './RecipeForm'
@@ -6,8 +6,15 @@ import RecipeForm from './RecipeForm'
 // `get` is here for the ingredient-suggestion fetch. It defaults to a rejection
 // so the whole suite runs on the shipped common list alone — which is also the
 // assertion that a dead/slow endpoint never degrades the form.
+//
+// `toUserMessage` is the named export the form uses to phrase a failed upload.
+// It has to be in the mock: without it the module proxy throws on property
+// access, so an upload-failure test would blow up in the mock rather than
+// exercise the error path it's testing. The stub returns the caller's fallback,
+// which is what the real one does for an error carrying no server detail.
 vi.mock('../api/client', () => ({
   default: { post: vi.fn(), get: vi.fn(() => Promise.reject(new Error('offline'))) },
+  toUserMessage: vi.fn((_err, fallback) => fallback),
 }))
 
 // A JPEG the size validator accepts, for driving the file input.
@@ -628,6 +635,401 @@ describe('RecipeForm inline ingredient confirm', () => {
     })
     fireEvent.click(confirms()[0])
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+// An optional technique photo per step. Two things have to hold at once: it must
+// be genuinely available (the feature exists because prose can't carry "fold it
+// like this"), and it must not add weight to a steps section that already renders
+// three rows and that one tester abandoned as too effortful.
+describe('RecipeForm step photos', () => {
+  beforeEach(() => {
+    client.post.mockReset()
+  })
+
+  const stepPickers = () =>
+    screen.getAllByLabelText(/add a photo of step \d+/i)
+
+  it('offers a photo picker on every step, keyboard-reachable', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const pickers = stepPickers()
+    expect(pickers).toHaveLength(3)
+    pickers.forEach((p) => {
+      expect(p).toHaveAttribute('type', 'file')
+      // Same regression guard as the cover: `hidden` (display:none) would drop
+      // the input out of the tab order and make the photo unreachable by keyboard.
+      expect(p).toHaveClass('sr-only')
+    })
+  })
+
+  // The weight constraint, pinned. A dropzone per row would triple the visual
+  // weight of the steps section for a field most steps will never use.
+  it('rests as ONE quiet optional line, not a photo box per row', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    // Small terra text, the same "optional extra" weight the form already uses
+    // for "+ Add step" — not a bordered, shadowed sticker target like the cover.
+    const line = screen.getAllByText('Add a photo of this step')[0]
+    const affordance = line.closest('label')
+    expect(affordance.className).toContain('text-terra')
+    expect(affordance.className).toMatch(/text-\[12\.5px\]/)
+    expect(affordance.className).not.toMatch(/shadow-\[0_/)
+    expect(affordance.className).not.toContain('sticker')
+    // And no thumbnail frame occupying space before a photo exists.
+    expect(screen.queryByAltText(/photo for step/i)).toBeNull()
+  })
+
+  it('grows into a thumbnail with a remove control only once a photo exists', () => {
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{
+          steps: [{ content: 'Pleat it.', photo_url: 'https://img.test/fold.jpg' }],
+        }}
+        onSubmit={() => {}}
+      />,
+    )
+    expect(screen.getByAltText('Photo for step 1')).toHaveAttribute(
+      'src',
+      'https://img.test/fold.jpg',
+    )
+    expect(
+      screen.getByRole('button', { name: /remove photo for step 1/i }),
+    ).toBeInTheDocument()
+    // The picker line withdraws — a row shows one state, never both.
+    expect(screen.queryByLabelText(/add a photo of step 1/i)).toBeNull()
+  })
+
+  it('sends a step photo_url in the payload, and null when there is none', async () => {
+    const pending = deferredUploads()
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. “Adobo”'), {
+      target: { value: 'Dumplings' },
+    })
+    const contents = screen.getAllByPlaceholderText('Describe this step…')
+    fireEvent.change(contents[0], { target: { value: 'Pleat the wrapper.' } })
+    fireEvent.change(contents[1], { target: { value: 'Steam for 8 minutes.' } })
+
+    pick(stepPickers()[0], jpeg('fold.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(1))
+    pending[0].resolve({ data: { url: 'https://img.test/fold.jpg' } })
+    await waitFor(() =>
+      expect(screen.getByAltText('Photo for step 1')).toBeInTheDocument(),
+    )
+
+    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const { steps } = onSubmit.mock.calls[0][0]
+    expect(steps[0]).toMatchObject({
+      content: 'Pleat the wrapper.',
+      photo_url: 'https://img.test/fold.jpg',
+    })
+    expect(steps[1].photo_url).toBeNull()
+    // Client-side row identity must not leak into the API payload.
+    expect(steps[0]).not.toHaveProperty('uid')
+  })
+
+  it('carries an existing step photo through an edit round-trip untouched', async () => {
+    // PATCH replaces every step, so dropping photo_url here would erase a saved
+    // photo on any plain text edit.
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{
+          name: 'Dumplings',
+          steps: [{ content: 'Pleat it.', photo_url: 'https://img.test/fold.jpg' }],
+        }}
+        onSubmit={onSubmit}
+      />,
+    )
+    fireEvent.submit(screen.getByRole('button', { name: /save changes/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0].steps[0].photo_url).toBe(
+      'https://img.test/fold.jpg',
+    )
+  })
+
+  it('removing a step photo clears only that step’s photo', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{
+          name: 'Dumplings',
+          steps: [
+            { content: 'Pleat it.', photo_url: 'https://img.test/a.jpg' },
+            { content: 'Steam it.', photo_url: 'https://img.test/b.jpg' },
+          ],
+        }}
+        onSubmit={onSubmit}
+      />,
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: /remove photo for step 1/i }),
+    )
+    fireEvent.submit(screen.getByRole('button', { name: /save changes/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const { steps } = onSubmit.mock.calls[0][0]
+    expect(steps[0].photo_url).toBeNull()
+    expect(steps[1].photo_url).toBe('https://img.test/b.jpg')
+  })
+})
+
+// The cover's race guard protected ONE upload. With N steps the guard has to be
+// per-slot, or picking a photo for step 3 aborts and discards step 1's in-flight
+// upload — a regression the single-counter version would introduce silently.
+describe('RecipeForm step photos — per-step upload isolation', () => {
+  beforeEach(() => {
+    client.post.mockReset()
+  })
+
+  const stepPickers = () => screen.getAllByLabelText(/add a photo of step \d+/i)
+
+  it('uploads for different steps run in parallel — neither aborts the other', async () => {
+    deferredUploads()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+
+    pick(stepPickers()[0], jpeg('one.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(1))
+    pick(stepPickers()[1], jpeg('two.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(2))
+
+    // A single global ticket would have cancelled step 1's request here.
+    expect(client.post.mock.calls[0][2].signal.aborted).toBe(false)
+    expect(client.post.mock.calls[1][2].signal.aborted).toBe(false)
+  })
+
+  it('lands each photo on the step it was picked for, whatever the order', async () => {
+    const pending = deferredUploads()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+
+    pick(stepPickers()[0], jpeg('one.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(1))
+    pick(stepPickers()[1], jpeg('two.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(2))
+
+    // Step 2 answers first; step 1's slower upload must still find its own row.
+    pending[1].resolve({ data: { url: 'https://img.test/two.jpg' } })
+    await act(async () => {
+      pending[0].resolve({ data: { url: 'https://img.test/one.jpg' } })
+    })
+
+    expect(screen.getByAltText('Photo for step 1')).toHaveAttribute(
+      'src',
+      'https://img.test/one.jpg',
+    )
+    expect(screen.getByAltText('Photo for step 2')).toHaveAttribute(
+      'src',
+      'https://img.test/two.jpg',
+    )
+  })
+
+  it('a re-pick of the SAME step still supersedes the one before it', async () => {
+    // Per-slot isolation must not lose the original guarantee within a slot.
+    const pending = deferredUploads()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+
+    pick(stepPickers()[0], jpeg('a.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(1))
+    pick(stepPickers()[0], jpeg('b.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(2))
+    expect(client.post.mock.calls[0][2].signal.aborted).toBe(true)
+
+    pending[1].resolve({ data: { url: 'https://img.test/b.jpg' } })
+    await waitFor(() =>
+      expect(screen.getByAltText('Photo for step 1')).toHaveAttribute(
+        'src',
+        'https://img.test/b.jpg',
+      ),
+    )
+    await act(async () => {
+      pending[0].resolve({ data: { url: 'https://img.test/a.jpg' } })
+    })
+    expect(screen.getByAltText('Photo for step 1')).toHaveAttribute(
+      'src',
+      'https://img.test/b.jpg',
+    )
+  })
+
+  it('a step upload does not abort or disturb the cover upload', async () => {
+    deferredUploads()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+
+    pick(screen.getByLabelText('Add a cover photo'), jpeg('cover.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(1))
+    pick(stepPickers()[0], jpeg('step.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(2))
+
+    expect(client.post.mock.calls[0][2].signal.aborted).toBe(false)
+    // The cover's own busy state is still running, not cleared by the step's
+    // pick. Scoped to the cover's own target — "Uploading…" now legitimately
+    // appears on the step too, so a bare text query would be ambiguous.
+    const coverTarget = screen
+      .getByLabelText('Add a cover photo')
+      .closest('label')
+    expect(coverTarget).toHaveAttribute('aria-busy', 'true')
+    expect(coverTarget).toHaveTextContent('Uploading…')
+  })
+
+  it('shows progress and failure only on the step that was picked', async () => {
+    const pending = deferredUploads()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+
+    pick(stepPickers()[0], jpeg('one.jpg'))
+    await waitFor(() =>
+      expect(screen.getAllByText('Uploading…')).toHaveLength(1),
+    )
+    // Rows 2 and 3 still rest at the quiet default.
+    expect(screen.getAllByText('Add a photo of this step')).toHaveLength(2)
+
+    pending[0].reject(new Error('boom'))
+    await waitFor(() =>
+      expect(screen.getAllByText(/photo upload failed/i)).toHaveLength(1),
+    )
+  })
+
+  it('a photo still in flight cannot land on a step that was deleted', async () => {
+    const pending = deferredUploads()
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
+
+    const contents = screen.getAllByPlaceholderText('Describe this step…')
+    fireEvent.change(contents[0], { target: { value: 'Pleat it.' } })
+    fireEvent.change(contents[1], { target: { value: 'Steam it.' } })
+
+    pick(stepPickers()[0], jpeg('one.jpg'))
+    await waitFor(() => expect(client.post).toHaveBeenCalledTimes(1))
+    // Delete step 1 while its photo is still uploading. Step 2 shifts up into
+    // index 0 — an index-keyed upload would drop step 1's photo onto it.
+    fireEvent.click(screen.getByRole('button', { name: /remove step 1/i }))
+    await act(async () => {
+      pending[0].resolve({ data: { url: 'https://img.test/one.jpg' } })
+    })
+
+    expect(screen.queryByAltText(/photo for step/i)).toBeNull()
+    fireEvent.change(screen.getByPlaceholderText('e.g. “Adobo”'), {
+      target: { value: 'Dumplings' },
+    })
+    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const { steps } = onSubmit.mock.calls[0][0]
+    expect(steps[0].content).toBe('Steam it.')
+    expect(steps[0].photo_url).toBeNull()
+  })
+})
+
+// Dictation on the long-text fields. Typing was the most tedious part of the app
+// across both rounds of testing and one tester abandoned the add flow partway
+// through it, so the fields needing whole sentences get a mic. The unit-level
+// behaviour lives in DictateButton.test.jsx; these pin WHICH fields have one and
+// that nothing here claims audio the product doesn't have.
+describe('RecipeForm dictation', () => {
+  // jsdom has no Web Speech API, so a fake constructor goes on `window` — that's
+  // what the seam in lib/speech.js is for. Every assertion below therefore also
+  // depends on the seam reading `window` lazily rather than at import.
+  class FakeRecognition {
+    start() {}
+    stop() {}
+    abort() {}
+  }
+
+  function supported() {
+    window.SpeechRecognition = FakeRecognition
+  }
+
+  afterEach(() => {
+    delete window.SpeechRecognition
+  })
+
+  it('offers a mic on the dish name, the story, and both step fields', () => {
+    supported()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(
+      screen.getByRole('button', { name: 'Dictate the dish name' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Dictate the story' }),
+    ).toBeInTheDocument()
+    // Three starting step rows, each with a step mic and a note mic.
+    expect(screen.getAllByRole('button', { name: /^Dictate step \d+$/ })).toHaveLength(3)
+    expect(
+      screen.getAllByRole('button', { name: /^Dictate the note on step \d+$/ }),
+    ).toHaveLength(3)
+  })
+
+  it('offers NO mic on the ingredient name or amount', () => {
+    // Short fields. They already have autosuggest and unit chips, and are faster
+    // to tap than to speak — a mic on each would add six controls to a section
+    // testers already found too heavy.
+    supported()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const rows = document.querySelectorAll('[data-ingredient-row]')
+    expect(rows).toHaveLength(3)
+    for (const row of rows) {
+      // aria-pressed is the mic's own signature; asserting on the DOM subtree
+      // pins that no mic is *inside* an ingredient row, which a name-based query
+      // across the whole form could not.
+      expect(row.querySelectorAll('button[aria-pressed]')).toHaveLength(0)
+    }
+  })
+
+  it('renders no mic at all in a browser without support', () => {
+    // Firefox. Not a disabled control, not an error — the form is simply the form
+    // it was before, and typing is unaffected.
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(screen.queryByRole('button', { name: /dictate/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the visible labels attached to the fields the mics sit in', () => {
+    // The mic forced these out of their <label> wrappers (a label around the
+    // button and its status line would fold "Dictating…" into the input's own
+    // accessible name), so htmlFor has to carry what nesting used to.
+    supported()
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(screen.getByLabelText('Dish name')).toHaveAttribute(
+      'placeholder',
+      'e.g. “Adobo”',
+    )
+    expect(screen.getAllByLabelText('What to do')).toHaveLength(3)
+    expect(
+      screen.getAllByLabelText('A note on this step (optional)'),
+    ).toHaveLength(3)
+    expect(screen.getByLabelText(/their story \(optional\)/i)).toHaveAttribute(
+      'placeholder',
+      'My grandmother made this every Lunar New Year…',
+    )
+  })
+
+  it('does not submit the form when a mic is tapped', () => {
+    // These sit inside the recipe <form>; a default-type button would save a
+    // half-written recipe on the first tap.
+    supported()
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Dictate the story' }))
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('claims no recording anywhere on the form, in either mic state', () => {
+    // POSITIONING.md bans copy implying audio outright, and a mic button is the
+    // most tempting place in the app to reintroduce it. This is the assertion that
+    // stops a future change from doing so.
+    supported()
+    const { container } = render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const banned = /record|recording|\bvoice\b|audio|in their own words|listen/i
+    const visibleAndNamed = () => {
+      const attrs = ['aria-label', 'title', 'alt', 'placeholder']
+      const named = [...container.querySelectorAll('*')].flatMap((el) =>
+        attrs.map((a) => el.getAttribute(a) || ''),
+      )
+      return [container.textContent || '', ...named].join(' ')
+    }
+    expect(visibleAndNamed()).not.toMatch(banned)
+    fireEvent.click(screen.getByRole('button', { name: 'Dictate step 1' }))
+    expect(screen.getByText('Dictating…')).toBeInTheDocument()
+    expect(visibleAndNamed()).not.toMatch(banned)
   })
 })
 

@@ -5,6 +5,7 @@ import MarkerTitle from './MarkerTitle'
 import FieldLabel from './FieldLabel'
 import IngredientNameField from './IngredientNameField'
 import AmountUnitChips from './AmountUnitChips'
+import DictateButton from './DictateButton'
 import { parseQuantity } from '../utils/quantity'
 import { mergeSuggestions } from '../lib/commonIngredients'
 import { shouldOfferUnits } from '../lib/amountChips'
@@ -18,7 +19,23 @@ import { shouldOfferUnits } from '../lib/amountChips'
 // mode: 'add' | 'edit' — drives the heading and button labels.
 
 const emptyIngredient = () => ({ name: '', quantity: '' })
-const emptyStep = () => ({ content: '', voice_note: '' })
+
+// Every step row carries a `uid` that outlives its index. A step's photo upload
+// is async and its row can be removed (or shifted by removing an earlier row)
+// while the request is in flight, so anything that addresses a row by position
+// would land the photo on whichever step happens to sit at that index when the
+// response arrives. The uid is the row's identity for both the upload slot and
+// the state write; it is deliberately NOT part of the submitted payload.
+let stepUid = 0
+const emptyStep = () => ({
+  uid: `s${++stepUid}`,
+  content: '',
+  voice_note: '',
+  photo_url: '',
+})
+
+// Steps handed in by the parent (EditRecipe) have no uid — mint one per row.
+const withUids = (rows) => rows.map((s) => (s.uid ? s : { ...s, uid: `s${++stepUid}` }))
 
 // How many empty rows a NEW recipe starts with. More than one because a single
 // empty box gave no visual cue that entries were meant to be separate — a tester
@@ -31,6 +48,10 @@ const STARTING_STEPS = 3
 const emptyRows = (make, n) => Array.from({ length: n }, make)
 
 // Keep in sync with the backend's accepted formats in app/routers/upload.py.
+// The cover's upload-slot key. Step slots use the row's uid, and both share one
+// keyed ticket map — a plain string can't collide with a generated `s<n>` uid.
+const COVER_SLOT = 'cover'
+
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const ACCEPTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
@@ -114,7 +135,7 @@ export default function RecipeForm({
   )
   const [steps, setSteps] = useState(
     initialValues.steps?.length
-      ? initialValues.steps
+      ? withUids(initialValues.steps)
       : emptyRows(emptyStep, mode === 'add' ? STARTING_STEPS : 1),
   )
   const [coverPhotoUrl, setCoverPhotoUrl] = useState(
@@ -122,23 +143,131 @@ export default function RecipeForm({
   )
   const [uploading, setUploading] = useState(false)
   const [photoError, setPhotoError] = useState('')
+  // Per-step photo progress + failure, keyed by the row's uid rather than its
+  // index (see emptyStep): a step can be removed or shifted mid-upload, and an
+  // index-keyed map would then show step 4's spinner on step 3.
+  const [stepUploading, setStepUploading] = useState({})
+  const [stepPhotoError, setStepPhotoError] = useState({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Cover-photo upload concurrency. The picker stays enabled during an upload
-  // on purpose — on a slow phone connection a disabled input that sits there
-  // "Uploading…" for 30s is indistinguishable from a hung app, and the user's
-  // instinct (pick again) has to keep working. So instead of locking the input
-  // we make a second pick unambiguously win:
+  // Photo-upload concurrency, per independent SLOT. The picker stays enabled
+  // during an upload on purpose — on a slow phone connection a disabled input
+  // that sits there "Uploading…" for 30s is indistinguishable from a hung app,
+  // and the user's instinct (pick again) has to keep working. So instead of
+  // locking the input we make a second pick unambiguously win:
   //   • uploadSeq — every pick claims a ticket; only the newest ticket may write
   //     state. Without it whichever response lands LAST wins, which on a flaky
   //     link is often the FIRST photo, so replacing A with B silently kept A.
-  //   • abortRef — cancel the superseded request so it stops competing for the
+  //   • abortRefs — cancel the superseded request so it stops competing for the
   //     phone's uplink, making the photo the user actually wants arrive sooner.
   // The seq guard is what makes correctness not depend on the abort landing in
   // time: a response already in flight when we abort is still ignored.
-  const uploadSeq = useRef(0)
-  const abortRef = useRef(null)
+  //
+  // Both are Maps because "supersedes" is a per-slot relation, not a global one.
+  // With N step photos plus the cover, a single counter would make ANY later pick
+  // cancel and discard an earlier one — pick a photo for step 3 and step 1's
+  // upload silently dies. Keying the ticket by slot ('cover', or a step's uid)
+  // means picks for different slots proceed in parallel and only a re-pick of
+  // the SAME slot invalidates the one before it, which is the race that exists.
+  const uploadSeq = useRef(new Map())
+  const abortRefs = useRef(new Map())
+
+  // Retire a slot's ticket without starting a new upload: an in-flight response
+  // for it must no longer be allowed to write (used when a photo is removed or
+  // its whole step row is deleted).
+  function retireSlot(slot) {
+    uploadSeq.current.set(slot, (uploadSeq.current.get(slot) || 0) + 1)
+    abortRefs.current.get(slot)?.abort()
+  }
+
+  // The shared pick → HEIC-convert → validate → upload pipeline, run for one
+  // slot. Callers supply only where the result goes; every correctness-critical
+  // part (the ticket, the abort, the format/size rules, resetting the input so
+  // re-picking the same file re-fires onChange) lives here once, so the cover
+  // and N step photos cannot drift apart.
+  async function uploadPhotoFor({ slot, event, onBusy, onError, onUrl }) {
+    let file = event.target.files?.[0]
+    if (!file) return
+    const input = event.target
+
+    const seq = (uploadSeq.current.get(slot) || 0) + 1
+    uploadSeq.current.set(slot, seq)
+    // Any pick supersedes the one before it FOR THIS SLOT, so drop that request.
+    abortRefs.current.get(slot)?.abort()
+    const controller =
+      typeof AbortController === 'function' ? new AbortController() : null
+    abortRefs.current.set(slot, controller)
+    // Superseded picks must not touch state (that's the race) — and must not
+    // clear busy/reset the input either, or the newer upload's spinner would
+    // vanish while it's still running.
+    const isCurrent = () => uploadSeq.current.get(slot) === seq
+
+    // A rejected pick only reports itself if it's still the current one.
+    function reject(message) {
+      if (!isCurrent()) return
+      onError(message)
+      onBusy(false)
+      input.value = ''
+    }
+
+    onError('')
+    onBusy(true)
+
+    try {
+      // iPhone HEIC → convert to JPEG in the browser so the upload just works.
+      if (isHeic(file)) {
+        try {
+          const { default: heic2any } = await import('heic2any')
+          const blob = await heic2any({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.9,
+          })
+          const out = Array.isArray(blob) ? blob[0] : blob
+          file = new File([out], file.name.replace(/\.hei[cf]$/i, '.jpg'), {
+            type: 'image/jpeg',
+          })
+        } catch {
+          reject("Couldn't read that iPhone photo. Try again, or pick a JPEG.")
+          return
+        }
+      }
+
+      // Validate (post-conversion) for instant feedback, matching the backend.
+      // Check both MIME type and extension: some browsers report an empty or
+      // unexpected file.type, so the extension is a reliable fallback.
+      const typeOk = ACCEPTED_IMAGE_TYPES.includes(file.type)
+      const extOk = hasAcceptedExtension(file.name)
+      if (!typeOk && !extOk) {
+        reject('Please choose a JPEG, PNG, or WebP image.')
+        return
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        reject('That image is too large (max 10 MB).')
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await client.post('/upload/recipe-photo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        signal: controller?.signal,
+      })
+      if (!isCurrent()) return // a newer pick owns this slot now
+      onUrl(data.url)
+    } catch (err) {
+      // Includes the abort of a superseded request, which isn't a user-facing
+      // failure — isCurrent() filters it out along with any other stale error.
+      if (!isCurrent()) return
+      onError(toUserMessage(err, 'Photo upload failed. Please try again.'))
+    } finally {
+      if (isCurrent()) {
+        onBusy(false)
+        input.value = '' // reset so re-selecting the same file fires onChange
+      }
+    }
+  }
 
   // Ingredient autosuggest source. Starts as the shipped common list so the very
   // first keystroke suggests something, then folds in the words this user has
@@ -166,90 +295,14 @@ export default function RecipeForm({
   const submitText = submitLabel || defaultSubmitLabel
   const loadingLabel = mode === 'edit' ? 'Saving…' : 'Keeping…'
 
-  async function handlePhotoSelect(e) {
-    let file = e.target.files?.[0]
-    if (!file) return
-    const input = e.target
-
-    const seq = ++uploadSeq.current
-    // Any pick supersedes the one before it, so drop the older request.
-    abortRef.current?.abort()
-    const controller =
-      typeof AbortController === 'function' ? new AbortController() : null
-    abortRef.current = controller
-    // Superseded picks must not touch state (that's the race) — and must not
-    // clear `uploading`/reset the input either, or the newer upload's spinner
-    // would vanish while it's still running.
-    const isCurrent = () => uploadSeq.current === seq
-
-    // A rejected pick only reports itself if it's still the current one.
-    function reject(message) {
-      if (!isCurrent()) return
-      setPhotoError(message)
-      setUploading(false)
-      input.value = ''
-    }
-
-    setPhotoError('')
-    setUploading(true)
-
-    try {
-      // iPhone HEIC → convert to JPEG in the browser so the upload just works.
-      if (isHeic(file)) {
-        try {
-          const { default: heic2any } = await import('heic2any')
-          const blob = await heic2any({
-            blob: file,
-            toType: 'image/jpeg',
-            quality: 0.9,
-          })
-          const out = Array.isArray(blob) ? blob[0] : blob
-          file = new File(
-            [out],
-            file.name.replace(/\.hei[cf]$/i, '.jpg'),
-            { type: 'image/jpeg' },
-          )
-        } catch {
-          reject("Couldn't read that iPhone photo. Try again, or pick a JPEG.")
-          return
-        }
-      }
-
-      // Validate (post-conversion) for instant feedback, matching the backend.
-      // Check both MIME type and extension: some browsers report an empty or
-      // unexpected file.type, so the extension is a reliable fallback.
-      const typeOk = ACCEPTED_IMAGE_TYPES.includes(file.type)
-      const extOk = hasAcceptedExtension(file.name)
-      if (!typeOk && !extOk) {
-        reject('Please choose a JPEG, PNG, or WebP image.')
-        return
-      }
-      if (file.size > MAX_UPLOAD_BYTES) {
-        reject('That image is too large (max 10 MB).')
-        return
-      }
-
-      const formData = new FormData()
-      formData.append('file', file)
-      const { data } = await client.post('/upload/recipe-photo', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        signal: controller?.signal,
-      })
-      if (!isCurrent()) return // a newer pick owns the cover now
-      setCoverPhotoUrl(data.url)
-    } catch (err) {
-      // Includes the abort of a superseded request, which isn't a user-facing
-      // failure — isCurrent() filters it out along with any other stale error.
-      if (!isCurrent()) return
-      setPhotoError(
-        toUserMessage(err, 'Photo upload failed. Please try again.'),
-      )
-    } finally {
-      if (isCurrent()) {
-        setUploading(false)
-        input.value = '' // reset so re-selecting the same file fires onChange
-      }
-    }
+  function handlePhotoSelect(e) {
+    return uploadPhotoFor({
+      slot: COVER_SLOT,
+      event: e,
+      onBusy: setUploading,
+      onError: setPhotoError,
+      onUrl: setCoverPhotoUrl,
+    })
   }
 
   function removePhoto() {
@@ -263,10 +316,41 @@ export default function RecipeForm({
     // never render at once, so no upload can be in flight here. If that ever
     // changes (e.g. previewing the new photo while it uploads) a landing
     // response would silently re-fill the cover the user just cleared.
-    uploadSeq.current++
-    abortRef.current?.abort()
+    retireSlot(COVER_SLOT)
     setCoverPhotoUrl('')
     setPhotoError('')
+  }
+
+  // A step's photo. Identical pipeline to the cover, addressed by the row's uid
+  // so a slow upload writes to the step the user picked FOR — not to whatever
+  // step now occupies that index after a removal above it.
+  function handleStepPhotoSelect(uid, e) {
+    const setFlag = (setter) => (v) =>
+      setter((prev) => ({ ...prev, [uid]: v }))
+    return uploadPhotoFor({
+      slot: uid,
+      event: e,
+      onBusy: setFlag(setStepUploading),
+      onError: setFlag(setStepPhotoError),
+      onUrl: (url) =>
+        setSteps((prev) =>
+          prev.map((s) => (s.uid === uid ? { ...s, photo_url: url } : s)),
+        ),
+    })
+  }
+
+  function removeStepPhoto(uid) {
+    // Same asset-retention reasoning as removePhoto. Unlike the cover, the
+    // remove button here DOES coexist with a pick (choosing a replacement while
+    // one is uploading is reachable), so retiring the ticket is load-bearing
+    // rather than defensive: without it a landing response would re-fill a photo
+    // the user just cleared.
+    retireSlot(uid)
+    setSteps((prev) =>
+      prev.map((s) => (s.uid === uid ? { ...s, photo_url: '' } : s)),
+    )
+    setStepUploading((prev) => ({ ...prev, [uid]: false }))
+    setStepPhotoError((prev) => ({ ...prev, [uid]: '' }))
   }
 
   function updateIngredient(index, field, value) {
@@ -287,6 +371,11 @@ export default function RecipeForm({
   }
 
   function removeStep(index) {
+    // Retire the row's upload slot on the way out: a photo still in flight for a
+    // deleted step has nowhere to land, and its uid is never reused, so leaving
+    // the ticket live would only let a response write into a vanished row.
+    const uid = steps[index]?.uid
+    if (uid) retireSlot(uid)
     setSteps((prev) => prev.filter((_, i) => i !== index))
   }
 
@@ -372,6 +461,8 @@ export default function RecipeForm({
           content: s.content.trim(),
           voice_note: s.voice_note?.trim() || null,
           section_header: s.section_header ?? null,
+          // uid is client-side row identity and deliberately not sent.
+          photo_url: s.photo_url || null,
           position: idx + 1,
         })),
     }
@@ -489,20 +580,38 @@ export default function RecipeForm({
         <FormSection>The dish</FormSection>
         <div className="space-y-3">
           {/* dish-led naming: the person is captured separately as the origin */}
-          <label className="block">
-            <FieldLabel>Dish name</FieldLabel>
-            <input
-              type="text"
-              placeholder="e.g. “Adobo”"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="field"
-            />
+          {/* Not a <label> wrapper, for the same reason the ingredient name isn't
+              one: this field owns a dictation button and a live status line, and a
+              label around both would fold "Dictating…" into the input's own
+              accessible name. htmlFor keeps the visible label attached without
+              adopting the controls beside it.
+              `relative` + `pr-11`: the mic sits in the field's bottom-right
+              corner, and the reserved right padding is what keeps typed text from
+              ever running underneath it. Same pairing on every dictatable field. */}
+          <div className="block">
+            <FieldLabel>
+              <label htmlFor="recipe-name">Dish name</label>
+            </FieldLabel>
+            <div className="relative">
+              <input
+                id="recipe-name"
+                type="text"
+                placeholder="e.g. “Adobo”"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="field pr-11"
+              />
+              <DictateButton
+                value={name}
+                onChange={setName}
+                what="the dish name"
+              />
+            </div>
             <p className="font-display italic text-[12px] text-ink-soft mt-1">
               You’ll say whose recipe it is next.
             </p>
-          </label>
+          </div>
           <div className="flex gap-3">
             <label className="block flex-1">
               <FieldLabel>Servings</FieldLabel>
@@ -542,19 +651,27 @@ export default function RecipeForm({
             explicitly: testers treated an unlabeled textarea as required and
             stalled on it, which is the worst place to lose someone. */}
         <FormSection>The story</FormSection>
-        <label className="block">
-          <FieldLabel accent="plum">{storyCopy.label} (optional)</FieldLabel>
+        <div className="block">
+          <FieldLabel accent="plum">
+            <label htmlFor="recipe-story">{storyCopy.label} (optional)</label>
+          </FieldLabel>
           <p className="font-display italic text-[12px] text-ink-soft mb-1.5">
             {storyCopy.help}
           </p>
-          <textarea
-            placeholder={storyCopy.placeholder}
-            value={story}
-            onChange={(e) => setStory(e.target.value)}
-            rows={3}
-            className="field resize-none"
-          />
-        </label>
+          <div className="relative">
+            <textarea
+              id="recipe-story"
+              placeholder={storyCopy.placeholder}
+              value={story}
+              onChange={(e) => setStory(e.target.value)}
+              rows={3}
+              className="field resize-none pr-11"
+            />
+            {/* The field this feature exists for. It's the one people skip — it
+                needs whole sentences, and it's where a tester stopped. */}
+            <DictateButton value={story} onChange={setStory} what="the story" />
+          </div>
+        </div>
 
         {/* Ingredients — each row pairs a bold NAME field with a tinted
             MEASUREMENT field, each with a persistent label so the two are never
@@ -674,8 +791,11 @@ export default function RecipeForm({
           One step per box — press Enter to start the next one.
         </p>
         <div className="space-y-3">
+          {/* Keyed by uid, not index. Each row now holds an UNCONTROLLED file
+              input, so index keys would let React reuse a removed row's DOM
+              (and its retained file selection) for the row that shifts up. */}
           {steps.map((step, idx) => (
-            <div key={idx} className="sticker-sm bg-card p-3">
+            <div key={step.uid} className="sticker-sm bg-card p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-display font-black text-[13px] text-ink">
                   Step {idx + 1}
@@ -691,35 +811,125 @@ export default function RecipeForm({
                   </button>
                 )}
               </div>
-              <label className="block mb-2">
-                <FieldLabel>What to do</FieldLabel>
-                <textarea
-                  data-step-content
-                  placeholder="Describe this step…"
-                  value={step.content}
-                  onChange={(e) => updateStep(idx, 'content', e.target.value)}
-                  onKeyDown={(e) =>
-                    advanceOnEnter(e, {
-                      container: steps,
-                      index: idx,
-                      addRow: () => setSteps((prev) => [...prev, emptyStep()]),
-                      selector: '[data-step-content]',
-                    })
-                  }
-                  rows={2}
-                  className="field resize-none"
-                />
-              </label>
-              <label className="block">
-                <FieldLabel accent="plum">A note on this step (optional)</FieldLabel>
-                <input
-                  type="text"
-                  placeholder={'“don\'t rush the onions”'}
-                  value={step.voice_note || ''}
-                  onChange={(e) => updateStep(idx, 'voice_note', e.target.value)}
-                  className="field bg-plum/[0.06]"
-                />
-              </label>
+              <div className="block mb-2">
+                <FieldLabel>
+                  <label htmlFor={`step-content-${step.uid}`}>What to do</label>
+                </FieldLabel>
+                <div className="relative">
+                  <textarea
+                    id={`step-content-${step.uid}`}
+                    data-step-content
+                    placeholder="Describe this step…"
+                    value={step.content}
+                    onChange={(e) => updateStep(idx, 'content', e.target.value)}
+                    onKeyDown={(e) =>
+                      advanceOnEnter(e, {
+                        container: steps,
+                        index: idx,
+                        addRow: () => setSteps((prev) => [...prev, emptyStep()]),
+                        selector: '[data-step-content]',
+                      })
+                    }
+                    rows={2}
+                    className="field resize-none pr-11"
+                  />
+                  {/* Tap, talk, Enter, repeat: dictation lands the sentence and
+                      the existing Enter-to-advance opens the next step, so a
+                      five-step method never needs the keyboard. */}
+                  <DictateButton
+                    value={step.content}
+                    onChange={(v) => updateStep(idx, 'content', v)}
+                    what={`step ${idx + 1}`}
+                  />
+                </div>
+              </div>
+              <div className="block">
+                <FieldLabel accent="plum">
+                  <label htmlFor={`step-note-${step.uid}`}>
+                    A note on this step (optional)
+                  </label>
+                </FieldLabel>
+                <div className="relative">
+                  <input
+                    id={`step-note-${step.uid}`}
+                    type="text"
+                    placeholder={'“don\'t rush the onions”'}
+                    value={step.voice_note || ''}
+                    onChange={(e) => updateStep(idx, 'voice_note', e.target.value)}
+                    className="field bg-plum/[0.06] pr-11"
+                  />
+                  <DictateButton
+                    value={step.voice_note || ''}
+                    onChange={(v) => updateStep(idx, 'voice_note', v)}
+                    what={`the note on step ${idx + 1}`}
+                  />
+                </div>
+              </div>
+
+              {/* Optional technique photo — "fold it like this", "until it looks
+                  like this". The one thing this must not do is make the steps
+                  section heavier: the add flow starts with THREE step rows, one
+                  tester abandoned it as too effortful, and a dropzone per row
+                  would triple the visual weight of the section to serve a field
+                  most steps will never use.
+
+                  So the resting state is a single line of small terra text — the
+                  same weight as "+ Add step" below, which the form has already
+                  taught reads as "optional extra". The line IS the file input
+                  (an sr-only input inside the label), so it opens the picker in
+                  one tap; an expanding panel would have cost a second tap to
+                  reach the same place and left a dropzone sitting open in the
+                  row. It only grows into something bigger once there's a photo
+                  to show, i.e. once the user has asked for it.
+
+                  sr-only, NOT `hidden`: display:none drops the input out of the
+                  tab order, which is what made the cover picker unreachable by
+                  keyboard. */}
+              {step.photo_url ? (
+                <div className="mt-2.5 flex items-center gap-2.5">
+                  {/* Small, not a banner: enough to recognise your own photo and
+                      confirm the right one uploaded, not enough to dominate a row
+                      whose subject is the instruction. */}
+                  <img
+                    src={step.photo_url}
+                    alt={`Photo for step ${idx + 1}`}
+                    className="w-14 h-14 object-cover rounded-[10px] border-2 border-ink block flex-none"
+                  />
+                  <span className="font-display font-bold text-[12.5px] text-ink-soft flex-1">
+                    Photo added
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeStepPhoto(step.uid)}
+                    aria-label={`Remove photo for step ${idx + 1}`}
+                    className="flex-none w-7 h-7 rounded-full bg-cream border-2 border-ink text-ink flex items-center justify-center"
+                  >
+                    <Icon name="close" className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <label
+                  aria-busy={stepUploading[step.uid] || undefined}
+                  className="mt-2.5 inline-flex items-center gap-1.5 font-display font-bold text-[12.5px] text-terra cursor-pointer rounded-full focus-within:ring-4 focus-within:ring-terra/25"
+                >
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+                    onChange={(e) => handleStepPhotoSelect(step.uid, e)}
+                    aria-label={`Add a photo of step ${idx + 1}`}
+                    className="sr-only"
+                  />
+                  <Icon name="camera" className="w-3.5 h-3.5" />
+                  {stepUploading[step.uid]
+                    ? 'Uploading…'
+                    : 'Add a photo of this step'}
+                </label>
+              )}
+              {stepPhotoError[step.uid] && (
+                <p className="mt-2">
+                  <span className="error-pill">{stepPhotoError[step.uid]}</span>
+                </p>
+              )}
             </div>
           ))}
         </div>

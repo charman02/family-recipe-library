@@ -87,6 +87,20 @@ const paths = {
     </>
   ),
 
+  // Dictation. The mic is the affordance for SPEAKING TEXT INTO A FIELD — the
+  // browser transcribes and the utterance is discarded. Nothing in this app
+  // captures, stores or plays sound, so no label beside this glyph may suggest
+  // it does (POSITIONING.md). The square is the stop control while dictating:
+  // a shape change, so the active state never rests on colour alone.
+  mic: (
+    <>
+      <path d="M12 2.5a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0v-6a3 3 0 0 0-3-3z" />
+      <path d="M18.5 11v1a6.5 6.5 0 0 1-13 0v-1" />
+      <path d="M12 18.5V21" />
+    </>
+  ),
+  stop: <rect x="7.5" y="7.5" width="9" height="9" rx="2" />,
+
   // recipe meta row
   serves: (
     <>
