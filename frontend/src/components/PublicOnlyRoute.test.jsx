@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-vi.mock('../api/lineage', () => ({ claimInvite: vi.fn() }))
-import { claimInvite } from '../api/lineage'
+vi.mock('../api/sharing', () => ({ claimInvite: vi.fn() }))
+import { claimInvite } from '../api/sharing'
 import PublicOnlyRoute from './PublicOnlyRoute'
 
 beforeEach(() => {

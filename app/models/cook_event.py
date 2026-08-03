@@ -10,7 +10,7 @@ from app.database import Base
 
 class CookEvent(Base):
     """One person cooking a recipe. Powers the cook COUNT on a node; deliberately
-    does NOT create a lineage node (only a remix does)."""
+    is a log entry, not a new recipe."""
 
     __tablename__ = "cook_events"
 

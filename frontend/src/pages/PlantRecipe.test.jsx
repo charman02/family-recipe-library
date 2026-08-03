@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
-vi.mock('../api/lineage', () => ({
+vi.mock('../api/sharing', () => ({
   plantRecipe: vi.fn(() =>
     Promise.resolve({
       data: {
@@ -50,7 +50,7 @@ vi.mock('../components/RecipeForm', () => ({
     )
   },
 }))
-import { plantRecipe } from '../api/lineage'
+import { plantRecipe } from '../api/sharing'
 import PlantRecipe from './PlantRecipe'
 
 beforeEach(() => {

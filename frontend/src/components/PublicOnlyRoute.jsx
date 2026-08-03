@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
-import { claimInvite } from '../api/lineage'
+import { claimInvite } from '../api/sharing'
 import Loader from './Loader'
 
 // The mirror of ProtectedRoute: ProtectedRoute keeps a signed-OUT user off the
@@ -29,7 +29,7 @@ export default function PublicOnlyRoute({ children }) {
     let live = true
     claimInvite(inviteToken)
       .then(({ data }) => {
-        // Grants bind to the lineage root, so the returned recipe_id is the
+        // The grant names the recipe it was made for, so the returned recipe_id is the
         // recipe they were handed — go straight to it, not to a generic list.
         if (live) {
           setClaimedTo(

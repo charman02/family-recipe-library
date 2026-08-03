@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-vi.mock('../api/lineage', () => ({
+vi.mock('../api/sharing', () => ({
   setVisibility: vi.fn(() =>
     Promise.resolve({ data: { visibility: 'public' } }),
   ),
 }))
-import { setVisibility } from '../api/lineage'
+import { setVisibility } from '../api/sharing'
 import VisibilityControl from './VisibilityControl'
 
 beforeEach(() => setVisibility.mockClear())

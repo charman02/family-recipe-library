@@ -1,7 +1,4 @@
-from app.models.ghost_ancestor import GhostAncestor
-
-
-def test_plant_recipe_with_origin_creates_ghost(client, make_user, db_session):
+def test_origin_becomes_the_recipe_byline(client, make_user):
     _, headers = make_user()
     payload = {
         "name": "Grandma's Congee",
@@ -19,10 +16,12 @@ def test_plant_recipe_with_origin_creates_ghost(client, make_user, db_session):
     r = client.post("/recipes", json=payload, headers=headers)
     assert r.status_code == 201
     body = r.json()
-    assert body["lineage_relation"] == "root"
     assert body["visibility"] == "private"
+    # The attribution string IS the feature — it's what renders "from Nonna Lucia"
+    # under the dish. It used to also write a ghost_ancestor row to make recipe #1
+    # a two-generation tree; nothing read that once lineage went.
     assert "Nonna Lucia" in body["origin_attribution"]
-    assert db_session.query(GhostAncestor).filter_by(recipe_id=body["id"]).count() == 1
+    assert "Abruzzo" in body["origin_attribution"]
 
 
 def _make_root(client, headers):
@@ -34,21 +33,6 @@ def _make_root(client, headers):
         "steps": [{"content": "Brown the meat", "position": 1}],
     }
     return client.post("/recipes", json=payload, headers=headers).json()
-
-
-def _make_child(db_session, user_id, parent_id, name="Child"):
-    """Build a lineage child directly via the ORM. The parent-child edge has no
-    dedicated write endpoint anymore (remix was cut), so tests that exercise the
-    lineage substrate construct descendants at the data layer."""
-    from app.models.recipe import Recipe
-
-    child = Recipe(
-        user_id=user_id, name=name, parent_recipe_id=parent_id, lineage_relation="remixed"
-    )
-    db_session.add(child)
-    db_session.commit()
-    db_session.refresh(child)
-    return child
 
 
 def test_cook_increments_count_no_node(client, make_user):
@@ -98,17 +82,6 @@ def test_handoff_without_a_recipient_is_link_only(client, make_user):
     assert body["to_user_id"] is None
 
 
-def test_lineage_endpoint_returns_spine(client, make_user, db_session):
-    user, owner = make_user()
-    root = _make_root(client, owner)
-    child = _make_child(db_session, user.id, root["id"])
-    r = client.get(f"/recipes/{child.id}/lineage", headers=owner)
-    assert r.status_code == 200
-    view = r.json()
-    assert [n["id"] for n in view["spine"]] == [root["id"], child.id]
-    assert view["counts"]["versions"] == 2
-
-
 def test_private_recipe_hidden_from_non_owner(client, make_user):
     _, owner = make_user()
     root = _make_root(client, owner)  # private by default
@@ -122,14 +95,6 @@ def test_browse_only_shows_public(client, make_user):
     _make_root(client, owner)  # private by default
     # /browse is unauthenticated (browse_recipes takes no current_user) — call it plainly.
     assert client.get("/recipes/browse").json() == []
-
-
-def test_lineage_hidden_from_non_owner(client, make_user):
-    _, owner = make_user()
-    root = _make_root(client, owner)  # private by default
-    _, other = make_user()
-    assert client.get(f"/recipes/{root['id']}/lineage", headers=other).status_code == 404
-    assert client.get(f"/recipes/{root['id']}/lineage", headers=owner).status_code == 200
 
 
 def test_handoff_non_owner_404(client, make_user):

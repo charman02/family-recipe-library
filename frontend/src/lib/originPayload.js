@@ -1,4 +1,4 @@
-// Pure builders for lineage request bodies / form seeds. Keeps components thin.
+// Pure builders for the origin-attribution request body. Keeps components thin.
 
 const clean = (v) => (v && String(v).trim() ? String(v).trim() : null)
 

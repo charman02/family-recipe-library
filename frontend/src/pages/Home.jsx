@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import { getSharedWithMe } from '../api/lineage'
+import { getSharedWithMe } from '../api/sharing'
 import RecipeCard from '../components/RecipeCard'
 import MarkerTitle from '../components/MarkerTitle'
 import Loader from '../components/Loader'

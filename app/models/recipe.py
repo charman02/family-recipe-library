@@ -29,14 +29,11 @@ class Recipe(Base):
     source: Mapped[Optional[str]] = mapped_column(nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(nullable=True)
     language: Mapped[str] = mapped_column(server_default="en")
-    # --- Lineage (see 2026-07-06 signature-feature spec) ---
-    parent_recipe_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    # "root" | "kept" | "remixed" — app-validated string (portable across SQLite/Postgres)
-    lineage_relation: Mapped[str] = mapped_column(server_default="root")
+    # Who the recipe came from, as a display string ("Lola Remedios · Cebu").
+    # This is the byline, and it's all that remains of the removed lineage model:
+    # attribution is a fact about one recipe, not an edge in a tree.
     origin_attribution: Mapped[Optional[str]] = mapped_column(nullable=True)
-    # "private" | "public" — effective visibility is the ROOT's (see services/lineage.py)
+    # "private" | "public" — a recipe's own, since there is no root to inherit from
     visibility: Mapped[str] = mapped_column(server_default="private")
     prompt_key: Mapped[Optional[str]] = mapped_column(nullable=True)
     prompt_answer: Mapped[Optional[str]] = mapped_column(nullable=True)
@@ -55,14 +52,6 @@ class Recipe(Base):
         "Step", back_populates="recipe", cascade="all, delete-orphan"
     )
     user: Mapped["User"] = relationship("User")
-    parent: Mapped[Optional["Recipe"]] = relationship(
-        "Recipe", remote_side="Recipe.id", back_populates="children"
-    )
-    children: Mapped[list["Recipe"]] = relationship(
-        "Recipe",
-        back_populates="parent",
-        primaryjoin="Recipe.id==Recipe.parent_recipe_id",
-    )
 
     @property
     def author_full_name(self) -> str:

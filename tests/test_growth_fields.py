@@ -4,12 +4,12 @@ def test_recipe_response_includes_growth_fields(client, make_user, db_session):
 
     owner, headers = make_user()
     # a root with one child and two cooks (one by owner)
-    root = Recipe(user_id=owner.id, name="Adobo", lineage_relation="root")
+    root = Recipe(user_id=owner.id, name="Adobo")
     db_session.add(root)
     db_session.commit()
     db_session.refresh(root)
     child = Recipe(
-        user_id=owner.id, name="Adobo mine", lineage_relation="remixed", parent_recipe_id=root.id
+        user_id=owner.id, name="Adobo mine"
     )
     other, _ = make_user()
     db_session.add(child)
@@ -20,6 +20,4 @@ def test_recipe_response_includes_growth_fields(client, make_user, db_session):
     body = client.get(f"/recipes/{root.id}", headers=headers).json()
     assert body["cook_count"] == 2
     assert body["owner_cook_count"] == 1
-    assert body["child_count"] == 1
-    assert body["has_grandchildren"] is False
     assert body["last_cooked_at"] is not None

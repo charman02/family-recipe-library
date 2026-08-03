@@ -55,7 +55,7 @@ def test_preview_unknown_token_404(client, make_user):
 
 
 def test_claim_grants_view_even_on_email_mismatch(client, make_user, db_session):
-    from app.services.lineage import can_view
+    from app.services.sharing import can_view
     from app.models.recipe import Recipe
 
     owner, oheaders = make_user()
@@ -106,7 +106,7 @@ def test_link_only_handoffs_are_not_deduped_into_one_row(client, make_user):
 def test_second_claimer_does_not_revoke_the_first(client, make_user, db_session):
     """A shared link claimed by two people must grant BOTH access. Previously the
     claim overwrote to_user_id on the single row, silently revoking the first."""
-    from app.services.lineage import can_view
+    from app.services.sharing import can_view
     from app.models.recipe import Recipe
 
     owner, oheaders = make_user()

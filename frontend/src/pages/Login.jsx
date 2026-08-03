@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
-import { claimInvite } from '../api/lineage'
+import { claimInvite } from '../api/sharing'
 import IconField from '../components/IconField'
 
 // Mirrors the server's rules (app/schemas/user.py) so a person hears about a

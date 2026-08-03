@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getInvitePreview } from '../api/lineage'
+import { getInvitePreview } from '../api/sharing'
 import RecipeBody from '../components/RecipeBody'
 import Loader from '../components/Loader'
 import IsseiMeaning from '../components/IsseiMeaning'

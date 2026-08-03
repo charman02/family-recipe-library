@@ -121,12 +121,8 @@ class RecipeResponse(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     language: str
-    parent_recipe_id: Optional[int] = None
-    lineage_relation: str = "root"
     cook_count: int = 0
     owner_cook_count: int = 0
-    child_count: int = 0
-    has_grandchildren: bool = False
     shared_with_count: int = 0
     growth_stage: str = "seed"
     growth_vitality: str = "bare"
@@ -217,27 +213,3 @@ class RecipeUpdate(BaseModel):
     ingredient_sections: Optional[list[IngredientSectionCreate]] = None
     ingredients: Optional[list[IngredientCreate]] = None
     steps: Optional[list[StepCreate]] = None
-
-
-# Lineage view schemas
-
-
-class NodeSummary(BaseModel):
-    id: int
-    name: str
-    author_full_name: Optional[str] = None
-    lineage_relation: str
-    origin_attribution: Optional[str] = None
-    cook_count: int
-
-
-class LineageCounts(BaseModel):
-    cooks: int
-    versions: int
-
-
-class LineageView(BaseModel):
-    focus: NodeSummary
-    spine: list[NodeSummary]
-    children: list[NodeSummary]
-    counts: LineageCounts

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-vi.mock('../api/lineage', () => ({
+vi.mock('../api/sharing', () => ({
   getSharedWithMe: vi.fn(() =>
     Promise.resolve({
       data: [

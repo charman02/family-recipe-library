@@ -4,9 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('../api/client', () => ({ default: { get: vi.fn() } }))
-vi.mock('../api/lineage', () => ({ getSharedWithMe: vi.fn() }))
+vi.mock('../api/sharing', () => ({ getSharedWithMe: vi.fn() }))
 import client from '../api/client'
-import { getSharedWithMe } from '../api/lineage'
+import { getSharedWithMe } from '../api/sharing'
 import Home from './Home'
 
 const OWNED = {

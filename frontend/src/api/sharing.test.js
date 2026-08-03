@@ -6,14 +6,14 @@ vi.mock('./client', () => ({
   },
 }))
 import client from './client'
-import { plantRecipe, cookRecipe, handoffRecipe, getLineage } from './lineage'
+import { plantRecipe, cookRecipe, handoffRecipe } from './sharing'
 
 beforeEach(() => {
   client.post.mockClear()
   client.get.mockClear()
 })
 
-describe('lineage api', () => {
+describe('sharing api', () => {
   it('plantRecipe posts to /recipes', () => {
     plantRecipe({ name: 'x' })
     expect(client.post).toHaveBeenCalledWith('/recipes', { name: 'x' })
@@ -28,9 +28,5 @@ describe('lineage api', () => {
       to_email: 'a@b.com',
       note: 'hi',
     })
-  })
-  it('getLineage gets the lineage route', () => {
-    getLineage(9)
-    expect(client.get).toHaveBeenCalledWith('/recipes/9/lineage')
   })
 })

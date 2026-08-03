@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildOriginPayload } from './lineagePayload'
+import { buildOriginPayload } from './originPayload'
 
 describe('buildOriginPayload', () => {
   it('returns null when no name (self-authored root)', () => {

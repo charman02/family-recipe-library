@@ -44,10 +44,10 @@ const PREVIEW = {
   ],
 }
 
-vi.mock('../api/lineage', () => ({
+vi.mock('../api/sharing', () => ({
   getInvitePreview: vi.fn(() => Promise.resolve({ data: PREVIEW })),
 }))
-import { getInvitePreview } from '../api/lineage'
+import { getInvitePreview } from '../api/sharing'
 import InviteLanding from './InviteLanding'
 
 beforeEach(() => {

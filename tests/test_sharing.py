@@ -9,46 +9,14 @@ def _payload(name="Adobo", **extra):
     }
 
 
-def _make_child(db_session, user_id, parent_id, name="Child"):
-    """Build a lineage child directly via the ORM. The parent-child edge has no
-    dedicated write endpoint anymore (remix was cut), so tests that exercise the
-    root-binds sharing/visibility substrate construct descendants at the data layer."""
-    from app.models.recipe import Recipe
-
-    child = Recipe(
-        user_id=user_id, name=name, parent_recipe_id=parent_id, lineage_relation="remixed"
-    )
-    db_session.add(child)
-    db_session.commit()
-    db_session.refresh(child)
-    return child
-
-
-def test_root_of_walks_to_root(db_session, make_user):
-    from app.models.recipe import Recipe
-    from app.services.lineage import root_of
-
-    u, _ = make_user()
-    root = Recipe(user_id=u.id, name="R", lineage_relation="root")
-    db_session.add(root)
-    db_session.commit()
-    db_session.refresh(root)
-    child = Recipe(user_id=u.id, name="C", parent_recipe_id=root.id, lineage_relation="remixed")
-    db_session.add(child)
-    db_session.commit()
-    db_session.refresh(child)
-    assert root_of(child, db_session).id == root.id
-    assert root_of(root, db_session).id == root.id
-
-
 def test_can_view_owner_public_and_grant(db_session, make_user):
     from app.models.recipe import Recipe
     from app.models.handoff import Handoff
-    from app.services.lineage import can_view
+    from app.services.sharing import can_view
 
     owner, _ = make_user()
     other, _ = make_user()
-    root = Recipe(user_id=owner.id, name="R", lineage_relation="root", visibility="private")
+    root = Recipe(user_id=owner.id, name="R", visibility="private")
     db_session.add(root)
     db_session.commit()
     db_session.refresh(root)
@@ -70,7 +38,7 @@ def test_can_view_owner_public_and_grant(db_session, make_user):
     assert can_view(root, other2, db_session) is False
 
 
-def test_handoff_to_user_is_instant_accepted_and_root_normalized(client, make_user, db_session):
+def test_handoff_to_user_is_instant_accepted(client, make_user, db_session):
     from app.models.handoff import Handoff
     from app.models.recipe import Recipe
 
@@ -84,22 +52,6 @@ def test_handoff_to_user_is_instant_accepted_and_root_normalized(client, make_us
     assert r.status_code == 201
     h = db_session.query(Handoff).filter_by(recipe_id=root["id"], to_user_id=grantee.id).one()
     assert h.state == "accepted"
-
-
-def test_handoff_normalizes_branch_to_root(client, make_user, db_session):
-    from app.models.handoff import Handoff
-
-    owner, oheaders = make_user()
-    grantee, _ = make_user()
-    root = client.post("/recipes", json=_payload(), headers=oheaders).json()
-    child = _make_child(db_session, owner.id, root["id"])
-    # owner passes the CHILD → grant must attach to the ROOT
-    client.post(f"/recipes/{child.id}/handoff", json={"to_user_id": grantee.id}, headers=oheaders)
-    assert (
-        db_session.query(Handoff).filter_by(recipe_id=root["id"], to_user_id=grantee.id).count()
-        == 1
-    )
-    assert db_session.query(Handoff).filter_by(recipe_id=child.id).count() == 0
 
 
 def test_handoff_email_is_pending(client, make_user, db_session):
@@ -126,21 +78,6 @@ def test_handoff_idempotent_per_grantee(client, make_user, db_session):
         db_session.query(Handoff).filter_by(recipe_id=root["id"], to_user_id=grantee.id).count()
         == 1
     )
-
-
-def test_grantee_can_view_shared_root_and_descendant(client, make_user, db_session):
-    owner, oheaders = make_user()
-    grantee, gheaders = make_user()
-    root = client.post("/recipes", json=_payload(), headers=oheaders).json()  # private
-    child = _make_child(db_session, owner.id, root["id"])
-    # before sharing: grantee 404 on both
-    assert client.get(f"/recipes/{root['id']}", headers=gheaders).status_code == 404
-    # share the root with the grantee
-    client.post(f"/recipes/{root['id']}/handoff", json={"to_user_id": grantee.id}, headers=oheaders)
-    # now grantee sees the root AND the descendant (root-binds)
-    assert client.get(f"/recipes/{root['id']}", headers=gheaders).status_code == 200
-    assert client.get(f"/recipes/{child.id}", headers=gheaders).status_code == 200
-    assert client.get(f"/recipes/{root['id']}/lineage", headers=gheaders).status_code == 200
 
 
 def test_non_grantee_still_404(client, make_user):
@@ -230,28 +167,6 @@ def test_recipe_response_has_shared_with_count(client, make_user):
 
 
 # --- Final-review security fixes: read-authorization holes ---
-
-
-def test_handoff_requires_root_ownership(client, make_user, db_session):
-    # A stranger who owns a child branching off A's private root cannot hand that
-    # child off → that would normalize a forged grant onto A's root. This is the
-    # grant-forgery guard (the parent-child edge is built at the data layer since
-    # there is no remix endpoint).
-    from app.models.handoff import Handoff
-
-    owner, oheaders = make_user()
-    stranger, sheaders = make_user()
-    target, _ = make_user()
-    root = client.post("/recipes", json=_payload(), headers=oheaders).json()
-
-    child = _make_child(db_session, stranger.id, root["id"], name="Forged child")
-
-    r = client.post(
-        f"/recipes/{child.id}/handoff", json={"to_user_id": target.id}, headers=sheaders
-    )
-    assert r.status_code == 404
-    # No grant created for T on the root (or anywhere).
-    assert db_session.query(Handoff).filter_by(to_user_id=target.id).count() == 0
 
 
 def test_scale_gated_by_can_view(client, make_user):

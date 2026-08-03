@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-vi.mock('../api/lineage', () => ({
+vi.mock('../api/sharing', () => ({
   handoffRecipe: vi.fn(() =>
     Promise.resolve({ data: { id: 1, state: 'pending', token: 'tok123' } }),
   ),
 }))
-import { handoffRecipe } from '../api/lineage'
+import { handoffRecipe } from '../api/sharing'
 import HandoffInvite from './HandoffInvite'
 
 beforeEach(() => handoffRecipe.mockClear())

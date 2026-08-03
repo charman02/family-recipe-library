@@ -10,7 +10,6 @@ from app.models.recipe import Recipe
 from app.models.ingredient_section import IngredientSection
 from app.models.ingredient import Ingredient
 from app.models.step import Step
-from app.models.ghost_ancestor import GhostAncestor
 from app.models.cook_event import CookEvent
 from app.models.handoff import Handoff
 from app.schemas.recipe import (
@@ -24,15 +23,9 @@ from app.schemas.recipe import (
     HandoffIn,
     HandoffResponse,
     InvitePreview,
-    LineageView,
 )
 from app.services.scaling import scale_ingredient
-from app.services.lineage import (
-    build_lineage_view,
-    effective_visibility,
-    root_of,
-    can_view,
-)
+from app.services.sharing import effective_visibility, can_view
 from app.services.growth import soul_count, growth_stage, growth_vitality
 
 from datetime import datetime, timezone
@@ -46,20 +39,6 @@ def _attach_growth_fields(recipe, db):
     recipe.cook_count = len(cooks)
     recipe.owner_cook_count = sum(1 for c in cooks if c.user_id == recipe.user_id)
     recipe.last_cooked_at = max((c.cooked_at for c in cooks), default=None)
-    child_ids = [
-        r.id
-        for r in db.query(Recipe.id)
-        .filter(Recipe.parent_recipe_id == recipe.id, Recipe.deleted_at == None)
-        .all()
-    ]
-    recipe.child_count = len(child_ids)
-    recipe.has_grandchildren = (
-        bool(child_ids)
-        and db.query(Recipe.id)
-        .filter(Recipe.parent_recipe_id.in_(child_ids), Recipe.deleted_at == None)
-        .first()
-        is not None
-    )
     recipe.shared_with_count = (
         db.query(Handoff)
         .filter(Handoff.recipe_id == recipe.id, Handoff.state == "accepted")
@@ -97,18 +76,12 @@ def create_recipe(
     # flush to get new_recipe.id before committing
     db.flush()
 
-    # Plant the origin: a ghost ancestor makes recipe #1 a two-generation lineage.
+    # Origin attribution — "from Lola Remedios · Cebu" — is the byline, and it
+    # STAYS. It used to also write a `ghost_ancestor` row so recipe #1 read as a
+    # two-generation lineage; with no trees that row had no reader, so the
+    # attribution string on the recipe is the whole feature now.
     if recipe_in.origin is not None:
         o = recipe_in.origin
-        db.add(
-            GhostAncestor(
-                recipe_id=new_recipe.id,
-                name=o.name,
-                place=o.place,
-                year=o.year,
-                memory=o.memory,
-            )
-        )
         parts = [o.name] + [p for p in (o.place, o.year) if p]
         new_recipe.origin_attribution = " · ".join(parts)
 
@@ -189,12 +162,11 @@ def handoff_recipe(
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    # Grants attach to the lineage root (root-binds). Require the caller to own
-    # the ROOT, not just the passed node: otherwise a stranger who owns a branch
-    # off a victim's root could normalize a grant onto that root (grant-forgery).
-    root = root_of(recipe, db)
-    if root.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+    # NOTE the query above already requires current_user to OWN the recipe, which
+    # is the whole authorization question now. It used to walk to the lineage root
+    # and re-check ownership there, to stop someone who owned a branch off a
+    # victim's root from forging a grant onto that root — a defense that existed
+    # only because grants bound to the root. No trees, no forgery surface.
 
     # Resolve grantee: an in-app user (instant-accept) or an email invite (pending).
     to_user_id = handoff_in.to_user_id
@@ -210,7 +182,7 @@ def handoff_recipe(
     # is an independent shareable grant, so two links can be claimed by two people
     # without the second stealing the first's access.
     if resolved_user is not None or to_email:
-        existing_q = db.query(Handoff).filter(Handoff.recipe_id == root.id)
+        existing_q = db.query(Handoff).filter(Handoff.recipe_id == recipe.id)
         if resolved_user is not None:
             existing = existing_q.filter(Handoff.to_user_id == resolved_user.id).first()
         else:
@@ -219,7 +191,7 @@ def handoff_recipe(
             return existing
 
     handoff = Handoff(
-        recipe_id=root.id,
+        recipe_id=recipe.id,
         from_user_id=current_user.id,
         to_user_id=(resolved_user.id if resolved_user else None),
         to_email=(None if resolved_user else to_email),
@@ -309,18 +281,18 @@ def shared_with_me(
 ):
     # Declared BEFORE get_recipe so the literal "/shared" path is matched first;
     # otherwise GET /recipes/{recipe_id} would capture recipe_id="shared".
-    root_ids = [
+    granted_ids = [
         h.recipe_id
         for h in db.query(Handoff)
         .filter(Handoff.to_user_id == current_user.id, Handoff.state == "accepted")
         .all()
     ]
-    if not root_ids:
+    if not granted_ids:
         return []
     recipes = (
         db.query(Recipe)
         .filter(
-            Recipe.id.in_(root_ids),
+            Recipe.id.in_(granted_ids),
             Recipe.user_id != current_user.id,
             Recipe.deleted_at == None,
         )
@@ -488,25 +460,6 @@ def get_recipe(
     return recipe
 
 
-@router.get("/{recipe_id}/lineage", response_model=LineageView)
-def get_lineage(
-    recipe_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    recipe = (
-        db.query(Recipe)
-        .filter(Recipe.id == recipe_id, Recipe.deleted_at == None)
-        .options(selectinload(Recipe.user))
-        .first()
-    )
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    if not can_view(recipe, current_user, db):
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    return build_lineage_view(recipe, db)
-
-
 @router.get("/{recipe_id}/scale", response_model=RecipeResponse)
 def get_scaled_recipe(
     recipe_id: int,
@@ -611,14 +564,6 @@ def patch_recipe(
     # set to detect presence, but read the values off the Pydantic model so
     # they stay as typed objects (IngredientCreate/StepCreate), not dicts.
     sent_fields = recipe_in.model_dump(exclude_unset=True)
-
-    # Root-binds: only a lineage root's visibility is authoritative; a branch
-    # inherits its root's visibility, so reject direct edits on a branch.
-    if "visibility" in sent_fields and recipe.parent_recipe_id is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="Visibility is controlled by this recipe's original; it can't be set on a branch.",
-        )
 
     sections_sent = "ingredient_sections" in sent_fields
     ingredients_sent = "ingredients" in sent_fields

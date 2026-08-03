@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getSharedWithMe } from '../api/lineage'
+import { getSharedWithMe } from '../api/sharing'
 import RecipeCard from '../components/RecipeCard'
 import MarkerTitle from '../components/MarkerTitle'
 import BackButton from '../components/BackButton'

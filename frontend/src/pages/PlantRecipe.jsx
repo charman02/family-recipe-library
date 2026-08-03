@@ -5,8 +5,8 @@ import HandoffInvite from '../components/HandoffInvite'
 import BackButton from '../components/BackButton'
 import VisibilityChoice from '../components/VisibilityChoice'
 import SourceFields from '../components/SourceFields'
-import { buildOriginPayload } from '../lib/lineagePayload'
-import { plantRecipe } from '../api/lineage'
+import { buildOriginPayload } from '../lib/originPayload'
+import { plantRecipe } from '../api/sharing'
 
 // The add-a-recipe flow (route /add): doorway (where did this come from?) → the
 // recipe form → a "saved" confirmation → an optional hand-off.

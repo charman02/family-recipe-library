@@ -3,7 +3,6 @@ from app.models.recipe import Recipe  # noqa: F401
 from app.models.ingredient_section import IngredientSection  # noqa: F401
 from app.models.ingredient import Ingredient  # noqa: F401
 from app.models.step import Step  # noqa: F401
-from app.models.ghost_ancestor import GhostAncestor  # noqa: F401
 from app.models.cook_event import CookEvent  # noqa: F401
 from app.models.handoff import Handoff  # noqa: F401
 

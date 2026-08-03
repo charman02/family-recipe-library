@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import client from '../api/client'
-import { deleteRecipe } from '../api/lineage'
+import { deleteRecipe } from '../api/sharing'
 import VisibilityControl from '../components/VisibilityControl'
 import RecipeBody from '../components/RecipeBody'
 import Icon from '../components/Icon'

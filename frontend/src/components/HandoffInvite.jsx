@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { handoffRecipe } from '../api/lineage'
+import { handoffRecipe } from '../api/sharing'
 import { toUserMessage } from '../api/client'
 import { HANDOFF_STARTERS, defaultStarterKey } from '../lib/handoffStarters'
 
