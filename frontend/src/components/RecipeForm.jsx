@@ -669,7 +669,12 @@ export default function RecipeForm({
             />
             {/* The field this feature exists for. It's the one people skip — it
                 needs whole sentences, and it's where a tester stopped. */}
-            <DictateButton value={story} onChange={setStory} what="the story" />
+            <DictateButton
+              value={story}
+              onChange={setStory}
+              what="the story"
+              bottomClass="bottom-3.5"
+            />
           </div>
         </div>
 
@@ -840,6 +845,7 @@ export default function RecipeForm({
                     value={step.content}
                     onChange={(v) => updateStep(idx, 'content', v)}
                     what={`step ${idx + 1}`}
+                    bottomClass="bottom-3.5"
                   />
                 </div>
               </div>

@@ -37,7 +37,11 @@ const PROBLEMS = {
 }
 const PROBLEM_FALLBACK = 'Dictation stopped. You can type this instead.'
 
-export default function DictateButton({ value, onChange, what }) {
+// `bottomClass` lets a multi-line textarea nudge the glyph up so its gap to the
+// bottom border matches its gap to the right border. A single-line input is short
+// enough that bottom-2 already reads centered; a rows={2}/{3} textarea makes the
+// same offset look low.
+export default function DictateButton({ value, onChange, what, bottomClass = 'bottom-2' }) {
   const [listening, setListening] = useState(false)
   // The recognizer's current GUESS. Held here and shown beside the field rather
   // than written into it — see the note on commit() below.
@@ -135,17 +139,22 @@ export default function DictateButton({ value, onChange, what }) {
         aria-pressed={listening}
         title={label}
         // Quiet by size, not by hiding: a 32px round outline, the same terra the
-        // form's other optional extras use. Sits in the field's bottom-right
-        // corner; the fields it attaches to carry matching right padding so text
-        // never runs beneath it.
-        className={`absolute right-1.5 bottom-1.5 w-8 h-8 rounded-full border-2 border-ink flex items-center justify-center transition-colors ${
-          listening ? 'bg-terra text-cream' : 'bg-cream text-terra'
+        // A bare glyph, no disc: the outlined circle sat ON the field's own border
+        // and read as a chip stuck to the edge of the box rather than a control
+        // inside it. Sits in the bottom-right corner; the fields it attaches to
+        // carry matching right padding so text never runs beneath it. The rounded
+        // hit area is still 28px so it stays a real touch target.
+        className={`absolute right-2 ${bottomClass} w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+          listening ? 'text-terra' : 'text-terra/60 hover:text-terra'
         }`}
       >
         {/* The glyph CHANGES shape between states (mic outline → stop square) and
             the status line below spells the state out in words. Colour alone has
             carried a state twice in this codebase and been wrong twice. */}
-        <Icon name={listening ? 'stop' : 'mic'} className="w-[15px] h-[15px]" />
+        <Icon
+          name={listening ? 'stop' : 'mic'}
+          className={listening ? 'w-[17px] h-[17px]' : 'w-[18px] h-[18px]'}
+        />
       </button>
 
       {/* Status line. Announced politely — it's the state change a screen-reader
