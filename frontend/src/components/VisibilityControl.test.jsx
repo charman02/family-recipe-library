@@ -13,7 +13,7 @@ import VisibilityControl from './VisibilityControl'
 beforeEach(() => setVisibility.mockClear())
 
 describe('VisibilityControl', () => {
-  it('root private → publishes on toggle (no descendants, no confirm)', async () => {
+  it('private → publishes on a single toggle, with no confirm step', async () => {
     const onChange = vi.fn()
     render(
       <VisibilityControl
@@ -51,52 +51,6 @@ describe('VisibilityControl', () => {
     expect(container.textContent).not.toMatch(/private/i)
   })
 
-  it('root with descendants shows a confirm before publishing', async () => {
-    render(
-      <VisibilityControl
-        recipe={{
-          id: 6,
-          parent_recipe_id: null,
-          visibility: 'private',
-          child_count: 3,
-        }}
-        onChange={() => {}}
-      />,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /change to everyone/i }),
-    )
-    // confirm surfaces the ripple; not yet sent
-    expect(screen.getByText(/3 versions/i)).toBeInTheDocument()
-    expect(setVisibility).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole('button', { name: /yes, show it/i }))
-    expect(setVisibility).toHaveBeenCalledWith(6, 'public')
-  })
-
-  it('confirm pluralizes a single descendant correctly (1 version)', async () => {
-    render(
-      <VisibilityControl
-        recipe={{
-          id: 8,
-          parent_recipe_id: null,
-          visibility: 'private',
-          child_count: 1,
-        }}
-        onChange={() => {}}
-      />,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: /change to everyone/i }),
-    )
-    expect(screen.getByText(/\b1 version\b/i)).toBeInTheDocument()
-    expect(screen.queryByText(/1 versions/i)).toBeNull()
-  })
-
-  // The owner asked for the prose around these controls to go. What must NOT go
-  // is the sentence defining "Everyone" — it's the only place in the app a user
-  // learns public means "listed in Browse", and round-2 testers were anxious
-  // about exactly that. So: reversibility advisory cut, Browse consequence kept
-  // in both states.
   it('always names what "Everyone" exposes, in both states', () => {
     const { rerender } = render(
       <VisibilityControl
@@ -120,19 +74,6 @@ describe('VisibilityControl', () => {
     // to know what the button it's about to press means.
     expect(screen.getByText(/shows up in Browse/i)).toBeInTheDocument()
     expect(screen.queryByText(/stays in your kitchen/i)).toBeNull()
-  })
-
-  it('branch shows inherited status, no toggle', () => {
-    render(
-      <VisibilityControl
-        recipe={{ id: 7, parent_recipe_id: 5, visibility: 'public' }}
-        onChange={() => {}}
-      />,
-    )
-    expect(
-      screen.getByText(/follows the recipe this one came from/i),
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('shows "Shared with N" when a private root has accepted grants', () => {

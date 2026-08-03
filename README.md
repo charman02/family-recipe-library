@@ -5,13 +5,15 @@
 > Both are on free tiers — allow up to ~1 minute for the API to cold-start on the first request, then it's responsive.
 
 ## What It Is
-A deployed full-stack web app for preserving the family recipes that were never written down — the cooking knowledge immigrant elders carry in memory, one generation from being lost. *Issei* (一世) means "first generation": the first of a family to arrive somewhere new. The tagline says it — **recipes that live in memory, not cookbooks.**
+Someone cooked you something you'd never had before, and you asked for the recipe. **Issei is how they send it to you** — not a scrubbed list of grams, but the dish the way they actually make it, with the parts that are "a good splash" left as "a good splash," and their notes on the steps that matter. They write it down once; you get a link and read the whole thing without making an account.
 
-Instead of treating a recipe as a static list of grams and steps, Issei treats it as a **living vessel for a person**: the cook's own voice and story are woven in, and their imprecise measurements ("a dash," "three soup spoons," "until it smells right") are preserved verbatim and celebrated as fidelity rather than normalized away. Passing a recipe to a relative — the *handoff* — is both how the knowledge spreads and how families are invited in to fill in what one person can't remember alone. The UI is a warm, playful "kitchen": bold color-block stickers, chunky display type, and food-forward illustration, mobile-first.
+The name is the reason it's built this way: *Issei* (一世) means "first generation" — the first of a family to arrive somewhere new, and usually the one who never wrote any of it down. The recipe app market splits into utility organizers (Paprika, AnyList) and legacy archives (StoryWorth, "heirloom cookbook" products), and **both assume you already know the dish.** Nobody is built for the person who has never tasted it. See [POSITIONING.md](POSITIONING.md).
 
-Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling, photo upload (with automatic iPhone HEIC → JPEG conversion), and a lineage + sharing system with private → shared → public visibility.
+So a recipe here is attributed to a **person** — the dish is the title, the person is the byline ("from Lola") — and their imprecise measurements ("a dash," "three soup spoons," "until it smells right") are preserved verbatim and celebrated as fidelity rather than normalized away. The knowledge that an ingredient list can't hold lives as a note on the individual step it belongs to. The UI is a warm, playful "kitchen": bold color-block stickers, chunky display type, and food-forward illustration, mobile-first.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 19 endpoints, 8 data models, 188 automated tests (89 pytest + 99 Vitest).
+Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private → shared → public visibility.
+
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 18 endpoints, 7 data models, 302 automated tests (100 pytest + 202 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -28,9 +30,9 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - backend tests for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow).
+**pytest** - backend tests (100) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (202 in 22 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -51,6 +53,14 @@ Classification is deliberately not just hedge-word detection ("about", "roughly"
 
 **JWT stateless auth:** Authentication uses JWT tokens rather than server-side sessions. Sessions require storing state on the server and a session store (like Redis), which adds infrastructure complexity. JWTs are self-contained — the token encodes the user ID and expiry, and any server instance can verify it using just the secret key.
 
+**Deleting features that fought the premise.** Two systems were built, shipped, and then removed on purpose, which is the decision I'd most want to be asked about.
+
+A *consolidating shopping list* summed ingredients across recipes. Summing means normalizing amounts, which is exactly what this app exists to refuse — on its most common data it produced `"a good splash + a glug"`, which is not a total, just two lines concatenated. It also depended on a hand-maintained density table that only ever grew when someone noticed a wrong number, and because no screen ever called it, a crash, several wrong totals, and an inverted conversion ratio all lived in it undetected. Deleted along with `services/units.py`, rather than polished.
+
+A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a `ghost_ancestors` table, root-bound visibility, a `/lineage` endpoint). The product is a bridge between two people — one dish, handed to one person — not a family network, and the tree was carrying architectural weight for a story the app wasn't telling. Removing it collapsed authorization from "walk to the lineage root, then match grants against that root" to a single statement about the recipe in front of you (`can_view` in `app/services/sharing.py`). The simplification was verified safe against production data first: zero recipes had a `parent_recipe_id`, so `root_of()` was already the identity function on every real row and no authorization outcome could change. The one piece kept was `origin_attribution` — the "from Lola" byline — because attribution is a fact about one recipe, not an edge in a tree.
+
+**Validation at the boundary, error copy in one place.** A person's name is load-bearing here — every recipe carries a byline — so `UserCreate` (`app/schemas/user.py`) strips whitespace and then requires one character, which rejects `""` and `"   "` with the same rule; password length is capped at 72 bytes because that's bcrypt's own ceiling and anything longer is silently truncated. The rules live on the *input* model only: tightening `UserResponse` too would turn an already-stored blank name into a 500 on read, punishing an old account for a rule it predates. On the client, `toUserMessage` in `frontend/src/api/client.js` is the single funnel that turns any axios failure into a sentence — a FastAPI 422 arrives as an array of objects, and rendering it raw once put `[object Object]` in front of a user who had simply chosen a short password. It reports every failing field rather than the first, and distinguishes "no response at all" (offline) from "the server said no", so a user on a dead connection isn't told their password is wrong.
+
 ## API Endpoints
 | Method | Endpoint | Auth Required | Description |
 |--------|----------|---------------|-------------|
@@ -65,8 +75,7 @@ Classification is deliberately not just hedge-word detection ("about", "roughly"
 | PATCH | /recipes/{recipe_id} | Yes | Modifies the queried recipe. |
 | DELETE | /recipes/{recipe_id} | Yes | Deletes the queried recipe. |
 | POST | /recipes/{recipe_id}/cook | Yes | Logs a cook event; returns updated cook_count. |
-| POST | /recipes/{recipe_id}/handoff | Yes | Passes the recipe on. A recipient is **optional**: with an in-app user or an email the grant is addressed to them; with neither it is "link-only" — it mints a shareable invite token the sender passes along however they already talk to that person. On a **private** recipe the grant confers access (view + cook) and attaches to the lineage root. |
-| GET | /recipes/{recipe_id}/lineage | Yes | Returns the walkable lineage spine + tree counts. |
+| POST | /recipes/{recipe_id}/handoff | Yes | Passes the recipe on (owner only). A recipient is **optional**: with an in-app user or an email the grant is addressed to them; with neither it is "link-only" — it mints a shareable invite token the sender passes along however they already talk to that person. On a **private** recipe the grant confers access (view + cook, never edit). |
 | GET | /recipes/shared | Yes | Returns recipes shared *with* the current user (accepted grants; excludes their own). |
 | POST | /recipes/handoffs/{handoff_id}/accept | Yes | Claims a pending invite for the current user (backend-only; the two auto-accept paths cover the in-app cases, so there is no MVP UI for this). |
 | GET | /recipes/invite/{token} | No | Unauthenticated read of a handed-off recipe — the **full** recipe (ingredients, steps, per-step remarks, story, servings, description), no account required. The owner's private `notes` and account ids are the only things withheld. |
@@ -74,7 +83,9 @@ Classification is deliberately not just hedge-word detection ("about", "roughly"
 | GET | /recipes/browse | No | Public discovery feed (root-visibility gated). |
 | POST | /upload/recipe-photo | Yes | Uploads a photo to Cloudinary. |
 
-**Three visibility tiers — Private → Shared → Public.** A recipe is viewable by a user when: the root recipe's visibility is `public`, **or** they own it, **or** they hold an accepted handoff (grant) on its root. "Shared" is not a stored enum value — `visibility` stays `private | public`; a private recipe with ≥1 accepted grant *is* shared with those people. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `GET /recipes/{recipe_id}` and `/lineage` apply this same `can_view` rule.
+*18 routes as committed — the table is the whole surface. This count has changed several times as features were removed, so verify rather than trust it: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
+
+**Three visibility tiers — Private → Shared → Public.** A recipe is viewable by a user when: its visibility is `public`, **or** they own it, **or** they hold an accepted handoff (grant) on it. "Shared" is not a stored enum value — `visibility` stays `private | public`; a private recipe with ≥1 accepted grant *is* shared with those people. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `can_view` (`app/services/sharing.py`) is the single read-authorization rule every recipe read funnels through. **Read is not write:** editing and deleting stay owner-only, enforced by a `user_id` filter in `patch_recipe`/`delete_recipe` — a grantee can read and cook a recipe they were handed, never change someone else's record of it.
 
 **The invite token is a capability.** Those three tiers govern *accounts*; a handoff link is a separate axis. `secrets.token_urlsafe(32)` is unguessable, and holding it is the permission to read — so `/recipes/invite/{token}` serves the whole recipe with no account at all. The recipient of a handoff has never tasted the dish and wants to cook it, so gating ingredients behind a signup form would be friction at the moment of highest intent. Signing up is what lets them *keep* it (save, cook, add to it), not what lets them read it.
 
@@ -135,7 +146,7 @@ npm test
 See [FUTURE.md](FUTURE.md) for planned features including multi-user family sharing, iOS mobile app, translation support, and richer photo/video support.
 
 ## Live Demo
-- **App (React frontend):** https://issei-delta.vercel.app — sign up and it works end to end: create a recipe (with a photo), keep it in your kitchen, scale it, pass it on to family.
+- **App (React frontend):** https://issei-delta.vercel.app — sign up and it works end to end: create a recipe (with a photo), keep it in your kitchen, scale it, pass it on. The handoff link opens the full recipe with no account, which is the path worth trying.
 - **API (FastAPI, interactive Swagger docs):** https://family-recipe-library.onrender.com/docs — every endpoint is callable in-browser.
 
 **Deployment:** the frontend is hosted on **Vercel** (static SPA build, auto-deploys on push to `main`); the backend is hosted on **Render** (auto-deploys on push to `main`) and talks to a **Neon** PostgreSQL database. CORS origins are env-driven so the frontend host can change without a code edit.

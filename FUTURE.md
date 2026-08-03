@@ -1,6 +1,6 @@
 # Future Roadmap
 
-This document outlines planned features and improvements for Issei — a full-stack app for preserving the family recipes immigrant elders carry but never wrote down (*issei* = "first generation"). The current build (FastAPI backend + React frontend) centers on the **living recipe**: a recipe as a vessel for a person — the cook's voice and story woven in, their imprecise measurements preserved verbatim — kept in a warm, playful "kitchen" UI and **handed down** to family. It includes recipe management, serving-size scaling (which preserves folk measures like "3 soup spoons" rather than normalizing them), cover-photo upload, and the handoff flow — shareable capability links that let a recipient read and cook the full recipe with no account — over private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
+This document outlines planned features and improvements for Issei — a full-stack app for sending one recipe from the person who cooks it to the person who just tasted it and asked for it (*issei* = "first generation"). See `POSITIONING.md` for the positioning and the explicit list of things the app does *not* do. The current build (FastAPI backend + React frontend) attributes a recipe to a **person** (the dish is the title, the person is the byline), preserves their imprecise measurements verbatim rather than normalizing them, and carries per-step notes for the knowledge an ingredient list can't hold — in a warm, playful "kitchen" UI. It includes recipe management, serving-size scaling (which preserves folk measures like "3 soup spoons" rather than inventing precision), cover-photo upload, and the handoff flow — shareable capability links that let a recipient read and cook the full recipe with no account — over private → shared → public visibility. The roadmap below represents the natural evolution toward a full product.
 
 ---
 
@@ -12,7 +12,7 @@ This document outlines planned features and improvements for Issei — a full-st
 
 **Why it matters:** The core use case — preserving family cooking across generations — requires multiple people to access the same library. A recipe added by mom should be visible to her children without manual sharing.
 
-**Implementation notes:** Add `families` and `family_members` tables. Update authorization checks from `user_id == current_user.id` to `family_id in current_user.families` — in practice that means extending `can_view` in `services/lineage.py`, which is already the single read-authorization rule.
+**Implementation notes:** Add `families` and `family_members` tables. Update authorization checks from `user_id == current_user.id` to `family_id in current_user.families` — in practice that means extending `can_view` in `services/sharing.py`, which is already the single read-authorization rule. Note this would be the first feature to give a non-owner **write** access to a recipe; today editing and deleting are strictly owner-only (a `user_id` filter in `patch_recipe`/`delete_recipe`), so the role model is new surface, not a loosened check.
 
 **Note:** The token-based invitation machinery this would have needed is **already shipped** — email invites that auto-accept on signup, plus shareable capability links (`/invite/:token`) claimable by any signed-in holder. So this feature is now specifically the *shared-library* half: a group that co-owns recipes, rather than a grant issued per recipe per person. The families design should build on the existing `handoffs`/`visibility` path rather than duplicate it.
 
@@ -30,7 +30,7 @@ This document outlines planned features and improvements for Issei — a full-st
 
 **What this adds:** A native iOS experience with faster performance, push notifications for family recipe updates, and camera access for photographing handwritten recipes or dishes.
 
-**Why it matters:** The use case is fundamentally mobile — someone cooking in a kitchen checks a recipe on their phone, not a laptop. Native mobile also enables features impossible in a web app, like voice input for hands-free recipe lookup while cooking.
+**Why it matters:** The use case is fundamentally mobile — someone cooking in a kitchen checks a recipe on their phone, not a laptop. Native mobile also enables things a web app can't do well, like hands-free navigation through the steps while your hands are covered in flour. (**Nothing audio-related exists today** — see the note at the bottom of this file. Any speech input would be new capability built from scratch, not an extension of something already in the product.)
 
 **Implementation notes:** React Native for cross-platform coverage (iOS and Android), TestFlight for beta testing with initial users, App Store launch after beta validation.
 
@@ -78,9 +78,19 @@ This document outlines planned features and improvements for Issei — a full-st
 
 In order of priority:
 
-1. **Anonymity / account-deletion / tombstone model** — the highest-priority *next* step now that the web frontend and lineage system have shipped. An `is_anonymous` / `is_tombstone` model plus an account-deletion / anonymize flow would let a contributor leave without orphaning or leaking their descendants' recipes. Until it lands, hard-deletion of recipes stays disabled (soft-delete only) to avoid orphaning lineage children. This is a near-term correctness/privacy dependency, not an exploratory addition.
-2. **Multi-user family sharing** — without this, the product can't fully fulfill its actual purpose. A recipe my mom adds should be visible to me and my siblings without needing separate accounts and manual copying. Lineage's per-recipe `visibility` + handoffs now provide a lightweight sharing path, but a proper families model is still closer to a missing core feature than an enhancement, so it ranks above the more exploratory additions below.
+1. **Account deletion / anonymization** — the highest-priority *next* step now that the web frontend and the sharing/handoff system have shipped. There is currently no way for a user to delete their account, and a recipe someone was handed carries its owner's name. An anonymize-or-delete flow needs to answer what happens to grants already issued and to a recipe sitting on a public Browse feed. This is a near-term correctness/privacy gap, not an exploratory addition. (Recipe deletion itself is soft-delete only — `deleted_at` — because losing a family recipe permanently is unacceptable for this use case.)
+2. **Multi-user family sharing** — without this, the product can't fully fulfill its actual purpose. A recipe my mom adds should be visible to me and my siblings without needing separate accounts and manual copying. Per-recipe `visibility` + handoffs now provide a lightweight sharing path, but a proper families model is still closer to a missing core feature than an enhancement, so it ranks above the more exploratory additions below.
 3. **iOS mobile app** — now that the web frontend is live, a native mobile experience makes sense given that the real use case (checking a recipe while cooking, contributing a recipe from a phone) is fundamentally mobile-first.
 4. **Translation** — highest priority among the "deeper feature" additions, since it directly addresses the core audience: families where the cooking generation and the reading generation may not share a primary language.
 5. **Richer photo/video support** — a cover photo per recipe already ships via Cloudinary; going further (per-step media, video, community gallery) meaningfully improves usability for techniques that are hard to describe in text.
 6. **Ingredient canonicalization** — the most clearly-scoped technical improvement, and now a prerequisite rather than a nicety: it's what any cook-from-ingredients or ingredient-search feature would be built on. Lower priority than the above because nothing currently depends on it.
+
+---
+
+## Not Built: Audio
+
+Worth stating outright, because a column name invites the assumption. **There is no audio anywhere in this product** — no recording, no playback, no transcription. `Step.voice_note` is a `Text` column typed into a plain text input by whoever wrote the recipe down, and it renders under its step labelled "a note on this step".
+
+Actually recording a person — their explanation of a step, in their own voice — is a real and appealing future feature, and it would be the strongest version of this app's premise. It is also a genuinely new subsystem: capture in the browser, storage and transcoding, playback, transcription for search and for anyone who can't play audio, and a much larger privacy surface (a voice is biometric-adjacent in a way typed text isn't). It is not on the roadmap above because it hasn't been scoped, and it must not be described as shipped or partially shipped.
+
+If it is ever built, rename the column at the same time. Leaving typed text and recorded audio sharing one field name is how the claim gets made by accident.

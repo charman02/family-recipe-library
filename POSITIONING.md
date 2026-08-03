@@ -1,0 +1,235 @@
+# Positioning
+
+The answer to the question two rounds of user testing kept asking: *what is this, and
+why would I use it instead of anything else?*
+
+Every claim below is checked against the code, with file references. The last section
+is the list of things that are **not true** and must not be said — it exists because
+this repo has shipped false claims before.
+
+---
+
+## The one-liner
+
+**Someone cooked you something you'd never had before, you asked for the recipe — issei
+is how they send it to you.**
+
+That's the whole product in one sentence, and it's the sentence a beta tester should be
+able to repeat back. It names the moment (a dish you've never had), the ask (you wanted
+it), and what the app is (the thing that carries it to you).
+
+## The short version
+
+Someone cooked you something you'd never had before, and you asked for the recipe.
+issei is how they send it to you — not a scrubbed list of grams, but the dish the way
+they actually make it, with the parts that are "a good splash" left as "a good splash,"
+and their notes on the steps that matter. They write it down once; you get a link and
+read the whole thing without making an account. What arrives is the recipe *and* the
+knowledge around it — who it came from, why it's cooked this way, and the one warning
+that keeps you from ruining it the first time.
+
+## Who it's for
+
+The person who has **never tasted the dish**, and the person trying to get it to them.
+
+This is the founding case, not a hypothetical: the founder shared food his mom cooked
+with a friend, the friend had never had the dish, loved it, and asked for the recipe.
+Everything in the product is downstream of "what does that friend actually need?"
+
+## Why nobody else serves this
+
+The market splits in two, and **both halves assume you already know the dish**:
+
+- **Utility organizers** — Paprika, AnyList, Samsung Food. Built for the cook who
+  already has the recipe and wants it filed, scaled, and turned into a grocery list.
+  Their model of a recipe is a normalized ingredient table, because that's what
+  arithmetic needs. The person is not in the data model.
+- **Legacy archives** — StoryWorth, Remento, the "heirloom cookbook" products. Built
+  for the family that already eats the food and wants it commemorated. The output is a
+  keepsake — a book, an archive — for people who could already cook the dish from
+  memory. Nothing is built to be *followed*.
+
+Neither is built for a first-time cook receiving a dish from a person. That's the
+unoccupied space, and it's the one this app sits in.
+
+## What the app actually does that they structurally don't
+
+Four things, each verified in code.
+
+### 1. An imprecise amount stays imprecise — including through scaling
+
+An ingredient carries `quantity_text` verbatim plus a `quantity_type` of `precise` /
+`imprecise` / `unmeasured` (`app/schemas/recipe.py`, `app/models/ingredient.py`). The
+classifier doesn't just look for hedge words; it recognizes **folk, body and vessel
+units** — soup spoons, a pinch, a good splash, fingers of water
+(`app/services/folk_units.py`, mirrored at entry time in
+`frontend/src/utils/quantity.js`).
+
+The load-bearing part is what happens at scale time (`app/services/scaling.py`). Folk
+units split in two:
+
+- **Countable** — the vessel is unknowable but the count is real, so "3 soup spoons"
+  doubled is "6 soup spoons", pluralized like a person would write it.
+- **Non-linear** — the number is a geometry, not a quantity. "3 fingers of water" is a
+  depth in a pot; doubling the rice widens the pot, so the depth barely moves. The
+  amount is kept verbatim and the cook is handed the multiplier in `scale_note`
+  (`app/schemas/recipe.py`) to apply by feel.
+
+An organizer built on a normalized ingredient table can't do this, because its scaling
+is arithmetic on a number. This is the difference between a product that tolerates
+"a good splash" and one that is designed around it.
+
+In the UI these amounts are tagged rather than converted — `impreciseLabel()` in
+`frontend/src/lib/measures.js` returns "their way", rendered as a pill next to the
+amount in `frontend/src/components/RecipeBody.jsx`.
+
+### 2. Per-step knowledge, attached to the step it belongs to
+
+`Step.voice_note` (`app/models/step.py`) is a text column holding the remark for one
+step — the thing an ingredient list structurally cannot carry ("wait for the sugar to
+go the colour of tea; any darker and it's bitter"). It renders as a labelled callout
+under the step it belongs to, headed **"a note on this step"**
+(`frontend/src/components/RecipeBody.jsx`).
+
+Read the label literally. It is a typed note, and the app says so — see *What not to
+claim*.
+
+### 3. The recipient reads the whole recipe with no account
+
+`GET /recipes/invite/{token}` is unauthenticated (`app/routers/recipes.py`) and returns
+the full dish — ingredients, sections, steps, per-step notes, story, servings,
+description, cuisine, cover photo (`InvitePreview` in `app/schemas/recipe.py`). The
+token is a `secrets.token_urlsafe(32)` capability: holding the link *is* the permission
+to read.
+
+This is a product decision with teeth. The person receiving a handoff has never tasted
+the dish and wants to cook it, so a signup wall lands exactly at the moment of highest
+intent. It used to be a soft wall (name/story/photo only, signup to see an ingredient)
+and that inverted the point of the app; the schema comment in `app/schemas/recipe.py`
+records the reversal. Signing up is what lets you *keep* it, not what lets you read it.
+
+The recipient's landing page (`frontend/src/pages/InviteLanding.jsx`) renders the same
+`RecipeBody` the owner sees, and puts the "keep it" CTA *after* the recipe.
+
+### 4. The recipe is attributed to a person
+
+`Recipe.origin_attribution` (`app/models/recipe.py`) holds who the dish came from as a
+display string. The recipe is titled by the **dish**; the person appears as a byline —
+"from Lola" — with the name in plum, a colour reserved app-wide for a person's name
+(`frontend/src/lib/sourceName.js`, `frontend/src/components/RecipeCard.jsx`).
+
+A story field sits at the top of the recipe as a featured card, headed "{Name}'s story"
+when the source is known (`frontend/src/components/RecipeBody.jsx`).
+
+### Supporting, not headline
+
+Real and worth demoing, but not what makes the app different: serving-size scaling,
+cover-photo upload with iPhone HEIC → JPEG conversion, private/public visibility, a
+public Browse feed, cook logging, and a session-only step check-off on the recipe page
+(`doneSteps` in `frontend/src/components/RecipeBody.jsx` — not persisted).
+
+---
+
+## What NOT to claim
+
+Every line here was either false in this repo's docs at some point, or is close enough
+to a true thing that it gets overstated. Check against this list before writing copy.
+
+### Never claim audio, voice recording, or verbatim speech
+
+There is **no audio anywhere in the product** — no recording, no playback, no
+transcription, no microphone.
+
+The trap is a column name. `Step.voice_note` (`app/models/step.py`) is a `Text` column
+typed into a plain text input by whoever wrote the recipe down
+(`frontend/src/components/RecipeForm.jsx`). Calling it "their voice", "their words", "a
+recording", or "in their own words" makes two false claims at once: that audio exists,
+and that the text is verbatim speech from the source person.
+
+The UI has already been corrected to say **"a note on this step"**, and the story
+heading says **"{Name}'s story"** rather than "In {Name}'s words"
+(`frontend/src/components/RecipeBody.jsx`). Four test files assert no voice/audio claim
+appears in the UI: `frontend/src/pages/Home.test.jsx`,
+`frontend/src/pages/Login.test.jsx`, `frontend/src/pages/Welcome.test.jsx`,
+`frontend/src/pages/InviteLanding.test.jsx`.
+
+Internal identifiers (`voice_note`, `soul_count`) may keep their names; **user-facing
+and recruiter-facing text may not**.
+
+### Never claim a lineage, family tree, or generational graph
+
+Removed in commit `8a3b734`. Gone: the tree model, `parent_recipe_id`,
+`lineage_relation`, the `ghost_ancestors` table, `GET /recipes/{id}/lineage`, and
+`app/services/lineage.py` (now `app/services/sharing.py`). On the frontend,
+`api/lineage.js` is now `api/sharing.js` and `lib/lineagePayload.js` is now
+`lib/originPayload.js`.
+
+Recipes do not form trees. There are no ancestors, descendants, roots, branches,
+subtrees, generations, or child counts. Nothing "attaches to the lineage root" and no
+grant "covers a subtree" — a grant is on one recipe (`can_view` in
+`app/services/sharing.py`).
+
+`origin_attribution` was deliberately kept and is **not** lineage: it's a byline, a
+fact about one recipe, not an edge between two.
+
+The reason matters for positioning. This app is a **bridge between two people** — one
+recipe, handed to one person — not a family network. A tree is a different product, and
+claiming one invites the question "where is it?"
+
+### Never claim a recipient can edit, add to, or contribute to a recipe they were sent
+
+`PATCH /recipes/{recipe_id}` filters on `Recipe.user_id == current_user.id`
+(`app/routers/recipes.py`), so a non-owner gets a 404. `DELETE` does the same. A
+grantee can **read and cook**; they cannot change someone else's record of the dish
+(documented in `can_view`, `app/services/sharing.py`).
+
+So: no "families fill in what one person can't remember alone", no "the recipe grows as
+people add to it", no collaborative editing, no "enriched by whoever cooks it". A
+recipient who signs up gets to keep and cook the recipe — that's the promise, and it's
+enough.
+
+### Never claim a shopping list or unit conversion
+
+Both removed. There is no shopping list and no `app/services/units.py`. `FUTURE.md`
+records why the consolidating list was deleted rather than fixed: summing amounts
+across recipes requires normalizing them, which is the one thing this app exists to
+refuse.
+
+### Never claim a handwritten or script typeface
+
+Five script faces (Caveat, Shantell Sans, Patrick Hand, Architects Daughter, Kalam)
+were tried for the story and step notes and all five were cut — see the long note in
+`frontend/tailwind.config.js`. Only **Fraunces** (`font-display`) and **Nunito Sans**
+(`font-sans`) are loaded (`frontend/index.html`). `font-hand` does not exist, and a test
+asserts it never comes back (`frontend/tailwind.config.test.js`).
+
+A person's presence is signalled **structurally** — the saffron card, the quote stamp,
+the attributed heading, Fraunces italic — not typographically.
+
+Narrow correction to a claim made elsewhere: a `font-serif` key **does** still exist in
+`frontend/tailwind.config.js`, mapped to Cormorant Garamond. It is legacy and
+deliberately unloaded (the config test excludes it from the "must be loaded" invariant
+and comments it as legacy). Don't say "`font-serif` no longer exists" — say **no
+handwritten face exists, and only two families are loaded.**
+
+### Never claim the garden UI
+
+The seed → sprout → sapling → tree plant UI was removed in the kitchen redesign. The
+backend still *computes* `growth_stage` / `growth_vitality` / `soul_count`
+(`app/services/growth.py`, returned on `RecipeResponse`) but **no frontend surface
+displays them**. Don't describe growth stages as a feature a user can see. The old UI
+is at the `garden-v1` tag; the old docs are in `docs/archive/garden/`.
+
+### Don't inflate the numbers — measure them
+
+As measured on this branch (see `README.md` for the method): **18 routes**, **7 models**,
+**100 backend tests**, **202 frontend tests in 22 files**. Endpoint and test counts have
+each changed several times during the removals; count the `@router` / `@app` decorators
+and run the suites rather than repeating a number from an older doc.
+
+### Don't oversell the audience
+
+"Preserving what immigrant elders never wrote down" is the *origin* and the emotional
+register, and it's true. But it is not the job the product does. The job is **getting
+one dish from the person who cooks it to the person who just tasted it.** Lead with the
+job; the heritage framing is the reason it's built with this much care, not the feature.

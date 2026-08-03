@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { setVisibility } from '../api/sharing'
 
-// Placement-C visibility control (spec §3). Owner-only surface on the recipe page.
-// Root: status pill + publish/un-publish toggle (descendants-aware confirm).
-// Branch: read-only inherited status.
+// The owner-only visibility control on the recipe page: a status pill plus a
+// publish / un-publish toggle.
+//
+// It used to have two more branches — a read-only "inherited from the original"
+// state, and a confirm dialog warning that publishing would also publish the
+// versions built on top of this one. Both existed because recipes were trees. They
+// aren't, so the branches were unreachable and read `parent_recipe_id` /
+// `child_count`, which RecipeResponse no longer returns.
 //
 // Copy is deliberately kept in step with VisibilityChoice, the create-time
 // sibling: the two states carry its exact titles ("Only me" / "Everyone"), so the
@@ -22,40 +27,28 @@ import { setVisibility } from '../api/sharing'
 // plain sans rather than the italic display face so it reads as the setting's
 // definition, not as another paragraph.
 export default function VisibilityControl({ recipe, onChange }) {
-  const isRoot = recipe.parent_recipe_id == null
   const [visibility, setVis] = useState(recipe.visibility || 'private')
-  const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const isPublic = visibility === 'public'
   const label = isPublic ? 'Everyone' : 'Only me'
-
-  if (!isRoot) {
-    return (
-      <p className="font-sans text-[11px] text-ink-soft">
-        Who can see this: {label.toLowerCase()} — it follows the recipe this one
-        came from
-      </p>
-    )
-  }
 
   async function apply(next) {
     setBusy(true)
     try {
       const { data } = await setVisibility(recipe.id, next)
       setVis(data.visibility)
-      setConfirming(false)
       onChange?.(data.visibility)
     } finally {
       setBusy(false)
     }
   }
 
+  // No confirm step: the dialog this replaced existed only to warn that
+  // publishing a recipe would also publish the versions built on top of it. There
+  // are no versions — recipes aren't trees any more — so it could never open, and
+  // it read `recipe.child_count`, which RecipeResponse no longer returns.
   function onToggle() {
-    if (!isPublic && (recipe.child_count || 0) > 0) {
-      setConfirming(true) // publishing a root with descendants → confirm the ripple
-      return
-    }
     apply(isPublic ? 'private' : 'public')
   }
 
@@ -96,37 +89,6 @@ export default function VisibilityControl({ recipe, onChange }) {
           ? 'It shows up in Browse, where anyone can find it and cook it.'
           : 'Everyone means it shows up in Browse, for anyone to find and cook.'}
       </p>
-
-      {confirming && (
-        <div className="fixed inset-0 bg-ink/30 flex items-center justify-center z-50 px-6">
-          <div className="sticker bg-cream p-5 max-w-xs w-full">
-            <p className="font-display font-black text-ink text-[18px] mb-1">
-              Let everyone see this?
-            </p>
-            <p className="font-display text-[13px] text-ink-soft mb-4">
-              It shows up in Browse, where anyone can find it and cook it — along
-              with the {recipe.child_count} version
-              {recipe.child_count === 1 ? '' : 's'} other people have built on
-              it.
-            </p>
-            <div className="flex gap-2 items-center">
-              <button
-                onClick={() => apply('public')}
-                disabled={busy}
-                className="btn-primary !w-auto px-5"
-              >
-                Yes, show it
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                className="px-5 py-3 font-display font-bold text-ink-soft text-sm"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
