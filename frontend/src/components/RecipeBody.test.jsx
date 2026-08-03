@@ -324,3 +324,117 @@ describe('RecipeBody — the check-off is discoverable', () => {
     expect(disc.className).toContain('shadow-none')
   })
 })
+
+// A step's saffron note used to stay at full strength after the step was checked
+// off, so a finished step still had a bright card hanging off it pulling the eye
+// back to work already done. The note has to look finished WITH its step — while
+// staying readable, since re-reading a note on a done step ("did I miss
+// something?") is exactly when a cook comes back to it.
+describe('RecipeBody — a checked step’s note looks finished too', () => {
+  const withSteps = {
+    ...base,
+    steps: [
+      { id: 1, content: 'Brown the chicken.', position: 1, voice_note: 'go low and slow' },
+      { id: 2, content: 'Add the vinegar.', position: 2, voice_note: 'don’t stir yet' },
+    ],
+  }
+
+  // The note card is the element wrapping the note text — not the <label>.
+  const noteCardFor = (text) => screen.getByText(text).closest('div')
+
+  it('leaves an unchecked step’s note at full strength', () => {
+    render(<RecipeBody recipe={withSteps} />)
+    const card = noteCardFor('go low and slow')
+    expect(card.className).not.toMatch(/opacity-/)
+    expect(card.className).toMatch(/shadow-\[0_2px_0/)
+  })
+
+  it('fades the whole card, tint and all, once the step is checked', async () => {
+    // Dimming only the text would leave the saffron field and its quote stamp
+    // bright — the colour is what draws the eye, so the card fades as one piece.
+    render(<RecipeBody recipe={withSteps} />)
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /brown the chicken/i }),
+    )
+    const card = noteCardFor('go low and slow')
+    expect(card.className).toContain('opacity-60')
+    // The tint stays on the element that fades, so stamp + border + fill recede
+    // together rather than a grey card wearing a bright saffron stamp.
+    expect(card.className).toContain('bg-saffron/20')
+  })
+
+  it('stays readable when done — dimmer than full, but well clear of the struck step', async () => {
+    // "Finished" must not mean "unusable". The instruction goes to ink/40; the
+    // note, a paragraph someone may deliberately re-read, stops well short of it.
+    render(<RecipeBody recipe={withSteps} />)
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /brown the chicken/i }),
+    )
+    const card = noteCardFor('go low and slow')
+    const opacity = Number(card.className.match(/opacity-(\d+)/)[1])
+    expect(opacity).toBeGreaterThanOrEqual(50)
+    expect(opacity).toBeLessThan(100)
+    // The note text itself keeps full ink and no strikethrough — a struck
+    // multi-line paragraph is hard to read, and the done-ness lives on the step.
+    const note = screen.getByText('go low and slow')
+    expect(note.className).toContain('text-ink')
+    expect(note.className).not.toContain('line-through')
+  })
+
+  it('does not fade the note by colour alone', async () => {
+    // Opacity is a colour cue. The card also drops its hard shadow and presses
+    // in, the same geometry as the numeral disc — and the step's own checkbox
+    // state and line-through are untouched.
+    render(<RecipeBody recipe={withSteps} />)
+    const box = screen.getByRole('checkbox', { name: /brown the chicken/i })
+    await userEvent.click(box)
+    const card = noteCardFor('go low and slow')
+    expect(card.className).toContain('shadow-none')
+    expect(card.className).toMatch(/translate-y-/)
+    expect(box).toBeChecked()
+    expect(screen.getByText('Brown the chicken.').className).toContain(
+      'line-through',
+    )
+  })
+
+  it('fades only the note belonging to the step that was checked', async () => {
+    render(<RecipeBody recipe={withSteps} />)
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /brown the chicken/i }),
+    )
+    expect(noteCardFor('don’t stir yet').className).not.toMatch(/opacity-/)
+  })
+
+  it('un-fades the note when the step is unchecked again', async () => {
+    render(<RecipeBody recipe={withSteps} />)
+    const box = screen.getByRole('checkbox', { name: /brown the chicken/i })
+    await userEvent.click(box)
+    expect(noteCardFor('go low and slow').className).toContain('opacity-60')
+    await userEvent.click(box)
+    expect(noteCardFor('go low and slow').className).not.toMatch(/opacity-/)
+  })
+
+  it('keeps the note outside the tap target, so reading it can’t tick the step', async () => {
+    // The note card is a SIBLING of the <label>. Clicking into it to read must
+    // not toggle the checkbox.
+    render(<RecipeBody recipe={withSteps} />)
+    const note = screen.getByText('go low and slow')
+    expect(note.closest('label')).toBeNull()
+    await userEvent.click(note)
+    expect(
+      screen.getByRole('checkbox', { name: /brown the chicken/i }),
+    ).not.toBeChecked()
+  })
+
+  it('still renders notes when present and none when absent', async () => {
+    // The fade must not have become a condition on rendering at all.
+    const { rerender } = render(<RecipeBody recipe={withSteps} />)
+    expect(screen.getAllByText(/a note on this step/i)).toHaveLength(2)
+    rerender(
+      <RecipeBody
+        recipe={{ ...base, steps: [{ id: 1, content: 'Just cook it.', position: 1 }] }}
+      />,
+    )
+    expect(screen.queryByText(/a note on this step/i)).toBeNull()
+  })
+})

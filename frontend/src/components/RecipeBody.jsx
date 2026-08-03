@@ -387,9 +387,34 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
                 typed it is the recorder, not necessarily the cook it came from
                 — so "their words" overclaimed twice (a voice, and a verbatim
                 quote). "A note on this step" is exactly what it is, and it tells
-                a reader-turned-recorder what kind of thing belongs here. */}
+                a reader-turned-recorder what kind of thing belongs here.
+
+                Checked off, the note fades WITH its step — a finished step used
+                to keep a full-strength saffron card hanging off it, which pulled
+                the eye back to work already done. The fade is one opacity on the
+                whole card so the tint, the outline and the saffron quote stamp
+                recede in lockstep; dimming the card's own colours instead left a
+                greyed card wearing a bright stamp, which read as broken.
+
+                It stops at 60%, not at the step text's ink/40. A note is a
+                paragraph someone may deliberately come back to *because* they've
+                done the step and want to check they missed nothing, so finished
+                can't mean unusable — it lands a clear notch stronger than the
+                struck instruction above it. No strikethrough either: a struck
+                multi-line paragraph is hard to read, and done-ness belongs to the
+                action, not to the context around it. The hard shadow collapses
+                the way the numeral disc's does, so the card presses in with the
+                step — a second, non-chromatic cue, since opacity on its own would
+                make this a colour-only signal. */}
             {!cooking && step.voice_note && step.voice_note.trim() && (
-              <div className="relative ml-[38px] mr-1 mb-3.5 -mt-1 bg-saffron/20 border-2 border-ink rounded-[14px] pl-11 pr-3 py-2.5 shadow-[0_2px_0_#2E3A24] overflow-hidden">
+              <div
+                className={
+                  'relative ml-[38px] mr-1 mb-3.5 -mt-1 bg-saffron/20 border-2 border-ink rounded-[14px] pl-11 pr-3 py-2.5 overflow-hidden transition-all ' +
+                  (isDone(step, idx)
+                    ? 'opacity-60 shadow-none translate-y-[2px]'
+                    : 'shadow-[0_2px_0_#2E3A24]')
+                }
+              >
                 {/* quote stamp — a saffron disc with a big quote mark */}
                 <span
                   aria-hidden="true"
@@ -399,7 +424,11 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
                     &rdquo;
                   </span>
                 </span>
-                <span className="block font-display font-bold text-[9.5px] uppercase tracking-[0.12em] text-ink/70 mb-0.5">
+                {/* text-ink/85, not /70: this label is only 9.5px uppercase, and the
+                    card dims to 60% when its step is checked — at /70 that
+                    compounds to ~42% ink, level with the struck-out instruction
+                    and below comfortable for type this small. */}
+                <span className="block font-display font-bold text-[9.5px] uppercase tracking-[0.12em] text-ink/85 mb-0.5">
                   a note on this step
                 </span>
                 {/* A notch smaller than the story: this is an aside on one step,
