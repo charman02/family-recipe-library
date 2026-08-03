@@ -17,6 +17,15 @@ down_revision: Union[str, Sequence[str], None] = 'c96af0203c3d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# c96af0203c3d created recipes.user_id's FK without a name. Postgres auto-named it
+# 'recipes_user_id_fkey'; SQLite stores it nameless, so dropping it by that name
+# fails with "No such constraint" on a from-scratch SQLite build. Handing batch
+# mode this convention lets it label the reflected nameless FK the same way
+# Postgres did, so the drop below resolves on both dialects. Only consulted when
+# batch mode recreates the table (i.e. SQLite) — on Postgres it emits a plain
+# ALTER ... DROP CONSTRAINT and this dict is never read.
+NAMING_CONVENTION = {"fk": "%(table_name)s_%(column_0_name)s_fkey"}
+
 
 def upgrade() -> None:
     """Upgrade schema."""
@@ -34,7 +43,7 @@ def upgrade() -> None:
 
     # Recreate recipes.user_id FK with ON DELETE CASCADE so deleting a user
     # cleans up their recipes (and, via existing cascades, child rows).
-    with op.batch_alter_table('recipes') as batch_op:
+    with op.batch_alter_table('recipes', naming_convention=NAMING_CONVENTION) as batch_op:
         batch_op.drop_constraint('recipes_user_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(
             'recipes_user_id_fkey', 'users', ['user_id'], ['id'], ondelete='CASCADE'
@@ -43,7 +52,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    with op.batch_alter_table('recipes') as batch_op:
+    with op.batch_alter_table('recipes', naming_convention=NAMING_CONVENTION) as batch_op:
         batch_op.drop_constraint('recipes_user_id_fkey', type_='foreignkey')
         batch_op.create_foreign_key(
             'recipes_user_id_fkey', 'users', ['user_id'], ['id']

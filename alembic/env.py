@@ -66,6 +66,20 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # A caller may inject its own connection via config.attributes (the standard
+    # Alembic hook). The migration-chain test uses this to run the chain against a
+    # throwaway SQLite file WITHOUT importing app.database, whose module-level
+    # engine is bound to DATABASE_URL — which in local .env files points at
+    # production. Injection makes it structurally impossible for that test to
+    # reach a real database rather than merely unlikely.
+    connectable = config.attributes.get("connection", None)
+
+    if connectable is not None:
+        context.configure(connection=connectable, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
     from app.database import engine
 
     with engine.connect() as connection:
