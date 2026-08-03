@@ -5,5 +5,6 @@ from app.models.ingredient import Ingredient  # noqa: F401
 from app.models.step import Step  # noqa: F401
 from app.models.cook_event import CookEvent  # noqa: F401
 from app.models.handoff import Handoff  # noqa: F401
+from app.models.feedback import Feedback  # noqa: F401
 
 from tests.fixtures import db_session, client, make_user  # noqa: F401

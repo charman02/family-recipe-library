@@ -13,7 +13,7 @@ So a recipe here is attributed to a **person** — the dish is the title, the pe
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private → shared → public visibility.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 18 endpoints, 7 data models, 302 automated tests (100 pytest + 202 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 21 endpoints, 8 data models, 422 automated tests (136 pytest + 286 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -81,7 +81,10 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | GET | /recipes/invite/{token} | No | Unauthenticated read of a handed-off recipe — the **full** recipe (ingredients, steps, per-step remarks, story, servings, description), no account required. The owner's private `notes` and account ids are the only things withheld. |
 | POST | /recipes/invite/{token}/claim | Yes | Claims an invite by its token, granting the current user access (resolves the mismatched-email case). |
 | GET | /recipes/browse | No | Public discovery feed (root-visibility gated). |
-| POST | /upload/recipe-photo | Yes | Uploads a photo to Cloudinary. |
+| POST | /upload/recipe-photo | Yes | Uploads a photo to Cloudinary (recipe cover or a step). |
+| POST | /feedback | Yes | Files a feedback note from inside the app. |
+| GET | /feedback | Yes | Returns **only the caller's own** notes. |
+| GET | /recipes/ingredient-suggestions | Yes | The caller's own ingredient vocabulary, for autosuggest. |
 
 *18 routes as committed — the table is the whole surface. This count has changed several times as features were removed, so verify rather than trust it: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
 

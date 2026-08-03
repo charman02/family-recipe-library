@@ -13,6 +13,7 @@ import EditRecipe from './pages/EditRecipe'
 import HandoffPage from './pages/HandoffPage'
 import SharedWithMe from './pages/SharedWithMe'
 import Profile from './pages/Profile'
+import Feedback from './pages/Feedback'
 import InviteLanding from './pages/InviteLanding'
 
 function Layout({ children }) {
@@ -136,6 +137,18 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Profile />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      {/* Feedback is protected because POST /feedback is authenticated — the note
+          is stored against an account, which is what makes a report answerable. */}
+      <Route
+        path="/feedback"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Feedback />
             </Layout>
           </ProtectedRoute>
         }

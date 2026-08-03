@@ -1,7 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async () => ({
+  ...(await vi.importActual('react-router-dom')),
+  useNavigate: () => mockNavigate,
+}))
 import Profile from './Profile'
 
 // Covers the settings copy: round-2 testers read "Reduce motion" as jargon and
@@ -18,6 +24,7 @@ function renderProfile() {
 
 beforeEach(() => {
   localStorage.clear()
+  mockNavigate.mockClear()
   localStorage.setItem(
     'issei_user',
     JSON.stringify({ id: 1, first_name: 'Yoko', email: 'yoko@example.com' }),
@@ -56,5 +63,50 @@ describe('Profile settings copy', () => {
     expect(JSON.parse(localStorage.getItem('issei_prefs'))).toEqual({
       reduceMotion: true,
     })
+  })
+})
+
+describe('Profile feedback entry point', () => {
+  it('opens the in-app form rather than leaving for an external one', async () => {
+    // The launch shipped an <a> to a Google Form. Leaving the app is where most
+    // testers stopped, so this is now an in-app route.
+    renderProfile()
+    await userEvent.click(screen.getByRole('button', { name: /send feedback/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/feedback', {
+      state: { from: '/profile' },
+    })
+  })
+
+  it('passes the originating screen so a report says where it came from', async () => {
+    // Handed over explicitly rather than sniffed, so it can only ever be a route
+    // the person navigated to themselves — which is what the form discloses.
+    renderProfile()
+    await userEvent.click(screen.getByRole('button', { name: /send feedback/i }))
+    expect(mockNavigate.mock.calls[0][1].state.from).toBe('/profile')
+  })
+
+  it('no longer renders an external feedback link', () => {
+    // Guards the removal of VITE_FEEDBACK_URL. A leftover outbound link would
+    // split reports between a spreadsheet and the database, and a stale env var on
+    // the deploy host would silently keep sending people out of the app.
+    // queryAll, not getAll: the removal means there is no anchor left to find at
+    // all, and getAllByRole throws on zero matches rather than returning [].
+    const { container } = renderProfile()
+    const outbound = [...container.querySelectorAll('a[href]')].map((a) =>
+      a.getAttribute('href'),
+    )
+    expect(outbound.filter((h) => /forms\.gle|tally|https?:/i.test(h))).toEqual([])
+    // And specifically not an <a> wearing the feedback label.
+    expect(screen.queryByRole('link', { name: /send feedback/i })).toBeNull()
+  })
+
+  it('always offers the feedback entry point, with no env var to configure', () => {
+    // The old button hid itself unless VITE_FEEDBACK_URL was set, so an unset var
+    // meant no way to report anything at all. An in-app route can't point at
+    // nothing, so it is unconditional.
+    renderProfile()
+    expect(
+      screen.getByRole('button', { name: /send feedback/i }),
+    ).toBeInTheDocument()
   })
 })
