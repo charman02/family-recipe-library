@@ -1,9 +1,13 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import client, { toUserMessage } from '../api/client'
 import Icon from './Icon'
 import MarkerTitle from './MarkerTitle'
 import FieldLabel from './FieldLabel'
+import IngredientNameField from './IngredientNameField'
+import AmountUnitChips from './AmountUnitChips'
 import { parseQuantity } from '../utils/quantity'
+import { mergeSuggestions } from '../lib/commonIngredients'
+import { shouldOfferUnits } from '../lib/amountChips'
 
 // Shared Add/Edit recipe form. Owns all field state, photo upload, ingredient/
 // step management, client-side validation, and payload assembly. The parent
@@ -135,6 +139,25 @@ export default function RecipeForm({
   // time: a response already in flight when we abort is still ignored.
   const uploadSeq = useRef(0)
   const abortRef = useRef(null)
+
+  // Ingredient autosuggest source. Starts as the shipped common list so the very
+  // first keystroke suggests something, then folds in the words this user has
+  // written before once they arrive. A failed or slow fetch is not an error the
+  // user should ever see — the common list alone is a working feature, and the
+  // one thing a suggestion must never do is get in the way of typing.
+  const [suggestions, setSuggestions] = useState(() => mergeSuggestions([]))
+  useEffect(() => {
+    let live = true
+    client
+      .get('/recipes/ingredient-suggestions')
+      .then(({ data }) => {
+        if (live) setSuggestions(mergeSuggestions(data?.names || []))
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
 
   const storyCopy = STORY_COPY[storyVariant] || STORY_COPY.inherited
   const heading = mode === 'edit' ? 'Edit recipe' : 'Keep a recipe'
@@ -274,15 +297,16 @@ export default function RecipeForm({
   // the typing, to be the tiring part.
   //
   // Shift+Enter still inserts a real newline, since a step legitimately runs long.
-  function advanceOnEnter(e, { container, index, addRow, selector }) {
-    if (e.key !== 'Enter' || e.shiftKey) return
-    e.preventDefault()
-    const isLast = index === container.length - 1
+  // Open row index+1 for editing, adding it first if we're on the last one.
+  // Extracted from advanceOnEnter so the ingredient CONFIRM button lands in
+  // exactly the same place Enter does — two affordances, one behaviour, and no
+  // second copy of the keyboard-preserving focus dance to keep in step.
+  function openNextRow({ container, index, addRow, selector }) {
     const focusNext = () => {
       const fields = document.querySelectorAll(selector)
       fields[index + 1]?.focus()
     }
-    if (isLast) {
+    if (index === container.length - 1) {
       addRow()
       // The new row doesn't exist until React commits, so wait a tick. On a phone
       // this also keeps the keyboard up — focusing an existing element in the same
@@ -291,6 +315,30 @@ export default function RecipeForm({
     } else {
       focusNext()
     }
+  }
+
+  function advanceOnEnter(e, opts) {
+    if (e.key !== 'Enter' || e.shiftKey) return
+    e.preventDefault()
+    openNextRow(opts)
+  }
+
+  // The inline confirm: bank this ingredient and land in a fresh one. Same
+  // destination as Enter on the amount field, reachable by thumb — testers who
+  // never found the keyboard's return key were tapping "+ Add ingredient" and
+  // then tapping into the new row, which is the three-taps-per-line the flow was
+  // losing people to.
+  function confirmIngredient(index) {
+    openNextRow({
+      container: ingredients,
+      index,
+      addRow: () => setIngredients((prev) => [...prev, emptyIngredient()]),
+      selector: '[data-ingredient-name]',
+    })
+  }
+
+  function focusIngredientField(index, selector) {
+    document.querySelectorAll(selector)[index]?.focus()
   }
 
   async function handleSubmit(e) {
@@ -533,28 +581,27 @@ export default function RecipeForm({
                   </button>
                 )}
               </div>
-              <label className="block mb-2">
-                <FieldLabel>Ingredient</FieldLabel>
-                <input
-                  type="text"
-                  data-ingredient-name
-                  placeholder="e.g. soy sauce"
+              {/* Not a <label> wrapper: the name field is a combobox owning a
+                  listbox, and a label around both would put the suggestions
+                  inside the field's own accessible name. */}
+              <div className="block mb-2">
+                <FieldLabel>
+                  <label htmlFor={`ingredient-name-${idx}`}>Ingredient</label>
+                </FieldLabel>
+                <IngredientNameField
+                  id={`ingredient-name-${idx}`}
+                  index={idx}
                   value={ing.name}
-                  onChange={(e) => updateIngredient(idx, 'name', e.target.value)}
-                  onKeyDown={(e) => {
-                    // Within a row, Enter moves name → amount rather than
-                    // skipping to the next ingredient.
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      e.currentTarget
-                        .closest('[data-ingredient-row]')
-                        ?.querySelector('[data-ingredient-qty]')
-                        ?.focus()
-                    }
-                  }}
-                  className="field"
+                  suggestions={suggestions}
+                  placeholder="e.g. soy sauce"
+                  onChange={(v) => updateIngredient(idx, 'name', v)}
+                  // Within a row, name → amount rather than skipping to the
+                  // next ingredient.
+                  onAdvance={() =>
+                    focusIngredientField(idx, '[data-ingredient-qty]')
+                  }
                 />
-              </label>
+              </div>
               <label className="block">
                 <FieldLabel accent="terra">How much</FieldLabel>
                 <input
@@ -577,6 +624,31 @@ export default function RecipeForm({
                   className="field bg-peach/50"
                 />
               </label>
+              {/* Units appear only over a bare number, so the strip is answering
+                  a question the user has visibly just asked. */}
+              {shouldOfferUnits(ing.quantity) && (
+                <AmountUnitChips
+                  index={idx}
+                  value={ing.quantity}
+                  onPick={(v) => updateIngredient(idx, 'quantity', v)}
+                  onDone={() =>
+                    focusIngredientField(idx, '[data-ingredient-qty]')
+                  }
+                />
+              )}
+              {/* Confirm only once there's something to confirm — an empty row
+                  offering to save itself is a button that lies. */}
+              {ing.name.trim() && (
+                <button
+                  type="button"
+                  data-ingredient-confirm
+                  onClick={() => confirmIngredient(idx)}
+                  className="mt-2.5 inline-flex items-center gap-1.5 font-display font-bold text-[12.5px] text-terra"
+                >
+                  <Icon name="plus" className="w-3.5 h-3.5" />
+                  Done — next ingredient
+                </button>
+              )}
             </div>
           ))}
         </div>

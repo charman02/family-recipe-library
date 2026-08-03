@@ -3,7 +3,12 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import client from '../api/client'
 import RecipeForm from './RecipeForm'
 
-vi.mock('../api/client', () => ({ default: { post: vi.fn() } }))
+// `get` is here for the ingredient-suggestion fetch. It defaults to a rejection
+// so the whole suite runs on the shipped common list alone — which is also the
+// assertion that a dead/slow endpoint never degrades the form.
+vi.mock('../api/client', () => ({
+  default: { post: vi.fn(), get: vi.fn(() => Promise.reject(new Error('offline'))) },
+}))
 
 // A JPEG the size validator accepts, for driving the file input.
 function jpeg(name) {
@@ -361,6 +366,268 @@ describe('RecipeForm capture friction', () => {
     )
     fireEvent.keyDown(amounts[0], { key: 'Enter' })
     expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[1]).toHaveFocus()
+  })
+})
+
+// Ingredient entry was the most-abandoned part of the flow across two rounds of
+// testing: too much typing, too many taps per line. These pin the three fixes and,
+// just as importantly, pin that none of them can get in the way.
+describe('RecipeForm ingredient autosuggest', () => {
+  const names = () => screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)
+
+  function type(el, value) {
+    fireEvent.focus(el)
+    fireEvent.change(el, { target: { value } })
+  }
+
+  it('keeps the name field labelled and reachable as a combobox', () => {
+    // The suggestion list moved this input inside a wrapper component; the
+    // persistent visible label has to still name it, and it must announce as a
+    // combobox so a screen-reader user is told the list exists at all.
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(screen.getAllByLabelText('Ingredient')).toHaveLength(3)
+    const boxes = screen.getAllByRole('combobox')
+    expect(boxes).toHaveLength(3)
+    expect(boxes[0]).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('suggests from the shipped common list with no network at all', async () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    type(names()[0], 'gochu')
+    expect(await screen.findByRole('option', { name: 'gochugaru' })).toBeTruthy()
+  })
+
+  it("suggests the user's own past ingredients, ranked first", async () => {
+    client.get.mockResolvedValueOnce({ data: { names: ['sopropo'] } })
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    type(names()[0], 'so')
+    // Wait for the fetched word itself, not merely for "some option" — the
+    // common list already answers "so" on the first render, so a bare
+    // findAllByRole would assert against the pre-fetch strip and pass by luck.
+    await screen.findByRole('option', { name: 'sopropo' })
+    // Their kitchen predicts their next ingredient better than any list we ship.
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('sopropo')
+  })
+
+  it('tapping a suggestion fills the name and lands on the amount', async () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    type(names()[0], 'gochu')
+    fireEvent.click(await screen.findByRole('option', { name: 'gochujang' }))
+    expect(names()[0]).toHaveValue('gochujang')
+    // The saved tap: the caret is already where the user was heading next.
+    expect(
+      screen.getAllByPlaceholderText(/1\/2 cup · a dash · to taste/i)[0],
+    ).toHaveFocus()
+  })
+
+  it('does not blur the input on pointer-down, so the keyboard stays up', async () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    type(names()[0], 'gochu')
+    const option = await screen.findByRole('option', { name: 'gochugaru' })
+    const ev = fireEvent.mouseDown(option)
+    // fireEvent returns false when the handler called preventDefault.
+    expect(ev).toBe(false)
+  })
+
+  it('drives the list from the keyboard: arrows highlight, Enter accepts', async () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const input = names()[0]
+    type(input, 'gochu')
+    await screen.findByRole('option', { name: 'gochugaru' })
+    // "gochu" matches more than one thing, so assert against the FIRST option
+    // rather than a hardcoded word — otherwise this test pins list order.
+    const first = screen.getAllByRole('option')[0].textContent
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(names()[0]).toHaveValue(first)
+  })
+
+  it('Escape dismisses the list and it stays dismissed while typing', async () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const input = names()[0]
+    type(input, 'gochu')
+    await screen.findByRole('option', { name: 'gochugaru' })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    // Someone whose ingredient isn't in any list dismissed it for a reason;
+    // reopening on the next letter makes Escape worthless.
+    fireEvent.change(input, { target: { value: 'gochuj' } })
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+  })
+
+  it('never blocks a free-text name no list has heard of', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByPlaceholderText(/“Adobo”/i), {
+      target: { value: 'Pinakbet' },
+    })
+    type(names()[0], 'kadyos')
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0].ingredients[0].name).toBe('kadyos')
+  })
+
+  it('closes the strip once the name is complete, so nothing is pushed down', async () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const input = names()[0]
+    type(input, 'gochu')
+    await screen.findByRole('option', { name: 'gochugaru' })
+    fireEvent.change(input, { target: { value: 'gochugaru' } })
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+  })
+
+  it('keeps Enter → amount working when nothing is highlighted', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const input = names()[0]
+    type(input, 'gochu')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(
+      screen.getAllByPlaceholderText(/1\/2 cup · a dash · to taste/i)[0],
+    ).toHaveFocus()
+  })
+})
+
+describe('RecipeForm amount unit chips', () => {
+  const amounts = () =>
+    screen.getAllByPlaceholderText(/1\/2 cup · a dash · to taste/i)
+
+  it('offers no chips until a number is typed', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument()
+  })
+
+  it('offers real AND folk units once a number is typed', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(amounts()[0], { target: { value: '3' } })
+    expect(screen.getByRole('button', { name: 'tbsp' })).toBeInTheDocument()
+    // Folk units sit in the same strip at the same size — that's how the form
+    // teaches that an imprecise amount is a welcome answer.
+    expect(screen.getByRole('button', { name: 'soup spoon' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'pinch' })).toBeInTheDocument()
+  })
+
+  it('groups the chips by name, not by colour alone', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(amounts()[0], { target: { value: '3' } })
+    expect(screen.getByRole('group', { name: 'Measurements' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Rough amounts' })).toBeInTheDocument()
+  })
+
+  it('tapping a folk chip writes the pluralized amount', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(amounts()[0], { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'soup spoon' }))
+    expect(amounts()[0]).toHaveValue('3 soup spoons')
+  })
+
+  it('sends a chip-built folk amount as imprecise, never mathified', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByPlaceholderText(/“Adobo”/i), {
+      target: { value: 'Adobo' },
+    })
+    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
+      target: { value: 'soy sauce' },
+    })
+    fireEvent.change(amounts()[0], { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'soup spoon' }))
+    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0].ingredients[0]).toMatchObject({
+      quantity_text: '3 soup spoons',
+      quantity_type: 'imprecise',
+    })
+  })
+
+  it('withdraws the chips once a unit is there', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(amounts()[0], { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'cup' }))
+    expect(amounts()[0]).toHaveValue('3 cups')
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument()
+  })
+
+  it('never overwrites a unit the user typed themselves', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(amounts()[0], { target: { value: 'a good splash' } })
+    // No strip at all in this state — the user's own words are the answer.
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument()
+    expect(amounts()[0]).toHaveValue('a good splash')
+  })
+
+  it('returns focus to the amount field after a chip is used', () => {
+    // The strip unmounts on pick; a chip that held focus would drop it to <body>
+    // and strand a keyboard user mid-row.
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(amounts()[0], { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'pinch' }))
+    expect(amounts()[0]).toHaveFocus()
+  })
+
+  it('is one tab stop, not sixteen', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(amounts()[0], { target: { value: '3' } })
+    const chips = screen
+      .getByRole('toolbar')
+      .querySelectorAll('button')
+    const tabbable = [...chips].filter((c) => c.tabIndex === 0)
+    expect(chips.length).toBeGreaterThan(10)
+    expect(tabbable).toHaveLength(1)
+  })
+})
+
+describe('RecipeForm inline ingredient confirm', () => {
+  const confirms = () => screen.queryAllByText(/done — next ingredient/i)
+
+  it('offers no confirm on an empty row', () => {
+    // A button offering to save nothing is a button that lies.
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    expect(confirms()).toHaveLength(0)
+  })
+
+  it('appears once the row has a name', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
+      target: { value: 'soy sauce' },
+    })
+    expect(confirms()).toHaveLength(1)
+  })
+
+  it('one tap moves into the next row, focused and ready', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
+      target: { value: 'soy sauce' },
+    })
+    fireEvent.click(confirms()[0])
+    expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[1]).toHaveFocus()
+  })
+
+  it('adds a row when confirming the last one', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const rows = screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)
+    fireEvent.change(rows[rows.length - 1], { target: { value: 'ginger' } })
+    fireEvent.click(confirms()[0])
+    expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i).length).toBe(
+      rows.length + 1,
+    )
+  })
+
+  it('does not submit the form', () => {
+    // It's type=button; a confirm that saved a half-written recipe would be a
+    // disaster on the last row.
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
+    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
+      target: { value: 'soy sauce' },
+    })
+    fireEvent.click(confirms()[0])
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 })
 

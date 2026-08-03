@@ -61,6 +61,13 @@ class IngredientResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class IngredientSuggestions(BaseModel):
+    # The signed-in user's OWN ingredient vocabulary, most-used first, for the
+    # add-recipe autosuggest. An object rather than a bare array so this can grow
+    # a field (counts, a remembered unit) without a breaking response shape.
+    names: list[str] = []
+
+
 # IngredientSection schemas
 
 

@@ -18,6 +18,7 @@ from app.schemas.recipe import (
     RecipeUpdate,
     IngredientResponse,
     IngredientSectionResponse,
+    IngredientSuggestions,
     StepResponse,
     CookIn,
     HandoffIn,
@@ -307,6 +308,59 @@ def shared_with_me(
     for r in recipes:
         _attach_growth_fields(r, db)
     return recipes
+
+
+@router.get("/ingredient-suggestions", response_model=IngredientSuggestions)
+def ingredient_suggestions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The signed-in user's own ingredient vocabulary, for the add-form autosuggest.
+
+    Declared BEFORE get_recipe so the literal path wins; otherwise
+    GET /recipes/{recipe_id} captures recipe_id="ingredient-suggestions" (same
+    reason /shared and /browse sit up here).
+
+    SCOPE IS THE SECURITY PROPERTY. The join is pinned to
+    `Recipe.user_id == current_user.id`, so a suggestion can only ever be a word
+    this user typed themselves. Deliberately NOT widened to public recipes or to
+    recipes handed off to this user, even though they're readable: an ingredient
+    list is a behavioural trace, and a name that appears here because someone
+    ELSE cooked with it tells you about their kitchen while looking like it came
+    from yours. Autocomplete is exactly the surface where that inference is
+    cheapest to make and hardest to notice, so the "readable" set and the
+    "suggestible" set are kept different on purpose. Soft-deleted recipes drop
+    out too — a deleted recipe shouldn't keep whispering its contents back.
+    """
+    rows = (
+        db.query(Ingredient.name)
+        .join(Recipe, Recipe.id == Ingredient.recipe_id)
+        .filter(Recipe.user_id == current_user.id, Recipe.deleted_at == None)
+        .all()
+    )
+
+    # Fold case/whitespace in Python rather than SQL: picking a representative
+    # spelling for a case-insensitive group needs dialect-specific tricks, and
+    # this set is one user's own ingredients — small enough that clarity and
+    # SQLite/Postgres portability are worth more than pushing it down.
+    counts: dict[str, int] = {}
+    spellings: dict[str, dict[str, int]] = {}
+    for (raw,) in rows:
+        name = (raw or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        counts[key] = counts.get(key, 0) + 1
+        spellings.setdefault(key, {})
+        spellings[key][name] = spellings[key].get(name, 0) + 1
+
+    # Most-used first so the words someone reaches for daily are the ones they
+    # never have to finish typing; alphabetical within a tie for a stable order.
+    ordered = sorted(counts, key=lambda k: (-counts[k], k))
+    names = [max(spellings[k].items(), key=lambda kv: (kv[1], kv[0]))[0] for k in ordered]
+    # Bounded: past a few hundred the tail is never reached by a prefix match, and
+    # the whole list is downloaded once on a phone.
+    return IngredientSuggestions(names=names[:300])
 
 
 @router.post("/handoffs/{handoff_id}/accept", response_model=HandoffResponse)
