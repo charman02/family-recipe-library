@@ -18,6 +18,10 @@ class StepCreate(BaseModel):
     content: str
     section_header: Optional[str] = None
     voice_note: Optional[str] = None
+    # An already-uploaded photo for this step (POST /upload/recipe-photo returns
+    # the URL). Same contract as the recipe's cover_photo_url: the client uploads
+    # first and sends back a URL, so recipe writes stay JSON.
+    photo_url: Optional[str] = None
 
 
 class StepResponse(BaseModel):
@@ -26,6 +30,7 @@ class StepResponse(BaseModel):
     content: str
     section_header: Optional[str] = None
     voice_note: Optional[str] = None
+    photo_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -36,15 +36,17 @@ export default function EditRecipe() {
           .sort((a, b) => a.position - b.position)
           .map((ing) => ({ name: ing.name, quantity: ing.quantity_text || '' }))
 
-        // Carry section_header AND voice_note through the round-trip: the PATCH
-        // replaces all steps, so dropping either here would null a persisted
-        // field on save (voice_note = the person's words for that step).
+        // Carry EVERY step field through the round-trip. The PATCH deletes and
+        // rebuilds all steps, so any field missing from this map is erased on save
+        // — a plain text edit would silently destroy the note and the photo. Add
+        // new Step columns here at the same time you add them to the model.
         const flatSteps = [...recipe.steps]
           .sort((a, b) => a.position - b.position)
           .map((s) => ({
             content: s.content,
             section_header: s.section_header ?? null,
             voice_note: s.voice_note ?? '',
+            photo_url: s.photo_url ?? '',
           }))
 
         setInitialValues({

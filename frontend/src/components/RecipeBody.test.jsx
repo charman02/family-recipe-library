@@ -132,7 +132,7 @@ describe('RecipeBody', () => {
     expect(screen.getByText('Ingredients')).toBeInTheDocument()
     expect(screen.getByText('Chicken')).toBeInTheDocument()
     expect(screen.getByText('Brown the chicken.')).toBeInTheDocument()
-    // ...and drops what it claims to drop: photo, story, per-step notes.
+    // ...and drops what it claims to drop: cover, story, per-step notes.
     expect(screen.queryByText(/Her Sunday dish\./)).toBeNull()
     expect(screen.queryByText(/a note on this step/i)).toBeNull()
   })
@@ -436,5 +436,108 @@ describe('RecipeBody — a checked step’s note looks finished too', () => {
       />,
     )
     expect(screen.queryByText(/a note on this step/i)).toBeNull()
+  })
+})
+
+// A per-step technique photo. This exists for the reader who has never tasted OR
+// seen the dish: "fold the dumpling like this", "until it looks like this" is
+// knowledge prose can't carry. The tests that matter most are the two about WHERE
+// it shows — the cooking view and the recipient's page — because those are the
+// two moments the feature is actually for.
+describe('RecipeBody — a step’s technique photo', () => {
+  const PHOTO = 'https://img.test/fold.jpg'
+  const withPhoto = {
+    ...base,
+    steps: [
+      {
+        id: 1,
+        content: 'Pleat the wrapper into a half-moon.',
+        position: 1,
+        photo_url: PHOTO,
+        voice_note: 'go slow',
+      },
+      { id: 2, content: 'Steam for eight minutes.', position: 2 },
+    ],
+  }
+
+  const photoFor = (n) => screen.queryByAltText(new RegExp(`^Step ${n}:`))
+
+  it('shows the photo under the step it belongs to', () => {
+    render(<RecipeBody recipe={withPhoto} />)
+    expect(photoFor(1)).toHaveAttribute('src', PHOTO)
+  })
+
+  it('shows nothing for a step with no photo', () => {
+    render(<RecipeBody recipe={withPhoto} />)
+    expect(photoFor(2)).toBeNull()
+  })
+
+  it('names the photo by its step, so it is not an unlabelled image', () => {
+    // The picture's own content is unknown to us; the step it illustrates is the
+    // only honest description, and it's what a screen-reader user needs to place it.
+    render(<RecipeBody recipe={withPhoto} />)
+    expect(photoFor(1)).toHaveAccessibleName(
+      'Step 1: Pleat the wrapper into a half-moon.',
+    )
+  })
+
+  // THE decision this feature turns on. The cooking view hides the story and the
+  // per-step notes because they're prose you read before you start. A technique
+  // photo is the opposite: it answers a question that only arises mid-cook, and
+  // hiding it here would remove it from the one view people cook from.
+  it('KEEPS the photo in the cooking view, unlike the step’s prose note', async () => {
+    render(<RecipeBody recipe={withPhoto} />)
+    await userEvent.click(
+      screen.getByRole('button', { name: /ingredients & steps/i }),
+    )
+    // The note goes, as before...
+    expect(screen.queryByText(/a note on this step/i)).toBeNull()
+    // ...and the photo deliberately stays: "is this what it should look like?"
+    // is a question you only ask with your hands in the bowl.
+    expect(photoFor(1)).toHaveAttribute('src', PHOTO)
+  })
+
+  // The recipient of a handoff reads this same component with context="reader"
+  // from an invite link and no account. They're the one person who has never seen
+  // the dish, so a photo that only worked for the owner would miss its audience.
+  it('works on the recipient’s page, where nothing may depend on ownership', () => {
+    render(<RecipeBody recipe={withPhoto} context="reader" />)
+    expect(photoFor(1)).toHaveAttribute('src', PHOTO)
+  })
+
+  it('keeps the photo outside the tap target, so a closer look can’t tick the step', async () => {
+    render(<RecipeBody recipe={withPhoto} />)
+    const img = photoFor(1)
+    expect(img.closest('label')).toBeNull()
+    await userEvent.click(img)
+    expect(
+      screen.getByRole('checkbox', { name: /pleat the wrapper/i }),
+    ).not.toBeChecked()
+  })
+
+  it('fades and presses in with its step, but stays clearly readable when done', async () => {
+    render(<RecipeBody recipe={withPhoto} />)
+    expect(photoFor(1).className).not.toMatch(/opacity-/)
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /pleat the wrapper/i }),
+    )
+    const cls = photoFor(1).className
+    // Not colour alone: the hard shadow collapses the way the numeral disc's does.
+    expect(cls).toContain('shadow-none')
+    expect(cls).toMatch(/translate-y-/)
+    // A photo is the record of what "done" looks like, so checking your work
+    // against it AFTER the step is a real use — it fades less than the note (60).
+    const opacity = Number(cls.match(/opacity-(\d+)/)[1])
+    expect(opacity).toBeGreaterThan(60)
+    expect(opacity).toBeLessThan(100)
+  })
+
+  it('un-fades when the step is unchecked again', async () => {
+    render(<RecipeBody recipe={withPhoto} />)
+    const box = screen.getByRole('checkbox', { name: /pleat the wrapper/i })
+    await userEvent.click(box)
+    expect(photoFor(1).className).toMatch(/opacity-/)
+    await userEvent.click(box)
+    expect(photoFor(1).className).not.toMatch(/opacity-/)
   })
 })

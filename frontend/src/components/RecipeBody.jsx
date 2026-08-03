@@ -95,8 +95,10 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
           nothing until they'd tapped it. They also have to be literally true:
           "Just the steps" wasn't — this view keeps the ingredients — so it names
           both lists it shows. That contrast against "Full recipe" is what implies
-          the rest (photo, story, notes) is what's dropped, which is why the
-          explanatory line under the control could go without losing meaning. */}
+          the rest (cover, story, notes) is what's dropped, which is why the
+          explanatory line under the control could go without losing meaning.
+          Per-step technique photos are the one thing kept in BOTH views — they're
+          part of the step, not context around it; see the note at the photo. */}
       <div className="flex justify-center mb-3">
         <div className="inline-flex rounded-full border-2 border-ink bg-cream p-0.5 text-[12px] font-display font-bold">
           <button
@@ -376,6 +378,49 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
                 {step.content}
               </span>
             </label>
+            {/* The technique photo for THIS step — "fold it like this", "until it
+                looks like this". Kept in BOTH views, unlike the note above it,
+                and that asymmetry is the point rather than an oversight.
+
+                The cooking view drops the cover, the story and the per-step notes
+                because they're PROSE — context you read once before you start,
+                which mid-cook is only something else to scroll past. A technique
+                photo is the opposite: it answers a question that only arises with
+                your hands in the bowl ("is this what translucent looks like?"),
+                and it's the single thing text genuinely cannot carry. Hiding it in
+                the view people actually cook from would remove it exactly when
+                it's needed and leave it only in the view they read beforehand.
+
+                It also matters most for the reader this app exists for — the
+                recipient of a handoff, who has never tasted OR seen the dish and
+                is cooking it blind from an invite link. That page renders this
+                same component with context="reader", so nothing here may depend
+                on ownership.
+
+                Sits OUTSIDE the <label> above for the same reason the note does:
+                pinching to look closer at a photo must not tick the step off.
+                Unstyled `alt` deliberately describes the step it belongs to
+                rather than the (unknown) picture; the instruction itself is the
+                caption, right above it. */}
+            {step.photo_url && (
+              <div className="ml-[38px] mr-1 mb-3.5 -mt-0.5">
+                <img
+                  src={step.photo_url}
+                  alt={`Step ${idx + 1}: ${step.content}`}
+                  loading="lazy"
+                  className={
+                    'w-full max-h-[220px] object-cover rounded-[14px] border-2 border-ink block transition-all ' +
+                    // Fades and presses in with its step, matching the note card
+                    // — but stops at 70%, a notch stronger. A photo is the only
+                    // record of what "done" looked like, so a cook checking their
+                    // work against it after the fact is a real use, not a stray.
+                    (isDone(step, idx)
+                      ? 'opacity-70 shadow-none translate-y-[2px]'
+                      : 'shadow-[0_2px_0_#2E3A24]')
+                  }
+                />
+              </div>
+            )}
             {/* The extra remark for THIS step — a tinted saffron callout card
                 with a decorative quote stamp, clearly separated from the
                 instruction so the step stays readable. Sits OUTSIDE the tap

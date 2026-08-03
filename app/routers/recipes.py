@@ -133,6 +133,7 @@ def create_recipe(
                 content=step_in.content,
                 section_header=step_in.section_header,
                 voice_note=step_in.voice_note,
+                photo_url=step_in.photo_url,
             )
         )
 
@@ -701,6 +702,7 @@ def patch_recipe(
                     content=step_in.content,
                     section_header=step_in.section_header,
                     voice_note=step_in.voice_note,
+                    photo_url=step_in.photo_url,
                 )
             )
 

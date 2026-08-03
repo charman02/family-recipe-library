@@ -17,4 +17,10 @@ class Step(Base):
     content: Mapped[str] = mapped_column(Text)
     section_header: Mapped[Optional[str]] = mapped_column(nullable=True)
     voice_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # A technique photo for THIS step — "fold it like this", "until it looks like
+    # this". Text, not String, for the same reason as the recipe's cover: a
+    # Cloudinary URL carries transformation segments and has no useful length
+    # bound. Nullable because almost every step will not have one; a photo is an
+    # answer to a step whose words can't carry it, not a per-step requirement.
+    photo_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     recipe: Mapped["Recipe"] = relationship("Recipe", back_populates="steps")
