@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-vi.mock('../api/client', () => ({ default: { post: vi.fn() } }))
+// Only the axios instance is stubbed. `toUserMessage` stays REAL: it is the
+// thing under test in the error cases below, and mocking it would let the
+// [object Object] bug back in while the suite stayed green.
+vi.mock('../api/client', async () => ({
+  ...(await vi.importActual('../api/client')),
+  default: { post: vi.fn() },
+}))
 import client from '../api/client'
 
 const mockNavigate = vi.fn()
@@ -207,6 +213,206 @@ describe('Login', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true }),
     )
     expect(client.post).toHaveBeenCalledWith('/recipes/invite/abc123/claim')
+  })
+
+  // --- Error rendering -----------------------------------------------------
+  // The live bug: FastAPI answers a schema failure with 422 and `detail` as an
+  // ARRAY OF OBJECTS, and `detail || 'Login failed'` rendered that array —
+  // "[object Object]" in the pill. The first thing a new user hit if they chose
+  // a short password. Normalization now happens in api/client (toUserMessage),
+  // so these assert the rendered pill, not the helper.
+  it('renders a 422 array-shaped detail as readable text, never an object', async () => {
+    client.post.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          detail: [
+            {
+              type: 'string_too_short',
+              loc: ['body', 'password'],
+              msg: 'String should have at least 8 characters',
+            },
+          ],
+        },
+      },
+    })
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    )
+    fireEvent.change(screen.getByPlaceholderText('Email'), {
+      target: { value: 'a@b.com' },
+    })
+    // long enough to clear the client-side check, so the server's 422 is what
+    // reaches the pill
+    fireEvent.change(screen.getByPlaceholderText('Password'), {
+      target: { value: 'pw123456' },
+    })
+    fireEvent.submit(screen.getByPlaceholderText('Password').closest('form'))
+
+    const pill = await screen.findByText(/at least 8 characters/i)
+    expect(pill).toBeInTheDocument()
+    expect(pill.textContent).not.toMatch(/object Object|\[\{|"loc"/)
+  })
+
+  it('names every failing field when a 422 reports more than one', async () => {
+    // Surfacing only the first would make the user fix one thing, submit, and
+    // get stopped again by a rule that was already broken.
+    client.post.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          detail: [
+            { loc: ['body', 'email'], msg: 'value is not a valid email address: bad' },
+            { loc: ['body', 'first_name'], msg: 'String should have at least 1 character' },
+          ],
+        },
+      },
+    })
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    )
+    fireEvent.change(screen.getByPlaceholderText('Email'), {
+      target: { value: 'a@b.com' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('Password'), {
+      target: { value: 'pw123456' },
+    })
+    fireEvent.submit(screen.getByPlaceholderText('Password').closest('form'))
+
+    expect(await screen.findByText(/doesn.t look right/i)).toBeInTheDocument()
+    expect(screen.getByText(/First name needs at least 1 character/i)).toBeInTheDocument()
+  })
+
+  it('passes a plain-string detail through as the router wrote it', async () => {
+    client.post.mockRejectedValue({
+      response: { status: 401, data: { detail: 'Invalid email or password' } },
+    })
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    )
+    fireEvent.change(screen.getByPlaceholderText('Email'), {
+      target: { value: 'a@b.com' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('Password'), {
+      target: { value: 'pw123456' },
+    })
+    fireEvent.submit(screen.getByPlaceholderText('Password').closest('form'))
+
+    expect(await screen.findByText('Invalid email or password')).toBeInTheDocument()
+  })
+
+  it('says the connection failed when there is no response, not that sign-in failed', async () => {
+    // An offline phone is not a wrong password. Telling this user "Login failed"
+    // sends them to change a password that was never the problem.
+    client.post.mockRejectedValue({ message: 'Network Error' })
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    )
+    fireEvent.change(screen.getByPlaceholderText('Email'), {
+      target: { value: 'a@b.com' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('Password'), {
+      target: { value: 'pw123456' },
+    })
+    fireEvent.submit(screen.getByPlaceholderText('Password').closest('form'))
+
+    expect(await screen.findByText(/check your connection/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Sign-in didn/i)).not.toBeInTheDocument()
+  })
+
+  // --- Inline validation, before the request ------------------------------
+  function fillSignup(overrides = {}) {
+    const values = {
+      'First name': 'Mia',
+      'Last name': 'Tan',
+      Email: 'a@b.com',
+      Password: 'pw123456',
+      'Confirm password': 'pw123456',
+      ...overrides,
+    }
+    for (const [placeholder, value] of Object.entries(values)) {
+      fireEvent.change(screen.getByPlaceholderText(placeholder), {
+        target: { value },
+      })
+    }
+    fireEvent.submit(
+      screen.getByPlaceholderText('Confirm password').closest('form'),
+    )
+  }
+
+  function renderSignup() {
+    render(
+      <MemoryRouter initialEntries={['/login?tab=signup']}>
+        <Login />
+      </MemoryRouter>,
+    )
+  }
+
+  it('states the password minimum up front, before anyone can fail it', async () => {
+    // A minimum you discover by being rejected is a minimum stated too late.
+    renderSignup()
+    expect(screen.getByText(/at least 8 characters/i)).toBeInTheDocument()
+  })
+
+  it('rejects a malformed email without asking the server', async () => {
+    renderSignup()
+    fillSignup({ Email: 'mia@' })
+    expect(await screen.findByText(/doesn.t look right/i)).toBeInTheDocument()
+    expect(client.post).not.toHaveBeenCalled()
+  })
+
+  it('rejects a short password without asking the server', async () => {
+    renderSignup()
+    fillSignup({ Password: 'pw1', 'Confirm password': 'pw1' })
+    expect(
+      await screen.findByText(/Passwords need at least 8 characters/i),
+    ).toBeInTheDocument()
+    expect(client.post).not.toHaveBeenCalled()
+  })
+
+  it('rejects a whitespace-only name — the byline would render as nothing', async () => {
+    renderSignup()
+    fillSignup({ 'First name': '   ' })
+    expect(
+      await screen.findByText(/Add your first name/i),
+    ).toBeInTheDocument()
+    expect(client.post).not.toHaveBeenCalled()
+  })
+
+  it('rejects a whitespace-only last name too', async () => {
+    renderSignup()
+    fillSignup({ 'Last name': '  ' })
+    expect(await screen.findByText(/Add your last name/i)).toBeInTheDocument()
+    expect(client.post).not.toHaveBeenCalled()
+  })
+
+  it('still catches mismatched passwords', async () => {
+    renderSignup()
+    fillSignup({ 'Confirm password': 'pw12345678' })
+    expect(await screen.findByText(/Those passwords don.t match/i)).toBeInTheDocument()
+    expect(client.post).not.toHaveBeenCalled()
+  })
+
+  it('sends trimmed names — a stray space should not become part of a byline', async () => {
+    client.post.mockResolvedValue({
+      data: { access_token: 'tok', user: { id: 1 } },
+    })
+    renderSignup()
+    fillSignup({ 'First name': '  Mia ', 'Last name': ' Tan  ' })
+    await waitFor(() =>
+      expect(client.post).toHaveBeenCalledWith(
+        '/auth/signup',
+        expect.objectContaining({ first_name: 'Mia', last_name: 'Tan' }),
+      ),
+    )
   })
 
   it('clears fields when switching Sign In ↔ signup', async () => {

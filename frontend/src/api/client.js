@@ -12,6 +12,83 @@ const client = axios.create({
   timeout: 45000,
 })
 
+// Field names as a person would say them, for turning a server-side validation
+// failure back into a sentence about the form they're looking at.
+const FIELD_LABELS = {
+  email: 'Email',
+  password: 'Password',
+  first_name: 'First name',
+  last_name: 'Last name',
+  name: 'Name',
+}
+
+// A Pydantic 422 entry is { loc: ['body', 'password'], msg: 'String should have
+// at least 8 characters', ... }. `loc[0]` is the request part ('body', 'query'),
+// so the field is the last segment.
+function humanizeFieldError(entry) {
+  if (typeof entry === 'string') return entry
+  const path = Array.isArray(entry?.loc) ? entry.loc : []
+  const field = [...path].reverse().find((p) => typeof p === 'string' && p !== 'body')
+  const label = FIELD_LABELS[field] || 'That field'
+  const msg = typeof entry?.msg === 'string' ? entry.msg : ''
+
+  // Pydantic's own wording leaks its internals ("String should have at least 8
+  // characters", "value is not a valid email address: An email address must
+  // have an @-sign") — true, but written for whoever wrote the schema. These
+  // rewrites cover every rule the auth schema actually enforces; anything else
+  // falls through to the server's words, which beats inventing a diagnosis.
+  if (/valid email/i.test(msg)) return "That email doesn't look right."
+  const tooShort = msg.match(/at least (\d+) character/i)
+  if (tooShort) return `${label} needs at least ${tooShort[1]} characters.`
+  const tooLong = msg.match(/at most (\d+) character/i)
+  if (tooLong) return `${label} is too long — keep it under ${tooLong[1]} characters.`
+  if (/field required/i.test(msg)) return `${label} is required.`
+  return msg ? `${label}: ${msg}` : `${label} isn't valid.`
+}
+
+/**
+ * Turn any axios failure into one sentence a person can act on.
+ *
+ * This lives here rather than in each form because every screen reads the same
+ * `detail` field and every screen got the same bug: FastAPI answers a schema
+ * failure with 422 and `detail` as an ARRAY OF OBJECTS, so `detail || fallback`
+ * put `[object Object]` in front of a user who had simply chosen a short
+ * password. One place to pass through means one place to get this right.
+ *
+ * `fallback` is the caller's plain-language description of the failed action,
+ * used only when the server gave us nothing better to say.
+ */
+export function toUserMessage(err, fallback = 'Something went wrong.') {
+  // No response at all: offline, DNS, CORS, or a timeout. Reporting this as
+  // "Login failed" tells a user on a dead train connection that their password
+  // is wrong — they then change a password that was never the problem.
+  if (!err?.response) {
+    return "Couldn't reach issei — check your connection."
+  }
+  const detail = err.response.data?.detail
+
+  // 400/401/403/404 carry a `detail` string written for the user by the router
+  // ("Email already registered", "Invalid email or password") — pass it through
+  // untouched; those are deliberate copy.
+  if (typeof detail === 'string' && detail.trim()) return detail
+
+  if (Array.isArray(detail) && detail.length) {
+    // Every failing field, not just the first: hiding the second one makes the
+    // user fix one thing, submit, and get stopped again. Deduped because a
+    // repeated rule (two blank names) would otherwise say the same thing twice.
+    const seen = new Set()
+    for (const entry of detail) {
+      seen.add(humanizeFieldError(entry))
+    }
+    return [...seen].join(' ')
+  }
+
+  // A `detail`-less error is either a crash or a proxy/gateway page; a 5xx is
+  // ours to own rather than something the user can fix by retyping.
+  if (err.response.status >= 500) return 'issei is having trouble right now.'
+  return fallback
+}
+
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('issei_token')
   if (token) {

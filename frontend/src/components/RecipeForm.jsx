@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import client from '../api/client'
+import client, { toUserMessage } from '../api/client'
 import Icon from './Icon'
 import MarkerTitle from './MarkerTitle'
 import FieldLabel from './FieldLabel'
@@ -219,7 +219,7 @@ export default function RecipeForm({
       // failure — isCurrent() filters it out along with any other stale error.
       if (!isCurrent()) return
       setPhotoError(
-        err.response?.data?.detail || 'Photo upload failed. Please try again.',
+        toUserMessage(err, 'Photo upload failed. Please try again.'),
       )
     } finally {
       if (isCurrent()) {
@@ -333,7 +333,7 @@ export default function RecipeForm({
       // On success the parent navigates away and this unmounts — don't touch state.
     } catch (err) {
       setError(
-        err.response?.data?.detail || 'Something went wrong. Please try again.',
+        toUserMessage(err, 'Something went wrong. Please try again.'),
       )
       setLoading(false)
     }

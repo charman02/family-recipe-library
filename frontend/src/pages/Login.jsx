@@ -1,8 +1,31 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import client from '../api/client'
+import client, { toUserMessage } from '../api/client'
 import { claimInvite } from '../api/lineage'
 import IconField from '../components/IconField'
+
+// Mirrors the server's rules (app/schemas/user.py) so a person hears about a
+// short password or a blank name from the field in front of them, not from a
+// round trip. The server stays the authority — this only saves the trip.
+const PASSWORD_MIN = 8
+
+// Deliberately loose: one @, something either side, a dot in the domain. A
+// stricter regex here would start rejecting real addresses, and the server's
+// EmailStr is the real check — this only catches the obvious typo ("mia@",
+// "mia.com") before a round trip.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// Returns the first problem worth stopping for, or null. Order follows the
+// form top-to-bottom so the message points at the field nearest the top.
+function findSignupProblem({ firstName, lastName, email, password, confirmPassword }) {
+  if (!firstName.trim()) return 'Add your first name — recipes are signed with it.'
+  if (!lastName.trim()) return 'Add your last name too.'
+  if (!EMAIL_RE.test(email.trim())) return "That email doesn't look right."
+  if (password.length < PASSWORD_MIN)
+    return `Passwords need at least ${PASSWORD_MIN} characters.`
+  if (password !== confirmPassword) return "Those passwords don't match."
+  return null
+}
 
 export default function Login() {
   const [searchParams] = useSearchParams()
@@ -71,7 +94,7 @@ export default function Login() {
       })
       await finishAuth(data)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed')
+      setError(toUserMessage(err, "Sign-in didn't go through. Try again?"))
     } finally {
       setLoading(false)
     }
@@ -80,27 +103,38 @@ export default function Login() {
   async function handleSignup(e) {
     e.preventDefault()
     setError('')
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
+    const problem = findSignupProblem({
+      firstName,
+      lastName,
+      email,
+      password,
+      confirmPassword,
+    })
+    if (problem) {
+      setError(problem)
       return
     }
     setLoading(true)
     try {
+      // Trim before sending: a trailing space from a phone keyboard's autocap
+      // would otherwise ride along into every byline this person's recipes
+      // carry. The schema strips too — this keeps the two in agreement so the
+      // stored name matches what the user was shown.
       await client.post('/auth/signup', {
-        email,
+        email: email.trim(),
         password,
-        first_name: firstName,
-        last_name: lastName,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
       })
       const params = new URLSearchParams()
-      params.append('username', email)
+      params.append('username', email.trim())
       params.append('password', password)
       const { data } = await client.post('/auth/login', params, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       })
       await finishAuth(data, { isNew: true })
     } catch (err) {
-      setError(err.response?.data?.detail || 'Signup failed')
+      setError(toUserMessage(err, "Couldn't open your kitchen. Try again?"))
     } finally {
       setLoading(false)
     }
@@ -242,6 +276,15 @@ export default function Login() {
               required
               className="field--login"
             />
+            {/* The rule stated BEFORE it can be broken. Discovering an
+                8-character minimum by being rejected for a 6-character password
+                is the app withholding something it knew all along — and it lands
+                on a person mid-signup, the worst moment to be told to think
+                again. Sits under the password field, where it's read while
+                typing, not above the form where it's scrolled past. */}
+            <p className="font-sans text-[12.5px] leading-snug text-ink-soft px-1 !mt-1.5">
+              At least 8 characters.
+            </p>
             <IconField
               icon="lock"
               type="password"

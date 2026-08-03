@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { handoffRecipe } from '../api/lineage'
+import { toUserMessage } from '../api/client'
 import { HANDOFF_STARTERS, defaultStarterKey } from '../lib/handoffStarters'
 
 // Hand this recipe to someone — send them a link that opens it.
@@ -67,7 +68,7 @@ export default function HandoffInvite({
       })
       setHandoff(data)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not send. Try again.')
+      setError(toUserMessage(err, 'Could not send. Try again.'))
     } finally {
       setSending(false)
     }
