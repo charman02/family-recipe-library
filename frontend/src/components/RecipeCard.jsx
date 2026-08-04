@@ -31,10 +31,18 @@ export default function RecipeCard({ recipe, onClick, variant = 'grid' }) {
         <CoverImage
           url={recipe.cover_photo_url}
           size="md"
+          recipe={recipe}
           className="w-full h-[150px] object-cover block"
         />
+        {/* The cuisine tag is CREAM, not saffron. It used to be saffron, which put
+            it in a three-way collision: saffron is documented as the
+            person's-knowledge accent (the story card, the per-step note), it's the
+            swipe under "Your kitchen" — the very heading these cards sit beneath —
+            and a metadata label is the weakest claim of the three. A label naming a
+            cuisine isn't knowledge and isn't a section, so it drops out of the
+            accent system entirely and just reads as an outlined tag on a photo. */}
         {recipe.cuisine && (
-          <span className="absolute top-2 left-2 font-display font-bold uppercase tracking-[0.06em] text-[9.5px] text-ink bg-saffron border-2 border-ink px-2 py-0.5 rounded-full">
+          <span className="absolute top-2 left-2 font-display font-bold uppercase tracking-[0.06em] text-[9.5px] text-ink bg-cream/95 border-2 border-ink px-2 py-0.5 rounded-full">
             {recipe.cuisine}
           </span>
         )}

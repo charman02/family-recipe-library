@@ -124,14 +124,20 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
         </div>
       </div>
 
-      {/* Cover photo (or the peach issei. fallback) — a sticker frame. Hidden in
-          cooking mode. */}
+      {/* Cover photo — or, with no photo, a type cover built from this recipe's own
+          words (see lib/coverText.js). Hidden in cooking mode.
+          avoid="notes": this page lists the steps in full below, so a cover quoting a
+          step remark printed the same sentence twice on one screen. It reaches for an
+          amount instead — amounts appear in a table here, so a pull quote of one
+          doesn't read as duplication. */}
       {!cooking && (
         <div className="sticker overflow-hidden mb-1.5 mt-0.5 bg-card">
           <CoverImage
             url={recipe.cover_photo_url}
             size="lg"
             context={context}
+            recipe={recipe}
+            avoid="notes"
             className="w-full h-[180px] object-cover block"
           />
         </div>

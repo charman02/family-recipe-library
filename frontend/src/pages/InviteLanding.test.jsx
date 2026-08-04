@@ -128,7 +128,7 @@ describe('InviteLanding', () => {
     // because CoverImage's no-photo fallback renders an `issei.` mark too, and
     // on full textContent because the terra period is a nested <span>.
     const wordmark = screen.getAllByText(
-      (_, el) => el?.tagName === 'P' && el.textContent === 'issei.',
+      (_, el) => el?.tagName === 'SPAN' && el.textContent === 'issei.',
     )[0]
     expect(wordmark).toBeTruthy()
     expect(

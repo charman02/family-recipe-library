@@ -29,18 +29,55 @@ describe('RecipeBody', () => {
     expect(getByText('Brown the chicken.')).toBeTruthy()
     expect(getByText('Add vinegar.')).toBeTruthy()
   })
-  it('shows the issei. cover fallback when there is no cover photo', () => {
-    const { container } = render(<RecipeBody recipe={base} />)
-    // CoverImage's no-photo fallback renders the issei. wordmark text
-    expect(container.textContent.toLowerCase()).toContain('issei')
+  // The no-photo cover used to be the `issei.` wordmark plus "A photo brings this
+  // dish to life" — it named the missing thing, scolded an owner, and meant nothing
+  // to a recipient with no upload button. It now fills the frame with the recipe's
+  // OWN words. See lib/coverText.js.
+  it('fills a photo-less cover with this recipe’s own words', () => {
+    const { container } = render(
+      <RecipeBody
+        recipe={{
+          ...base,
+          ingredients: [
+            { id: 1, name: 'garlic', quantity_text: 'a whole head', quantity_type: 'imprecise' },
+          ],
+        }}
+      />,
+    )
+    expect(container.textContent).toMatch(/a whole head of garlic/)
   })
 
-  // On a recipient's page the owner fallback misfires twice: it prompts for an
-  // upload they can't do, and it prints a second issei. under the invite header's.
-  it('drops the wordmark and the photo prompt from the cover in reader context', () => {
-    const { container } = render(<RecipeBody recipe={base} context="reader" />)
-    expect(container.textContent.toLowerCase()).not.toContain('issei')
-    expect(container.textContent).not.toMatch(/brings this dish to life/i)
+  it('never begs for a photo or stamps the brand on a recipe', () => {
+    // Both misfire on a recipient's page especially: they can't upload, and a second
+    // `issei.` under the invite header's reads as a rendering bug.
+    for (const context of ['owner', 'reader']) {
+      const { container, unmount } = render(
+        <RecipeBody recipe={base} context={context} />,
+      )
+      expect(container.textContent.toLowerCase()).not.toContain('issei')
+      expect(container.textContent).not.toMatch(/brings this dish to life/i)
+      unmount()
+    }
+  })
+
+  it('does not quote a step remark it is about to print in full below', () => {
+    // The cover quoted "Don't crowd the pan" and the Steps list printed the same
+    // sentence a few hundred pixels down — one screen, same words twice.
+    const { container } = render(
+      <RecipeBody
+        recipe={{
+          ...base,
+          steps: [
+            { id: 1, position: 1, content: 'Brown it.', voice_note: 'Do not crowd the pan.' },
+          ],
+          ingredients: [
+            { id: 1, name: 'garlic', quantity_text: 'a whole head', quantity_type: 'imprecise' },
+          ],
+        }}
+      />,
+    )
+    const hits = container.textContent.match(/Do not crowd the pan/g) || []
+    expect(hits).toHaveLength(1)
   })
   it('displays servings and description when present', () => {
     const { getByText } = render(
