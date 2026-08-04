@@ -13,7 +13,7 @@ So a recipe here is attributed to a **person** — the dish is the title, the pe
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private → shared → public visibility.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 21 endpoints, 8 data models, 422 automated tests (136 pytest + 286 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 21 endpoints, 8 data models, 474 automated tests (136 pytest + 338 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -30,9 +30,9 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - backend tests (100) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup validation).
+**pytest** - backend tests (136 in 18 files) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (202 in 22 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (338 in 27 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Five of them assert the UI makes *no* claim the product can't back — four fail if any screen says "voice", "recording", "audio" or "listen", and one fails if a removed design token comes back. Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -80,17 +80,19 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | POST | /recipes/handoffs/{handoff_id}/accept | Yes | Claims a pending invite for the current user (backend-only; the two auto-accept paths cover the in-app cases, so there is no MVP UI for this). |
 | GET | /recipes/invite/{token} | No | Unauthenticated read of a handed-off recipe — the **full** recipe (ingredients, steps, per-step remarks, story, servings, description), no account required. The owner's private `notes` and account ids are the only things withheld. |
 | POST | /recipes/invite/{token}/claim | Yes | Claims an invite by its token, granting the current user access (resolves the mismatched-email case). |
-| GET | /recipes/browse | No | Public discovery feed (root-visibility gated). |
+| GET | /recipes/browse | No | Public discovery feed: every non-deleted recipe whose visibility is `public`, newest first. Because it's unauthenticated, per-owner activity (`owner_cook_count`, `last_cooked_at`, `shared_with_count`) is zeroed before it's returned. |
 | POST | /upload/recipe-photo | Yes | Uploads a photo to Cloudinary (recipe cover or a step). |
 | POST | /feedback | Yes | Files a feedback note from inside the app. |
 | GET | /feedback | Yes | Returns **only the caller's own** notes. |
 | GET | /recipes/ingredient-suggestions | Yes | The caller's own ingredient vocabulary, for autosuggest. |
 
-*18 routes as committed — the table is the whole surface. This count has changed several times as features were removed, so verify rather than trust it: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
+*21 routes as committed — the table is the whole surface. This count has changed several times as features were removed, so verify rather than trust it: `grep -rn "^@router\.\|^@app\." app/` returns 21 (20 router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
 
 **Three visibility tiers — Private → Shared → Public.** A recipe is viewable by a user when: its visibility is `public`, **or** they own it, **or** they hold an accepted handoff (grant) on it. "Shared" is not a stored enum value — `visibility` stays `private | public`; a private recipe with ≥1 accepted grant *is* shared with those people. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `can_view` (`app/services/sharing.py`) is the single read-authorization rule every recipe read funnels through. **Read is not write:** editing and deleting stay owner-only, enforced by a `user_id` filter in `patch_recipe`/`delete_recipe` — a grantee can read and cook a recipe they were handed, never change someone else's record of it.
 
 **The invite token is a capability.** Those three tiers govern *accounts*; a handoff link is a separate axis. `secrets.token_urlsafe(32)` is unguessable, and holding it is the permission to read — so `/recipes/invite/{token}` serves the whole recipe with no account at all. The recipient of a handoff has never tasted the dish and wants to cook it, so gating ingredients behind a signup form would be friction at the moment of highest intent. Signing up is what lets them *keep* it (save, cook, add to it), not what lets them read it.
+
+**One recipient silently revoked another — the bug that made a grant a row, not a link.** `claim_invite` used to do the obvious thing: set `to_user_id` on the handoff row to whoever just claimed it. But `can_view` decides read access by matching that same column, and a shareable link is one row handed to *several* people. So the second person to open a link overwrote the first person's claim and the first person silently lost the recipe — no error, no notification, access simply gone. The fix separates the link from the grant: a claim on a row that already belongs to someone else now mints that user their own `Handoff` on the same recipe (and link-only handoffs stopped being deduped into one row, which was the same bug from the sending side). Two regression tests pin it — `test_second_claimer_does_not_revoke_the_first` asserts `can_view` is true for *both* claimers, and `test_reclaiming_is_idempotent_for_the_same_user` asserts re-opening a link doesn't pile up duplicate grants (`tests/test_invite_softwall.py`, fixed in `39e9934`). The general lesson, and the reason it's written down here: an access-control row keyed to "the current claimant" is a single-occupancy assumption hiding inside a feature that is explicitly about sharing.
 
 ## Setup Instructions
 1. **Clone the repo:**
