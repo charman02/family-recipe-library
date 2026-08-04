@@ -5,7 +5,9 @@ import { getSharedWithMe } from '../api/sharing'
 import RecipeCard from '../components/RecipeCard'
 import MarkerTitle from '../components/MarkerTitle'
 import Loader from '../components/Loader'
-import HeroDiscs from '../components/HeroDiscs'
+import Wordmark from '../components/Wordmark'
+import { HeroStack } from '../components/HeroStack'
+import { PeopleRow, FinishThese, KitchenGlance } from '../components/KitchenSections'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -14,15 +16,20 @@ function getGreeting() {
   return 'Good evening'
 }
 
-// The "issei." masthead — chunky Fraunces wordmark with the signature orange
-// period, motto beneath (capitalized, punctuated).
+// The masthead: the wordmark sticker plus the motto.
+//
+// The motto sits BESIDE the mark rather than under it. Stacked, the pair was 60px of
+// vertical real estate before any content, and the hero heading landed directly under
+// the motto's italic — three lines of type in three styles, top to bottom, before the
+// first recipe. Side by side, the block is one row and the hero heading is the next
+// thing your eye reaches.
 function Masthead() {
   return (
-    <div className="px-5 pt-6 pb-3">
-      <h1 className="font-display font-black text-[34px] leading-[0.95] tracking-[-0.01em] text-ink">
-        issei<span className="text-terra">.</span>
+    <div className="flex items-center gap-2.5 px-5 pt-6 pb-8">
+      <h1 className="flex-none">
+        <Wordmark size="sm" />
       </h1>
-      <p className="font-display italic text-[15px] text-ink-soft mt-0.5">
+      <p className="font-display italic text-[12.5px] leading-tight text-ink-soft">
         Recipes that live in memory.
       </p>
     </div>
@@ -117,7 +124,7 @@ export default function Home() {
         </div>
 
         <section className="px-5 pt-7">
-          <SectionTitle color="bg-mint">Passed to you</SectionTitle>
+          <SectionTitle color="bg-sage">Passed to you</SectionTitle>
           <div className="grid grid-cols-2 gap-x-4 gap-y-6">
             {shared.slice(0, 12).map((recipe) => (
               <RecipeCard
@@ -186,62 +193,98 @@ export default function Home() {
     )
   }
 
-  // "Passed down lately" = the community feed, excluding the user's own recipes.
+  // "Passed down lately" = the public feed, excluding the user's own recipes. It
+  // sits BELOW the user's own kitchen now. It used to sit above it, which meant a
+  // user opening the app scrolled past strangers' dishes to reach their own — and
+  // POSITIONING.md explicitly disclaims discovery-from-strangers as a selling
+  // point, so having it outrank their own food contradicted the product.
   const passedDown = community.filter((r) => r.user_id !== user.id).slice(0, 12)
+
+  // The hero names an actual dish rather than only asking a question. "What's
+  // cooking tonight?" asked something and then answered it with a link to a list;
+  // naming the most recent thing available makes the hero DO something. A recipe
+  // someone sent you outranks one you wrote, because that's the moment this app
+  // exists for.
+  // THE HERO DECK. Recipes someone handed you come first — that hand-off is the
+  // moment this app exists for — then your own. Capped at 4: the deck is a hero, not
+  // a browser, and a fifth card is a swipe nobody will take when "Your kitchen" is
+  // one scroll below. The heading names WHY the current card is here rather than
+  // labelling it an editorial pick (see lib/heroReason.js).
+  const deck = [...shared, ...mine].slice(0, 4)
+
+
+  // Everything the explore sections read: the user's own kitchen plus what was
+  // handed to them. Strangers' public recipes are excluded on purpose — "whose
+  // recipes live here" means THIS kitchen, and quoting a stranger's step note
+  // would make the section a feed, which is the thing the product disclaims.
+  const kitchen = [...mine, ...shared]
 
   return (
     <div className="min-h-screen bg-cream pb-6">
       <Masthead />
 
-      {/* HERO — a big peach color-block sticker; tapping it opens the kitchen.
-          A trio of emoji discs sits INSIDE the box down the free right side,
-          clear of the left-aligned text. */}
-      <div className="relative mx-4">
-        <button
-          onClick={() => navigate('/my-recipes')}
-          aria-label="Go to your kitchen"
-          className="w-full text-left sticker sticker-press bg-peach px-5 pt-6 pb-7"
-        >
-          {eyebrow}
-          <h2 className="font-display text-[38px] leading-[1.0] text-ink mt-4 max-w-[12rem]">
-            What&rsquo;s cooking{' '}
-            <span className="font-black italic">tonight?</span>
-          </h2>
-          <p className="font-display italic text-[15px] text-ink-soft mt-3 max-w-[13rem]">
-            Everything you&rsquo;ve kept, in one kitchen. &rarr;
-          </p>
-        </button>
-        {/* Decorative emoji discs — config-driven, with a ?discs drag editor.
-            See HeroDiscs.jsx. */}
-        <HeroDiscs />
+      {/* HERO — one real recipe, opened. See HeroRecipe for why this replaced a
+          peach box containing a question and three emoji discs: the hero held no
+          content, and the app's actual beauty was buried below the fold.
+
+          FOUR VARIANTS are live behind ?home=1|2|3|4 while the form is being
+          chosen — the first rebuild fixed the hero's CONTENT but left its FORM
+          identical to every card below it, which is what read as stale. See
+          HeroVariants.jsx. Delete the switch and keep one once it's decided. */}
+      <div className="mx-4">
+        {deck.length > 0 ? (
+          <HeroStack
+            recipes={deck}
+            shared={shared}
+            count={mine.length + shared.length}
+            onOpen={(r) => navigate(`/recipes/${r.id}`)}
+          />
+        ) : (
+          /* Both first-run branches above catch an empty kitchen, so this only
+             fires if both lists somehow load empty — keep a way in rather than
+             rendering nothing. */
+          <button
+            onClick={() => navigate('/my-recipes')}
+            className="w-full text-left sticker sticker-press bg-card px-5 pt-5 pb-5"
+          >
+            {eyebrow}
+            <p className="font-display font-black text-[24px] text-ink mt-3">
+              Your kitchen &rarr;
+            </p>
+          </button>
+        )}
       </div>
 
-      {/* CORAL ACCENT — an outlined coral sticker bar (the reference's red strip). */}
-      <button
-        onClick={() => navigate('/browse')}
-        className="mx-4 mt-4 w-[calc(100%-2rem)] sticker sticker-press bg-coral px-5 py-3 flex items-center justify-between text-cream"
-      >
-        <span className="font-display font-black text-[16px]">
-          {(() => {
-            const n = passedDown.length + mine.length
-            return `${n} ${n === 1 ? 'recipe' : 'recipes'} to cook`
-          })()}
-        </span>
-        <span className="font-display font-bold text-[13px]">Browse all →</span>
-      </button>
+      {/* AT A GLANCE + WHOSE RECIPES LIVE HERE sit directly under the hero, before
+          any grid. The page's problem wasn't its content, it was its SHAPE: hero,
+          grid, grid, grid — one repeated rectangle with nothing to look at twice.
+          A stat strip and a row of round faces break that up with the two things
+          only this app knows: how much a kitchen has accumulated, and who it came
+          from. Both are pure functions of data already on the page. */}
+      <KitchenGlance recipes={kitchen} />
+      <PeopleRow
+        recipes={kitchen}
+        onPerson={(p) => navigate(`/my-recipes?person=${encodeURIComponent(p.name)}`)}
+      />
 
-      {/* PASSED TO YOU — recipes handed to this person, above the public feed
-          because a dish someone chose to send them outranks anything from a
-          stranger. Previously these were reachable only from a link buried on
-          MyRecipes, so once a recipient added a recipe of their own, the recipe
-          they joined for vanished from Home. */}
+      {/* The brick "N recipes to cook / Browse all" bar used to sit here: a
+          full-width saturated bar directly under the hero, competing with it for
+          the same attention, pointing at the LEAST important destination on the
+          page — and Browse already has its own nav tab. Its count summed
+          `passedDown + mine`, mixing strangers' public recipes with the user's own
+          into one number that meant nothing. Removed rather than restyled. */}
+
+      {/* PASSED TO YOU comes first: a dish someone chose to send you is the
+          reason this app exists, and it outranks anything you wrote yourself —
+          let alone anything from a stranger. Shows 6 rather than 4; the old cap
+          hid recipes on a screen with room for them. */}
       {shared.length > 0 && (
-        <section className="px-5 pt-7">
-          <SectionTitle color="bg-mint" onClick={() => navigate('/shared')}>
+        <section className="px-5 home-section">
+          <SectionTitle color="bg-sage" onClick={() => navigate('/shared')}>
             Passed to you
           </SectionTitle>
           <div className="grid grid-cols-2 gap-x-4 gap-y-6">
-            {shared.slice(0, 4).map((recipe) => (
+            {shared.slice(0, 6).map((recipe) => (
               <RecipeCard
                 key={recipe.id}
                 recipe={recipe}
@@ -253,25 +296,16 @@ export default function Home() {
         </section>
       )}
 
-      {/* SECTIONS — chunky Fraunces titles, two-up recipe-card grids. */}
-      {passedDown.length > 0 && (
-        <section className="px-5 pt-7">
-          <SectionTitle color="bg-saffron">Passed down lately</SectionTitle>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-6">
-            {passedDown.map((recipe) => (
-              <RecipeCard
-                key={recipe.id}
-                recipe={recipe}
-                variant="grid"
-                onClick={() => navigate(`/recipes/${recipe.id}`)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* A "Their words" quote card used to sit here — one line lifted out of a
+          recipe. Removed: a folk amount or a step remark read as a fragment with the
+          dish it belongs to nowhere in sight, so it was charming without being
+          useful. The material didn't go to waste — it's now what fills the frame of
+          a recipe with no photo, where it appears WITH its dish. See
+          lib/coverText.js. */}
 
-      <section className="px-5 pt-8">
-        <SectionTitle color="bg-mint" onClick={() => navigate('/my-recipes')}>
+      {/* THEN the user's own kitchen. */}
+      <section className="px-5 home-section">
+        <SectionTitle color="bg-saffron" onClick={() => navigate('/my-recipes')}>
           Your kitchen
         </SectionTitle>
         <div className="grid grid-cols-2 gap-x-4 gap-y-6">
@@ -285,6 +319,35 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* FILL THESE IN — the only section that ASKS for something, so it sits below
+          both grids and is capped at three. It reads the user's own recipes only:
+          nagging someone about gaps in a dish they were given would be asking them
+          to edit a record that isn't theirs (and `patch_recipe` would refuse). */}
+      <FinishThese
+        recipes={mine}
+        onOpen={(r) => navigate(`/recipes/${r.id}/edit`)}
+      />
+
+      {/* LAST, and only if there's anything public at all. Strangers' recipes are
+          the least important thing on this page. */}
+      {passedDown.length > 0 && (
+        <section className="px-5 home-section">
+          <SectionTitle color="bg-peach" onClick={() => navigate('/browse')}>
+            Passed down lately
+          </SectionTitle>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+            {passedDown.slice(0, 4).map((recipe) => (
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                variant="grid"
+                onClick={() => navigate(`/recipes/${recipe.id}`)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

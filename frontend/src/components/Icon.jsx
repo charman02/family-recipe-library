@@ -23,12 +23,48 @@ const paths = {
       <path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none" />
     </>
   ),
+  // An OPEN book — two facing pages rising from a centre spine.
+  //
+  // It used to be a closed volume with a bookmark notch, which at 20px was
+  // unreadable: it looked like a tag, a shield, or a bookmark on its own. Open, the
+  // silhouette is unmistakable, and it's also the right image for a recipe's story —
+  // a book being read, not one shelved.
   book: (
     <>
-      <path d="M6 4h9a2 2 0 0 1 2 2v14l-3.5-2L10 20V6a2 2 0 0 0-2-2H6z" />
-      <path d="M6 4v14" />
+      {/* the two page blocks, curving down to the spine */}
+      <path d="M12 7.2C10.3 5.9 8.2 5.3 5 5.2v11.6c3.2.1 5.3.7 7 2z" />
+      <path d="M12 7.2c1.7-1.3 3.8-1.9 7-2v11.6c-3.2.1-5.3.7-7 2z" />
+      {/* the spine */}
+      <path d="M12 7.2v11.6" />
     </>
   ),
+  // A list — the shape of a recipe's method.
+  //
+  // All three markers are the SAME filled dot and all three rules are the SAME
+  // length. The first pass filled only the first dot (trying to say "ordered") and
+  // shortened the last rule (a ragged-edge flourish) — at 20px both read as a
+  // rendering fault rather than as intent: two dots looked hollow next to one solid,
+  // and the short rule looked like a clipped line. Repetition IS the list.
+  list: (
+    <>
+      <circle cx="5.5" cy="7" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="5.5" cy="17" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M10 7h9M10 12h9M10 17h9" />
+    </>
+  ),
+
+  // A note left on the page — a small sheet with a folded corner and two lines of
+  // writing. Distinct from `book` (a bound volume) at 20px, which matters because
+  // both appear in the same list.
+  note: (
+    <>
+      <path d="M5.5 4.5h9l4 4v11h-13z" />
+      <path d="M14.5 4.5v4h4" />
+      <path d="M8.5 12.5h6M8.5 15.5h4" />
+    </>
+  ),
+
   user: (
     <>
       <circle cx="12" cy="8" r="3.4" />

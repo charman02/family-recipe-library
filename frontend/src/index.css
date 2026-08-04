@@ -10,6 +10,20 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* A torn paper edge, as TWO layers rather than one mask over the whole card:
+     • a solid rectangle covering everything above the tear zone
+     • the ragged strip itself, pinned to the bottom
+     The single-mask version scaled one path over the card's full height, so
+     `preserveAspectRatio='none'` stretched the teeth vertically into nothing and
+     the path (walking leftward from the right edge) ran out of segments before
+     reaching x=0 — which clipped the entire left side of the card. Splitting it
+     means the strip keeps a fixed 32px height at any card height, and the teeth
+     stay the size they were drawn.
+
+     The path is machine-generated with uneven tooth widths (14-34px) and seven
+     different depths, because a repeating period reads as die-cut, not torn. */
+
 }
 
 @layer components {
@@ -30,8 +44,48 @@
     @apply transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24];
   }
 
+  /* A small label above a control or a field — "Who can see this", "Email". Correct
+     for a form, and it stays that way. */
   .section-label {
     @apply text-[12px] font-display font-bold uppercase tracking-[0.14em] text-ink;
+  }
+
+  /* A CONTENT section's header. section-label was being used for both jobs, which is
+     why "The people in your kitchen" and "Fill these in" read as captions next to
+     "Your kitchen" — 12px tracked uppercase against 24px Fraunces black with a marker
+     swipe. These sections can't take the swipe (it belongs to the tappable
+     destination headers, and giving it to everything would make it mean nothing), so
+     they get the SIZE and WEIGHT instead, plus a short accent rule that echoes the
+     hero heading's. Sentence case, because these are phrases and not labels. */
+  .section-head {
+    @apply font-display font-black text-[21px] leading-none text-ink;
+  }
+  .section-rule {
+    @apply block h-[3px] w-9 rounded-full mt-2;
+  }
+
+  /* HOME'S VERTICAL RHYTHM — two steps, and only two.
+     Measured before this existed, the page ran 16 · 16 · 36 · 40 · 36 · 40 between
+     its blocks: the two section gaps alternated because some sections were written
+     with pt-9 and others with pt-10, which is invisible in the source and obvious on
+     screen. Two steps is the whole scale:
+
+     .home-section (32px) — a NEW section. Enough to read as a break; less than the
+       36–40 it replaced, so the page is shorter as well as more even.
+     .home-attached (24px) — a block that BELONGS to the one above it, not a new
+       section. Only the stat strip uses it: it counts the kitchen the hero is drawn
+       from, so a full section gap would orphan it into a statistic nobody asked for.
+       It started at 16px, which was too tight below the hero's swipe dots — the dots
+       are small and low-contrast, so the stat boxes crowded them and the pair read as
+       one control strip. Still visibly less than .home-section, so the stats stay
+       attached to the hero rather than becoming their own section.
+
+     Anything on Home should use one of these rather than its own pt-*. */
+  .home-section {
+    @apply pt-8;
+  }
+  .home-attached {
+    @apply pt-6;
   }
 
   /* Field: cream fill, bold ink outline (sticker language), terra focus. */
@@ -62,7 +116,7 @@
   }
   /* Error pill — sticker treatment for form/page errors (warm, on-palette). */
   .error-pill {
-    @apply inline-block font-display font-bold text-[13px] text-cream bg-coral border-2 border-ink rounded-full px-3.5 py-1.5 shadow-[0_2px_0_#2E3A24];
+    @apply inline-block font-display font-bold text-[13px] text-cream bg-brick border-2 border-ink rounded-full px-3.5 py-1.5 shadow-[0_2px_0_#2E3A24];
   }
   /* Readable body scale (R1). Body/ingredients read too thin+small in serif; the
      reading surfaces use Nunito Sans at a legible size with bold amounts. */

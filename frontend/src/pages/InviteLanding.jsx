@@ -4,6 +4,7 @@ import { getInvitePreview } from '../api/sharing'
 import RecipeBody from '../components/RecipeBody'
 import Loader from '../components/Loader'
 import IsseiMeaning from '../components/IsseiMeaning'
+import Wordmark from '../components/Wordmark'
 
 // The recipient landing (/invite/:token) — the far end of the handoff.
 //
@@ -103,9 +104,9 @@ export default function InviteLanding() {
             and quiet here — it answers "where am I" for someone who tapped an
             unfamiliar link, but it is not the headline; the dish is. */}
         <div className="text-center">
-          <p className="font-display font-black text-[15px] leading-none text-ink">
-            issei<span className="text-terra">.</span>
-          </p>
+          <Wordmark size="sm" className="scale-[0.72] origin-center" />
+        </div>
+        <div className="text-center">
           {/* The eyebrow and the dish name are one sentence broken across two
               type sizes ("Charlie passed you / Lola's Adobo"), so the handoff is
               stated without a separate line of prose explaining it. Sentence

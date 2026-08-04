@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
 import { claimInvite } from '../api/sharing'
 import IconField from '../components/IconField'
+import Wordmark from '../components/Wordmark'
 
 // Mirrors the server's rules (app/schemas/user.py) so a person hears about a
 // short password or a blank name from the field in front of them, not from a
@@ -142,10 +143,10 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-cream flex flex-col items-center justify-center px-6 py-12">
-      {/* Wordmark — kept clean & classy, no ornamentation. */}
-      <div className="text-center mb-2">
-        <h1 className="font-display font-black text-[52px] leading-none tracking-[-0.01em] text-ink">
-          issei<span className="text-terra">.</span>
+      {/* The wordmark at full size — on this screen the mark IS the content. */}
+      <div className="text-center mb-4">
+        <h1>
+          <Wordmark size="lg" />
         </h1>
       </div>
       {/* One line, and only one. The explaining moved to /welcome after signup:

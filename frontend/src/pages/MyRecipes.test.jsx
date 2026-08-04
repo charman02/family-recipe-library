@@ -4,12 +4,16 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('../api/client', () => ({ default: { get: vi.fn() } }))
+vi.mock('../api/sharing', () => ({ getSharedWithMe: vi.fn() }))
 import client from '../api/client'
+import { getSharedWithMe } from '../api/sharing'
 import MyRecipes from './MyRecipes'
 
 beforeEach(() => {
   client.get.mockReset()
   client.get.mockResolvedValue({ data: [] }) // default: empty kitchen
+  getSharedWithMe.mockReset()
+  getSharedWithMe.mockResolvedValue({ data: [] })
 })
 
 describe('MyRecipes', () => {
@@ -78,5 +82,81 @@ describe('MyRecipes', () => {
     await screen.findByText('Adobo')
     await userEvent.type(screen.getByPlaceholderText('Search recipes'), 'zzz')
     expect(screen.getByText(/No recipes match/i)).toBeInTheDocument()
+  })
+})
+
+// ?person=X — where Home's "whose recipes live here" row lands. Without a filter
+// here, tapping a face would open an unfiltered kitchen, which reads as a dead link.
+describe('MyRecipes — filtered to one person', () => {
+  const LOLA = {
+    id: 1,
+    name: 'Adobo',
+    origin_attribution: 'Lola Remedios · Cebu',
+  }
+  const OTHER = { id: 2, name: 'Congee', origin_attribution: 'Tita Baby' }
+  const HANDED = { id: 3, name: 'Pork belly', origin_attribution: 'Lola Remedios' }
+
+  function renderAt(entry) {
+    return render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/my-recipes" element={<MyRecipes />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('shows only that person’s dishes and says so', async () => {
+    client.get.mockResolvedValue({ data: [LOLA, OTHER] })
+    renderAt('/my-recipes?person=Lola%20Remedios')
+    expect(await screen.findByText('Adobo')).toBeInTheDocument()
+    expect(screen.queryByText('Congee')).toBeNull()
+    expect(screen.getByText(/Everything from Lola Remedios/)).toBeInTheDocument()
+  })
+
+  it('includes a dish that person HANDED to you, not just ones you wrote down', async () => {
+    // The person who sent you a recipe is the most important name in the app;
+    // a filter that ignored handoffs would hide exactly the dish they sent.
+    client.get.mockResolvedValue({ data: [LOLA] })
+    getSharedWithMe.mockResolvedValue({ data: [HANDED] })
+    renderAt('/my-recipes?person=Lola%20Remedios')
+    expect(await screen.findByText('Pork belly')).toBeInTheDocument()
+    expect(await screen.findByText('Adobo')).toBeInTheDocument()
+  })
+
+  it('does not fetch handoffs for the unfiltered kitchen', async () => {
+    // "Your kitchen" unfiltered means what you kept — /shared has its own page.
+    client.get.mockResolvedValue({ data: [LOLA] })
+    renderAt('/my-recipes')
+    expect(await screen.findByText('Adobo')).toBeInTheDocument()
+    expect(getSharedWithMe).not.toHaveBeenCalled()
+  })
+
+  it('lets you clear the filter without leaving the page', async () => {
+    client.get.mockResolvedValue({ data: [LOLA, OTHER] })
+    renderAt('/my-recipes?person=Lola%20Remedios')
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Lola Remedios ×/ }),
+    )
+    expect(await screen.findByText('Congee')).toBeInTheDocument()
+    expect(screen.getByText(/Everything you’ve kept/)).toBeInTheDocument()
+  })
+
+  it('search narrows WITHIN the person, it does not replace the filter', async () => {
+    client.get.mockResolvedValue({
+      data: [LOLA, { id: 9, name: 'Adobo', origin_attribution: 'Tita Baby' }],
+    })
+    renderAt('/my-recipes?person=Lola%20Remedios')
+    await screen.findByText('Adobo')
+    await userEvent.type(screen.getByPlaceholderText(/search recipes/i), 'Adobo')
+    // Both are named Adobo; only Lola's may survive.
+    expect(screen.getAllByText('Adobo')).toHaveLength(1)
+  })
+
+  it('says the filter is empty rather than claiming the kitchen is', async () => {
+    client.get.mockResolvedValue({ data: [OTHER] })
+    renderAt('/my-recipes?person=Ghost')
+    expect(await screen.findByText(/Nothing from Ghost here/)).toBeInTheDocument()
+    expect(screen.queryByText(/kitchen's empty/i)).toBeNull()
   })
 })
