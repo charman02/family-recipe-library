@@ -168,7 +168,7 @@ export default function RecipePage() {
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex-1 rounded-full bg-coral border-2 border-ink text-cream font-display font-bold text-[14px] py-2.5 shadow-[0_3px_0_#2E3A24] active:translate-y-[2px] active:shadow-[0_1px_0_#2E3A24] transition-transform disabled:opacity-50"
+                className="flex-1 rounded-full bg-brick border-2 border-ink text-cream font-display font-bold text-[14px] py-2.5 shadow-[0_3px_0_#2E3A24] active:translate-y-[2px] active:shadow-[0_1px_0_#2E3A24] transition-transform disabled:opacity-50"
               >
                 {deleting ? 'Deleting…' : 'Delete'}
               </button>

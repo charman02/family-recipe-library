@@ -41,13 +41,63 @@ describe('tailwind color roles', () => {
     expect(c.action).toBe('#B5502A')
     expect(c.action).toBe(c.terra)
   })
-  it('growth maps to the lead green', () => {
-    expect(c.growth).toBe('#5C7A3F')
-    expect(c.growth).toBe(c.herb)
+  it('has no dead colours left from the garden UI', () => {
+    // paper/herb/growth/growth-bright/soil were the plant UI's palette and had
+    // ZERO uses after the kitchen redesign. A colour nobody uses is an invitation
+    // to reach for an abandoned design, so they're deleted rather than deprecated.
+    for (const dead of ['paper', 'herb', 'growth', 'growth-bright', 'soil']) {
+      expect(c[dead], `${dead} should be deleted, not kept`).toBeUndefined()
+    }
   })
-  it('uses the garden palette', () => {
-    expect(c.paper).toBe('#F3EAD6')
-    expect(c.terra).toBe('#B5502A')
-    expect(c.herb).toBe('#5C7A3F')
+
+  it('is ONE warm family — no cool hues', () => {
+    // periwinkle (#6E7BF2, hue 234) was the only cool colour in the app and it
+    // fought everything around it. Every accent now sits in the warm band, which
+    // is both what makes the app read as one object and the right register for
+    // food — blue is the classic appetite suppressant.
+    expect(c.periwinkle).toBeUndefined()
+    const hue = (hex) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      const max = Math.max(r, g, b)
+      const min = Math.min(r, g, b)
+      if (max === min) return 0
+      const d = max - min
+      let h
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+      else if (max === g) h = ((b - r) / d + 2) / 6
+      else h = ((r - g) / d + 4) / 6
+      return Math.round(h * 360)
+    }
+    // 170-290 is the cool band. `ink` is a green (hue ~93) on purpose.
+    for (const name of ['terra', 'plum', 'saffron', 'peach', 'sage', 'brick', 'cream']) {
+      const h = hue(c[name])
+      expect(h > 170 && h < 290, `${name} (hue ${h}) is a cool hue`).toBe(false)
+    }
+  })
+
+  it('every real text/fill pairing clears WCAG AA', () => {
+    // Two pairings used to fail outright: cream on coral was 2.58 and mint was
+    // 1.39 against cream. Contrast is easy to break by eye and invisible until
+    // someone can't read a button, so it's asserted.
+    const lum = (hex) => {
+      const [r, g, b] = [1, 3, 5]
+        .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    const ratio = (a, b) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+      return (hi + 0.05) / (lo + 0.05)
+    }
+    // ink reads on the light fills; cream reads on the dark ones. NOTE these are
+    // full-strength pairings — a Tailwind opacity suffix (text-ink/70) composites
+    // toward the fill and can drop a passing pair under AA. ink/70 on saffron is
+    // 2.97, which shipped briefly on the Home stat pills.
+    for (const fill of ['cream', 'card', 'peach', 'sage', 'saffron']) {
+      expect(ratio(c.ink, c[fill]), `ink on ${fill}`).toBeGreaterThanOrEqual(4.5)
+    }
+    for (const fill of ['terra', 'plum', 'brick']) {
+      expect(ratio(c.cream, c[fill]), `cream on ${fill}`).toBeGreaterThanOrEqual(4.5)
+    }
   })
 })

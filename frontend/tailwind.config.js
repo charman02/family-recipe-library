@@ -4,27 +4,42 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Garden palette (R1) — green is the ambient lead; terra is the action accent.
-        paper: '#F3EAD6',        // warm cream app background
-        card: '#FCF8EE',         // surface
-        ink: '#2E3A24',          // deep leaf — primary text
-        'ink-soft': '#4A5540',   // green-gray — secondary text
+        // ONE WARM FAMILY. Every colour here sits between hue 337 and 43 — that
+        // shared warmth is what makes the app read as one object instead of a
+        // sticker sheet, and it's the right register for food and for something
+        // inherited. Cool hues are near-absent from food branding for a reason;
+        // blue is the classic appetite suppressant.
+        //
+        // Deleted, not deprecated: `paper`, `herb`, `growth`, `growth-bright`,
+        // `soil` were the garden UI's palette and had ZERO uses after the kitchen
+        // redesign — a dead colour is an invitation to reach for an abandoned
+        // design. `periwinkle` (#6E7BF2, hue 234) went with them: it was the only
+        // cool colour in the app, used four times, and it fought everything.
+        cream: '#FBF3E2',        // app background — warm near-white
+        card: '#FCF8EE',         // raised surface
         line: '#E3D9C4',         // hairline
-        terra: '#B5502A',        // warm action accent
-        saffron: '#D99A2B',      // vitality sparks
-        herb: '#5C7A3F',         // (kept as alias of the lead green)
-        plum: '#8A3D5A',         // the person / heritage accent
-        soil: '#C9A277',         // garden ground
-        // Semantic roles: green = grow/ambient, terra = do/act
-        action: '#B5502A',       // = terra — buttons, links, active states
-        growth: '#5C7A3F',       // lead green — plants, growth, garden ambient, eyebrows
-        'growth-bright': '#7FA05A', // leaf highlights, plant accents
-        // "Kamala's Recipes"-inspired accents for the redesigned Home color-blocking.
-        cream: '#FBF3E2',        // pale header cream (near-white warm)
-        peach: '#FBE0A8',        // hero band peach/butter
-        coral: '#F96D5B',        // red-coral accent bar / tags
-        periwinkle: '#6E7BF2',   // playful blue seal
-        mint: '#8FE39E',         // donate-pill green
+        ink: '#2E3A24',          // primary text + every outline. NOT black: hue 93,
+                                 // a deep desaturated green, which is why even the
+                                 // type reads warm.
+        'ink-soft': '#4A5540',   // secondary text
+
+        // Accents, each with ONE job. Restraint is the point — five loud accents
+        // reads as a promotion; this app is carrying someone's inheritance.
+        terra: '#B5502A',        // ACTION: buttons, links, active nav. 4.59 on cream.
+        plum: '#8A3D5A',         // A PERSON'S NAME, and nothing else.
+        saffron: '#D99A2B',      // the person's-knowledge accents (story, step note)
+        peach: '#FBE0A8',        // hero / story colour blocks
+        sage: '#A8C69A',         // affirmative states (saved, sent, done). Replaces
+                                 // mint #8FE39E, a candy green at sat 60 sitting
+                                 // next to an ink at sat 23.
+        brick: '#C0442F',        // emphasis bar / destructive. Replaces coral
+                                 // #F96D5B, which failed contrast for cream text
+                                 // (2.58) and was only 9° of hue from terra, so the
+                                 // two competed for the same job.
+
+        // Semantic alias kept because `action` reads better than `terra` at call
+        // sites that mean "the interactive one".
+        action: '#B5502A',
       },
       fontFamily: {
         serif: ['Cormorant Garamond', 'Georgia', 'serif'],

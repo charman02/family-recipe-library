@@ -46,7 +46,9 @@ const withAny = (label, values) => [
 ]
 
 // Marker-swipe colors cycled across the browse section headers for visual rhythm.
-const SECTION_COLORS = ['bg-saffron', 'bg-mint', 'bg-coral', 'bg-periwinkle']
+// Rotated across section headers. Four warm swatches — periwinkle used to be the
+// fourth and was the only cool colour in the app; peach carries the slot instead.
+const SECTION_COLORS = ['bg-saffron', 'bg-sage', 'bg-brick', 'bg-peach']
 
 // Curated section rows for the default (non-search) browse view.
 function buildSections(recipes) {
@@ -129,7 +131,7 @@ export default function Browse() {
     <div className="min-h-screen bg-cream pt-6">
       <div className="px-4">
         <MarkerTitle
-          color="bg-coral"
+          color="bg-brick"
           className="font-display font-black text-[32px] text-ink leading-none"
         >
           Browse<span className="text-terra">.</span>
@@ -194,7 +196,7 @@ export default function Browse() {
           <div className="px-4 mt-8">
             <EmptyState
               icon="🔍"
-              badge="bg-coral"
+              badge="bg-brick"
               title="No recipes match"
               sub="Try clearing a filter or two."
             />

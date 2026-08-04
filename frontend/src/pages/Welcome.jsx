@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import RecipeGlimpse from '../components/RecipeGlimpse'
 import IsseiMeaning from '../components/IsseiMeaning'
+import Wordmark from '../components/Wordmark'
 import { loadPrefs, setPref } from '../lib/prefs'
 
 // The post-signup welcome (/welcome) — two panels, once, then never again.
@@ -71,7 +72,7 @@ function StepBadge({ children }) {
 function HowToStep({ n, title, children }) {
   return (
     <li className="flex gap-3.5">
-      <span className="flex-none flex items-center justify-center w-8 h-8 rounded-full bg-mint border-2 border-ink shadow-[0_2px_0_#2E3A24] font-display font-black text-[15px] text-ink">
+      <span className="flex-none flex items-center justify-center w-8 h-8 rounded-full bg-sage border-2 border-ink shadow-[0_2px_0_#2E3A24] font-display font-black text-[15px] text-ink">
         {n}
       </span>
       <span className="min-w-0 pt-0.5">
@@ -117,9 +118,7 @@ export default function Welcome() {
           from a screen with it. */}
         <div className="flex items-baseline justify-between">
           {panel === 0 ? (
-            <span className="font-display font-black text-[26px] leading-none tracking-[-0.01em] text-ink">
-              issei<span className="text-terra">.</span>
-            </span>
+            <Wordmark size="sm" />
           ) : (
             <button
               onClick={() => setPanel(0)}

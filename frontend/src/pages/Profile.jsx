@@ -38,7 +38,7 @@ function Toggle({ on, onChange, label, hint }) {
       </span>
       <span
         className={`relative flex-none w-12 h-7 rounded-full border-2 border-ink transition-colors ${
-          on ? 'bg-mint' : 'bg-cream'
+          on ? 'bg-sage' : 'bg-cream'
         }`}
       >
         <span
@@ -99,7 +99,7 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-cream px-5 pt-6">
       <MarkerTitle
-        color="bg-periwinkle"
+        color="bg-peach"
         className="font-display font-black text-[32px] text-ink leading-none"
       >
         You<span className="text-terra">.</span>
@@ -107,7 +107,7 @@ export default function Profile() {
 
       {/* ACCOUNT — identity card. */}
       <div className="sticker bg-card p-5 mt-6">
-        <div className="w-16 h-16 rounded-full bg-periwinkle text-cream font-display font-black text-3xl flex items-center justify-center border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] mb-4">
+        <div className="w-16 h-16 rounded-full bg-plum text-cream font-display font-black text-3xl flex items-center justify-center border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] mb-4">
           {monogram}
         </div>
         {fullName && (

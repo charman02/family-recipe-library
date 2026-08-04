@@ -70,7 +70,7 @@ export default function Feedback() {
         {/* role=status so the confirmation is announced, not just drawn — this
             view replaces the form outright, so a screen reader user would
             otherwise get no signal that anything happened. */}
-        <div role="status" className="sticker bg-mint p-6 mt-6 text-center">
+        <div role="status" className="sticker bg-sage p-6 mt-6 text-center">
           <span className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-cream border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24]">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="w-7 h-7">
               <path

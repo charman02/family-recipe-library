@@ -25,7 +25,7 @@ export default function SharedWithMe() {
         <BackButton to="/my-recipes" label="Back" />
       </div>
       <MarkerTitle
-        color="bg-mint"
+        color="bg-sage"
         className="font-display font-black text-[32px] text-ink leading-none"
       >
         Shared with you<span className="text-terra">.</span>
@@ -36,7 +36,7 @@ export default function SharedWithMe() {
       {recipes.length === 0 ? (
         <EmptyState
           icon="💌"
-          badge="bg-mint"
+          badge="bg-sage"
           title="Nothing shared yet"
           sub="When someone sends you a recipe, it lands here."
           className="mt-6"

@@ -93,7 +93,7 @@ export default function PlantRecipe() {
           onClick={() => chooseDoor('mine')}
           className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-card p-4"
         >
-          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-mint border-2 border-ink shadow-[0_3px_0_#2E3A24] text-[24px] leading-none rotate-[6deg]">
+          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-sage border-2 border-ink shadow-[0_3px_0_#2E3A24] text-[24px] leading-none rotate-[6deg]">
             🧑‍🍳
           </span>
           <span className="min-w-0">
@@ -155,7 +155,7 @@ export default function PlantRecipe() {
     const storyAct = sourceName ? `add ${sourceName}’s story` : 'add a memory'
     return (
       <div className="min-h-screen bg-cream px-[18px] pt-16 text-center flex flex-col items-center">
-        <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-mint text-ink border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24]">
+        <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-sage text-ink border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24]">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="w-8 h-8">
             <path
               d="M5 12.5l4.5 4.5L19 7.5"

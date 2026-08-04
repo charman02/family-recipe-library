@@ -104,7 +104,7 @@ export default function HandoffInvite({
   if (handoff) {
     return (
       <div className="px-[18px] py-6 text-center">
-        <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-mint border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24]">
+        <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-sage border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24]">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="w-8 h-8">
             <path
               d="M5 12.5l4.5 4.5L19 7.5"
@@ -188,7 +188,7 @@ export default function HandoffInvite({
           alone, so the recipe stays out of Browse. Shown for private recipes
           only — for a public one it would be false. */}
       {recipeVisibility !== 'public' && (
-        <p className="font-display text-[12.5px] text-ink leading-snug bg-mint/40 border-2 border-ink rounded-[12px] px-3 py-2 mb-4 text-left">
+        <p className="font-display text-[12.5px] text-ink leading-snug bg-sage/40 border-2 border-ink rounded-[12px] px-3 py-2 mb-4 text-left">
           This doesn’t put your recipe in Browse — nobody can come across it on
           their own. Only someone holding the link can open it.
         </p>

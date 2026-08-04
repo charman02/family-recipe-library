@@ -508,7 +508,7 @@ export default function RecipeForm({
             />
             {/* Corner stamp — same saffron tag RecipeCard pins on a cover, so a
                 chosen photo reads as finished rather than as a raw preview. */}
-            <span className="absolute top-2 left-2 font-display font-bold uppercase tracking-[0.06em] text-[9.5px] text-ink bg-saffron border-2 border-ink px-2 py-0.5 rounded-full">
+            <span className="absolute top-2 left-2 font-display font-bold uppercase tracking-[0.06em] text-[9.5px] text-ink bg-cream/95 border-2 border-ink px-2 py-0.5 rounded-full">
               Cover photo
             </span>
             <button
@@ -526,7 +526,7 @@ export default function RecipeForm({
             className={`relative sticker sticker-press flex flex-col items-center justify-center w-full h-[150px] mb-1.5 cursor-pointer focus-within:ring-4 focus-within:ring-terra/25 ${
               // A failed pick tints the target itself, so the retry is obvious
               // at the thing you tap — not only in the pill below it.
-              photoError ? 'bg-coral/20' : 'bg-peach'
+              photoError ? 'bg-brick/20' : 'bg-peach'
             }`}
           >
             {/* sr-only, NOT `hidden`: display:none drops the input out of the tab
