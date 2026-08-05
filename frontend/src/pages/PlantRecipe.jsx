@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/RecipeForm'
 import PasteRecipe from '../components/PasteRecipe'
+import GuidedRecipe from '../components/GuidedRecipe'
 import HandoffInvite from '../components/HandoffInvite'
 import BackButton from '../components/BackButton'
 import Icon from '../components/Icon'
@@ -23,7 +24,7 @@ import { plantRecipe } from '../api/sharing'
 // unasked would conclude the app is broken. See PasteRecipe + lib/parseRecipeText.
 export default function PlantRecipe() {
   const navigate = useNavigate()
-  const [step, setStep] = useState('doorway') // doorway|paste|form|saved|handoff
+  const [step, setStep] = useState('doorway') // doorway|paste|guided|form|saved|handoff
   // What a paste produced, mapped into RecipeForm's initialValues shape. Held here
   // rather than passed through navigation so a back-and-forth doesn't lose it.
   const [seeded, setSeeded] = useState(null)
@@ -55,7 +56,7 @@ export default function PlantRecipe() {
   // the source text is possible without losing the parse.
   function goBack() {
     if (step === 'form') setStep(seeded ? 'paste' : 'doorway')
-    else if (step === 'paste') setStep('doorway')
+    else if (step === 'paste' || step === 'guided') setStep('doorway')
     else navigate('/')
   }
 
@@ -89,6 +90,30 @@ export default function PlantRecipe() {
     const { data } = await plantRecipe(payload)
     setSaved(data)
     setNameOnly(true)
+    setStep('saved')
+  }
+
+  // The guided flow hands back what it collected. It builds its own origin from the
+  // one name it asks for, rather than the four SourceFields the form shows — asking for
+  // place/year/memory one screen at a time is exactly the friction this door avoids.
+  async function handleGuidedDone(collected) {
+    const payload = {
+      name: collected.name,
+      visibility,
+      ingredients: collected.ingredients,
+      steps: collected.steps,
+    }
+    // The guided flow asks for the name itself, so attribution doesn't depend on which
+    // doorway door was chosen — it can be reached directly from the doorway with no
+    // originMode at all.
+    if (collected.sourceName) {
+      payload.origin = buildOriginPayload({ ...origin, name: collected.sourceName })
+    }
+    const { data } = await plantRecipe(payload)
+    setSaved(data)
+    // "Cook it" is honest here whenever any steps were captured; the guided flow can
+    // legitimately end with none if both content screens were skipped.
+    setNameOnly(collected.steps.length === 0 && collected.ingredients.length === 0)
     setStep('saved')
   }
 
@@ -166,13 +191,13 @@ export default function PlantRecipe() {
         <div className="flex items-center gap-3 my-5">
           <span className="h-[2px] flex-1 bg-line rounded-full" />
           <span className="font-display italic text-[13px] text-ink-soft">
-            or, if it&rsquo;s already written down
+            or, another way in
           </span>
           <span className="h-[2px] flex-1 bg-line rounded-full" />
         </div>
         <button
           onClick={() => setStep('paste')}
-          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-cream p-4"
+          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-cream p-4 mb-3"
         >
           <span className="flex-none flex items-center justify-center w-12 h-12 rounded-[14px] bg-card border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink">
             <Icon name="list" className="w-6 h-6" />
@@ -186,7 +211,34 @@ export default function PlantRecipe() {
             </span>
           </span>
         </button>
+
+        {/* THE THIRD DOOR. Pasting needs the recipe already written down; the form needs
+            you to hold all of it at once. Neither fits the case this app most exists
+            for — someone telling you how they make it — so this one just asks, one
+            thing at a time. See GuidedRecipe. */}
+        <button
+          onClick={() => setStep('guided')}
+          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-cream p-4"
+        >
+          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-[14px] bg-card border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink">
+            <Icon name="mic" className="w-6 h-6" />
+          </span>
+          <span className="min-w-0">
+            <span className="font-display font-black text-[18px] text-ink">
+              Ask me one thing at a time
+            </span>
+            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
+              Good for writing it down as someone tells you.
+            </span>
+          </span>
+        </button>
       </div>
+    )
+  }
+
+  if (step === 'guided') {
+    return (
+      <GuidedRecipe onDone={handleGuidedDone} onBack={goBack} />
     )
   }
 

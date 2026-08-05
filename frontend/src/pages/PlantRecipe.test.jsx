@@ -311,3 +311,38 @@ describe('PlantRecipe — keeping just the name', () => {
     expect(screen.getByText(/cook it/i)).toBeInTheDocument()
   })
 })
+
+// The third door. Verifies the PAGE's wiring; GuidedRecipe.test.jsx covers the flow.
+describe('PlantRecipe — the guided door', () => {
+  it('offers all three ways in', async () => {
+    renderFlow()
+    for (const name of [
+      /passed down to you/i,
+      /one of your own/i,
+      /paste the whole thing/i,
+      /ask me one thing at a time/i,
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+
+  it('is reachable straight from the doorway, without choosing an origin first', async () => {
+    // It asks whose the dish is itself, so it doesn't need a door chosen — and a first
+    // version that depended on originMode silently dropped attribution when entered
+    // this way.
+    renderFlow()
+    await userEvent.click(
+      screen.getByRole('button', { name: /ask me one thing at a time/i }),
+    )
+    expect(screen.getByText(/what did you make/i)).toBeInTheDocument()
+  })
+
+  it('back from the guided flow returns to the doorway, not out of the app', async () => {
+    renderFlow()
+    await userEvent.click(
+      screen.getByRole('button', { name: /ask me one thing at a time/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(screen.getByText(/where does this/i)).toBeInTheDocument()
+  })
+})
