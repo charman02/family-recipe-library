@@ -41,7 +41,16 @@ const PROBLEM_FALLBACK = 'Dictation stopped. You can type this instead.'
 // bottom border matches its gap to the right border. A single-line input is short
 // enough that bottom-2 already reads centered; a rows={2}/{3} textarea makes the
 // same offset look low.
-export default function DictateButton({ value, onChange, what, bottomClass = 'bottom-2' }) {
+export default function DictateButton({
+  value,
+  onChange,
+  what,
+  bottomClass = 'bottom-2',
+  // What joins each utterance to what's already there. A newline where each utterance
+  // is its own ITEM (the paste box); the default space is right for prose, where you're
+  // dictating one continuous sentence into a story or a step.
+  separator = ' ',
+}) {
   const [listening, setListening] = useState(false)
   // The recognizer's current GUESS. Held here and shown beside the field rather
   // than written into it — see the note on commit() below.
@@ -84,7 +93,7 @@ export default function DictateButton({ value, onChange, what, bottomClass = 'bo
     // navigated, or removed the row before the utterance resolved. The field
     // holds committed text only; liveness is carried by the preview line, which
     // is ephemeral by construction because it lives in local state.
-    const next = appendDictated(valueRef.current, text)
+    const next = appendDictated(valueRef.current, text, separator)
     valueRef.current = next
     onChange(next)
   }

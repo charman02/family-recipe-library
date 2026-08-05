@@ -239,4 +239,20 @@ describe('appendDictated', () => {
       'Brown the chicken.',
     )
   })
+
+  it('joins with a newline when each utterance is its own ITEM', () => {
+    // The paste box needs this, and its absence made dictation there actively broken:
+    // three utterances space-joined into one line, which the line-based parser read as
+    // a very long dish name with zero ingredients and zero steps. A space is still the
+    // default, because a story or a step is prose.
+    let v = ''
+    for (const said of ['Adobo', '3 soup spoons soy sauce', 'Brown the chicken']) {
+      v = appendDictated(v, said, '\n')
+    }
+    expect(v).toBe('Adobo\n3 soup spoons soy sauce\nBrown the chicken')
+  })
+
+  it('does not double a separator when the text already ends in whitespace', () => {
+    expect(appendDictated('Adobo\n', '2 cups rice', '\n')).toBe('Adobo\n2 cups rice')
+  })
 })

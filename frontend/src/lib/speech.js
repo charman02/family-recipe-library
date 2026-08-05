@@ -111,10 +111,21 @@ export function startDictation({ lang, onResult, onError, onEnd } = {}) {
 // is the single worst thing this feature could do. Spacing is preserved rather
 // than normalized: if they left a trailing newline, the dictated sentence starts
 // on that new line.
-export function appendDictated(existing, addition) {
+//
+// `separator` is what joins a new utterance to existing text. It defaults to a space,
+// which is right for a story or a step — there you're dictating prose. The paste box
+// passes a NEWLINE, because there each utterance is a separate item, and space-joining
+// made dictation actively broken on that screen: saying "Adobo", then "three soup
+// spoons soy sauce", then "brown the chicken" produced one long line, which the parser
+// read as a very long dish name with zero ingredients and zero steps. Measured on the
+// real functions, not theorised.
+export function appendDictated(existing, addition, separator = ' ') {
   const add = (addition || '').trim()
   if (!add) return existing || ''
   const base = existing || ''
   if (!base) return add
-  return /\s$/.test(base) ? base + add : `${base} ${add}`
+  // Already ends in whitespace: honour what's there rather than adding more. For the
+  // newline separator that means a trailing blank line isn't doubled.
+  if (/\s$/.test(base)) return base + add
+  return base + separator + add
 }
