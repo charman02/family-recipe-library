@@ -114,6 +114,8 @@ export default function RecipeForm({
   beforeSubmitSlot = null,
   intro = null,
   topSlot = null,
+  // Save with the dish name alone. See the button below the name field.
+  onQuickSave = null,
   // 'inherited' — someone taught them this. 'own' — the recipe starts with them.
   storyVariant = 'inherited',
 }) {
@@ -292,6 +294,21 @@ export default function RecipeForm({
   const heading = mode === 'edit' ? 'Edit recipe' : 'Keep a recipe'
   const defaultSubmitLabel =
     mode === 'edit' ? 'Save changes' : 'Keep this recipe'
+  // Has the user put in anything BEYOND the dish name? Drives the "just keep the
+  // name" escape: once there's real content, offering to discard it isn't a shortcut.
+  // Reads the same fields the payload does, so it can't drift out of agreement with
+  // what would actually be saved.
+  const hasMoreThanName =
+    Boolean(
+      description.trim() ||
+        story.trim() ||
+        servings.trim() ||
+        cuisine.trim() ||
+        coverPhotoUrl,
+    ) ||
+    ingredients.some((i) => i.name.trim() || i.quantity.trim()) ||
+    steps.some((s) => s.content.trim() || s.voice_note?.trim() || s.photo_url)
+
   const submitText = submitLabel || defaultSubmitLabel
   const loadingLabel = mode === 'edit' ? 'Saving…' : 'Keeping…'
 
@@ -611,6 +628,32 @@ export default function RecipeForm({
             <p className="font-display italic text-[12px] text-ink-soft mt-1">
               You’ll say whose recipe it is next.
             </p>
+
+            {/* KEEP JUST THE NAME — the escape hatch for the failure testers actually
+                described. One person abandoned this form mid-way, and abandoning meant
+                losing everything typed so far. Only `name` is required (in the form AND
+                in RecipeCreate), so a two-tap save was always possible; the form just
+                never offered it. Home's "Fill these in" already finds and ranks
+                incomplete recipes, so the recipe gets finished later instead of never.
+
+                Only on ADD, and only before anything else is filled in: on the edit
+                page it would read as "discard my changes", and once someone has typed
+                three ingredients, "just the name" is no longer the easy path. */}
+            {mode === 'add' && onQuickSave && name.trim() && !hasMoreThanName && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => onQuickSave(name.trim())}
+                className="mt-3 w-full text-left sticker sticker-press bg-sage px-4 py-3"
+              >
+                <span className="block font-display font-black text-[14.5px] text-ink leading-tight">
+                  Just keep the name for now &rarr;
+                </span>
+                <span className="block font-display italic text-[12.5px] text-ink-soft mt-0.5 leading-snug">
+                  Saves it as {name.trim()}. Add the rest whenever you like.
+                </span>
+              </button>
+            )}
           </div>
           <div className="flex gap-3">
             <label className="block flex-1">
