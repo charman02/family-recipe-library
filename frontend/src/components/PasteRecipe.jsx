@@ -3,39 +3,102 @@ import BackButton from './BackButton'
 import DictateButton from './DictateButton'
 import { parseRecipeText } from '../lib/parseRecipeText'
 import { isDictationSupported } from '../lib/speech'
+import { parseRecipeWithAI } from '../api/sharing'
 
-// Paste (or dictate) a whole recipe at once, instead of filling 19 fields.
+// Say or paste a whole recipe at once, instead of filling 19 fields.
 //
-// This is an OPTIONAL door, never the default. Two reasons it isn't imposed:
-//   1. It only works on structured text. Dictated run-on prose defeats any line-based
-//      parser — "you need tamarind, a thumb of ginger, and some kangkong" is one line
-//      holding three ingredients — and someone who hit that unasked would conclude the
-//      app is broken.
-//   2. A parser that's confidently wrong costs MORE than typing: you proofread AND
-//      re-sort. So this screen hands off to the ordinary form with everything pre-filled
-//      and editable, rather than saving anything on its own.
+// TWO PARSERS, in order. The server asks a language model first (POST /recipes/parse);
+// if that's unavailable it falls back to the local line-based parser. The order matters
+// because they fail on different inputs:
+//   · the local parser needs one item per line, and cannot split run-on speech —
+//     "you need tamarind, about a thumb of ginger, and some kangkong" is one line
+//     holding three ingredients. That is exactly how someone TALKS about cooking.
+//   · the model splits that trivially, and also picks out servings, cuisine, the person
+//     it came from, and a remark attached to a step.
+// So the model is what makes this door work for speech rather than only for tidy text,
+// and the local parser is what keeps the door working when the model is down, out of
+// credit, or unconfigured. Nobody sees an error either way.
 //
-// The mic is here for the same reason it's on the story field — speaking is faster than
-// typing on a phone — with the honest caveat that dictating a LIST (one item per line)
-// parses well while dictating a paragraph does not. The hint says so.
+// Neither one SAVES anything: both hand off to the ordinary form, pre-filled and
+// editable. A parser that's confidently wrong costs more than typing — you proofread
+// and re-sort — so the last word stays with the user.
+// Map the server's parse response onto the shape the local parser already returns, so
+// the screen after this one doesn't care which parser produced its values. Extending the
+// shape rather than replacing it also means the model's extra fields (servings, cuisine,
+// the person it came from, a note per step) simply arrive as `undefined` on the local
+// path instead of needing a second code path in the form.
+function fromAI(data) {
+  return {
+    name: data.name || '',
+    ingredients: (data.ingredients || []).map((i) => ({
+      name: i.name,
+      amount: i.amount || '',
+      quantity_type: i.quantity_type,
+    })),
+    // The local parser returns steps as plain strings; the model gives each one an
+    // optional note. Objects here, normalised by the caller.
+    steps: (data.steps || []).map((s) => ({ content: s.content, note: s.note || '' })),
+    sourceName: data.source_name || '',
+    description: data.description || '',
+    servings: data.servings || '',
+    cuisine: data.cuisine || '',
+    // The model classified nothing by guesswork — the server re-typed every amount with
+    // the app's own classifier — so there is no "we guessed N lines" to confess.
+    usedHeaders: true,
+    guessedLines: 0,
+    viaAI: true,
+  }
+}
+
 export default function PasteRecipe({ onParsed, onBack, initialText = '' }) {
   // Seeded from the parent so going back from the form returns the SAME text. Held
   // locally as well so typing doesn't re-render the whole flow on every keystroke.
   const [text, setText] = useState(initialText)
   const [tooThin, setTooThin] = useState(false)
+  const [working, setWorking] = useState(false)
 
-  const lines = text.split('\n').filter((l) => l.trim()).length
+  // Enough to be worth sending, measured in WORDS rather than lines.
+  //
+  // It required two lines while only the line-based parser existed, which was
+  // reasonable then and became a real bug the moment the model went in front of it: the
+  // gate blocked exactly the input this feature was built for. "sinigang, you need
+  // tamarind, a thumb of ginger, and some kangkong" is ONE line and a whole recipe, and
+  // the Sort button sat disabled on it. Words instead — a lone dish name is still
+  // refused, and anything a person actually said gets through.
+  const words = text.trim().split(/\s+/).filter(Boolean).length
+  const enough = words >= 4
 
-  function handleSort() {
-    const parsed = parseRecipeText(text)
-    // Nothing recognisable: a single line is a dish name, not a recipe. Say so here
-    // rather than dropping someone into an empty form and letting them wonder what
-    // happened to their text.
-    if (!parsed.ingredients.length && !parsed.steps.length) {
-      setTooThin(true)
-      return
+  async function handleSort() {
+    if (working) return
+    setWorking(true)
+    try {
+      // The model first. A network failure is NOT an error the user should see — the
+      // local parser is right there and produces something usable — so this catch is
+      // deliberately silent. `ai: false` from the server means the same thing: the key
+      // is missing, or OpenRouter is down or rate-limited.
+      let parsed = null
+      try {
+        const { data } = await parseRecipeWithAI(text)
+        if (data?.ai && (data.ingredients?.length || data.steps?.length)) {
+          parsed = fromAI(data)
+        }
+      } catch {
+        // fall through to the local parser
+      }
+
+      if (!parsed) parsed = parseRecipeText(text)
+
+      // Nothing recognisable either way: a single line is a dish name, not a recipe.
+      // Say so rather than dropping someone into an empty form and letting them wonder
+      // what happened to their text.
+      if (!parsed.ingredients.length && !parsed.steps.length) {
+        setTooThin(true)
+        return
+      }
+      onParsed(parsed, text)
+    } finally {
+      setWorking(false)
     }
-    onParsed(parsed, text)
   }
 
   return (
@@ -48,23 +111,20 @@ export default function PasteRecipe({ onParsed, onBack, initialText = '' }) {
         Paste it in, or say it
       </h1>
 
-      {/* ONE rule, in one line.
-          A first pass listed three rules, each with an em-dashed explanation — six
-          lines of small type between the heading and the box, which is a lot of
-          reading on the screen whose whole promise is "this is the fast way".
-          What survived is the only rule the parser genuinely depends on: it is
-          line-based, so run-on prose is the one input no heuristic can split
-          ("tamarind, a thumb of ginger, and some kangkong" is three ingredients on
-          one line).
-          The other two were cut because the PLACEHOLDER already teaches them by
-          example — it shows folk amounts ("a good splash of vinegar") and shows
-          ingredients before steps — and a shown format is copied more reliably than
-          a stated one. Their failure modes are also both recoverable: an amount in
-          the wrong shape still lands in the right field, and out-of-order lines are
-          fixed by the touch rule or by one tap on the form that follows. */}
+      {/* The instruction changed when the model went in front of the local parser.
+          It used to say "one thing per line", because that was a hard requirement:
+          the line-based parser cannot split "tamarind, a thumb of ginger, and some
+          kangkong" into three ingredients. The model can, so demanding tidy lines
+          would now be asking for work the app no longer needs — and it was the one
+          thing standing between this door and the way people actually talk.
+          "However you like" is honest in both cases: with the model it's true
+          outright, and without it the local parser still handles the tidy shape the
+          placeholder demonstrates. What isn't said is anything about AI — the
+          promise a user cares about is that they can talk normally, not which
+          machine read it. */}
       <p className="font-display italic text-[14.5px] text-ink-soft mt-2">
-        One thing per line &mdash; an ingredient or a step. Amounts however you say
-        them.
+        However you like &mdash; a tidy list, or just how you&rsquo;d tell someone.
+        Amounts in your own words.
       </p>
 
       <div className="relative mt-4">
@@ -107,12 +167,16 @@ Simmer until the sauce coats a spoon`}
         />
       </div>
 
-      {/* Only shown where a mic exists. Firefox has no Web Speech implementation and
-          DictateButton renders nothing there, so this advice was addressing a control
-          that wasn't on the page. Gated on the same check rather than a guess. */}
+      {/* Only shown where a mic exists — Firefox has no Web Speech implementation and
+          DictateButton renders nothing there, so this was previously advice about a
+          control that wasn't on the page.
+          It used to say "pause between each one", because each pause starts a new line
+          and the local parser needed one item per line. That requirement is gone now
+          that the model reads it, so the hint says the useful thing instead: keep
+          talking. */}
       {isDictationSupported() && (
         <p className="font-display italic text-[12.5px] text-ink-soft mt-2">
-          Using the mic? Pause between each one &mdash; every pause starts a new line.
+          Tap the mic and just talk &mdash; you don&rsquo;t have to be tidy about it.
         </p>
       )}
 
@@ -128,10 +192,10 @@ Simmer until the sauce coats a spoon`}
           competing with two other captions. */}
       <button
         onClick={handleSort}
-        disabled={lines < 2}
+        disabled={!enough || working}
         className="btn-primary mt-4 flex flex-col items-center py-2.5"
       >
-        <span>Sort this out &rarr;</span>
+        <span>{working ? 'Sorting it out…' : 'Sort this out →'}</span>
         <span className="font-display italic font-normal text-[12px] text-cream/85 mt-0.5">
           Nothing is saved until you say so
         </span>

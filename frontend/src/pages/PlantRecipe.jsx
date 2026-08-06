@@ -60,21 +60,42 @@ export default function PlantRecipe() {
     else navigate('/')
   }
 
-  // A parse lands on the ordinary form, pre-filled. Nothing is saved here — the
+  // A parse lands on the ordinary form, pre-filled. Nothing is saved here — either
   // parser is allowed to be wrong, and the form is where that gets corrected.
+  //
+  // Handles both parsers' output. The local one returns steps as plain strings; the
+  // model returns objects carrying a note ("don't crowd the pan"), which becomes the
+  // step's voice_note — the field that exists precisely for the remark an ingredient
+  // list can't hold. Normalised here rather than in two places downstream.
   function handleParsed(parsed, sourceText) {
     setPastedText(sourceText)
     setSeeded({
       name: parsed.name,
+      description: parsed.description || undefined,
+      cuisine: parsed.cuisine || undefined,
+      servings: parsed.servings || undefined,
       ingredients: parsed.ingredients.length
         ? parsed.ingredients.map((i) => ({ name: i.name, quantity: i.amount }))
         : undefined,
       steps: parsed.steps.length
-        ? parsed.steps.map((content) => ({ content, voice_note: '', photo_url: '' }))
+        ? parsed.steps.map((s) =>
+            typeof s === 'string'
+              ? { content: s, voice_note: '', photo_url: '' }
+              : { content: s.content, voice_note: s.note || '', photo_url: '' },
+          )
         : undefined,
+      // The model also picks out who the recipe came from. Threaded into the same
+      // `origin` state the inherited door fills, so attribution reaches the payload by
+      // the existing path rather than a second one.
+      sourceName: parsed.sourceName || '',
       guessedLines: parsed.guessedLines,
       usedHeaders: parsed.usedHeaders,
+      viaAI: Boolean(parsed.viaAI),
     })
+    if (parsed.sourceName) {
+      setOriginMode('ancestor')
+      setOrigin((prev) => ({ ...prev, name: parsed.sourceName }))
+    }
     setStep('form')
   }
 
@@ -297,11 +318,13 @@ export default function PlantRecipe() {
                  headers guessed nothing, so it says that instead. */
               <div className="sticker bg-peach px-4 py-3 -mt-1 mb-4">
                 <p className="font-display font-bold text-[14px] text-ink leading-snug">
-                  {seeded.usedHeaders
-                    ? 'Sorted using your own headings.'
-                    : `Sorted ${seeded.guessedLines} ${
-                        seeded.guessedLines === 1 ? 'line' : 'lines'
-                      } as best we could.`}
+                  {seeded.viaAI
+                    ? 'Sorted out what you said.'
+                    : seeded.usedHeaders
+                      ? 'Sorted using your own headings.'
+                      : `Sorted ${seeded.guessedLines} ${
+                          seeded.guessedLines === 1 ? 'line' : 'lines'
+                        } as best we could.`}
                 </p>
                 <p className="font-display italic text-[13px] text-ink-soft mt-1 leading-snug">
                   Fix anything that landed in the wrong place — nothing is saved yet.

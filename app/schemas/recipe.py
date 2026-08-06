@@ -1,6 +1,6 @@
 from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OriginIn(BaseModel):
@@ -64,6 +64,48 @@ class IngredientResponse(BaseModel):
     scale_note: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ParseTextIn(BaseModel):
+    # Bounded so a paste can't become an unbounded prompt: 8000 characters is far more
+    # than any real recipe and keeps a single request's token cost predictable.
+    text: str = Field(min_length=1, max_length=8000)
+
+
+class ParsedIngredient(BaseModel):
+    name: str
+    # The amount EXACTLY as the person said it. The typed fields beside it are the
+    # app's own classification of that string — the model never gets to decide them.
+    amount: str = ""
+    quantity_text: Optional[str] = None
+    quantity_value: Optional[float] = None
+    unit: Optional[str] = None
+    quantity_type: str = "unmeasured"
+
+
+class ParsedStep(BaseModel):
+    content: str
+    note: str = ""
+
+
+class ParsedRecipe(BaseModel):
+    """A structured recipe that has NOT been saved.
+
+    The response of POST /recipes/parse. Deliberately not a Recipe: nothing exists in
+    the database yet, and the client is expected to show this for correction first.
+    """
+
+    name: str = ""
+    source_name: str = ""
+    description: str = ""
+    servings: str = ""
+    cuisine: str = ""
+    ingredients: list[ParsedIngredient] = []
+    steps: list[ParsedStep] = []
+    # False when the model was unavailable, so the client knows to fall back to its own
+    # local parser rather than trusting an empty result. Reported as a field rather than
+    # an error status because "the model is off" is a normal state, not a failure.
+    ai: bool = True
 
 
 class IngredientSuggestions(BaseModel):

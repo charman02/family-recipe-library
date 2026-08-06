@@ -14,6 +14,17 @@ class Settings(BaseSettings):
     # (e.g. the Vercel URL) so adding a frontend host needs no code change.
     # Local dev and the existing Render backend are always allowed.
     cors_origins: str = ""
+    # OpenRouter, for structuring a spoken/pasted recipe into fields. Optional by
+    # design: with no key the parse endpoint reports that the model is unavailable and
+    # the client falls back to its local parser, so /add keeps working exactly as it did
+    # before this existed. Server-side only — a key in the frontend bundle would be
+    # readable by anyone who opens /assets/index-*.js and could be used to spend credits.
+    openrouter_api_key: str = ""
+    # Cheap and fast beats clever here: this is bounded extraction against a fixed
+    # schema, not reasoning. Overridable per-deploy without a code change.
+    openrouter_model: str = ""
+    # Sent as HTTP-Referer for attribution on OpenRouter's dashboard. Cosmetic.
+    openrouter_referer: str = ""
 
     model_config = ConfigDict(env_file=".env", extra="ignore")
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -14,6 +14,9 @@ vi.mock('../api/sharing', () => ({
       },
     }),
   ),
+  // Unavailable by default, so every existing paste test exercises the LOCAL parser
+  // fallback — which is the path that has to keep working when the model is down.
+  parseRecipeWithAI: vi.fn(() => Promise.resolve({ data: { ai: false } })),
 }))
 // RecipeForm is heavy; stub it to immediately submit a minimal payload. The stub
 // renders the slots (topSlot carries the source fields, beforeSubmitSlot the
@@ -54,11 +57,13 @@ vi.mock('../components/RecipeForm', () => ({
     )
   },
 }))
-import { plantRecipe } from '../api/sharing'
+import { plantRecipe, parseRecipeWithAI } from '../api/sharing'
 import PlantRecipe from './PlantRecipe'
 
 beforeEach(() => {
   plantRecipe.mockClear()
+  parseRecipeWithAI.mockClear()
+  parseRecipeWithAI.mockResolvedValue({ data: { ai: false } })
   lastProps = null
 })
 
@@ -344,5 +349,140 @@ describe('PlantRecipe — the guided door', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     expect(screen.getByText(/where does this/i)).toBeInTheDocument()
+  })
+})
+
+// THE LLM LAYER. The local parser cannot split run-on speech — one spoken sentence
+// holding three ingredients — and that is exactly how a person tells you how they cook.
+// The model goes first for that reason; the local parser stays as the floor.
+describe('PlantRecipe — the model reads it first', () => {
+  // A correctly-shaped paste, for the fallback cases: the local parser needs one item
+  // per line, which is the requirement the model removes.
+  const TIDY = ['Adobo', '2 cups rice', 'Boil it'].join('\n')
+
+  const SPOKEN =
+    'sinigang from my lola. you need tamarind, about a thumb of ginger, and some kangkong. boil the pork until tender, then add the tamarind.'
+
+  const AI_ANSWER = {
+    ai: true,
+    name: 'Sinigang',
+    source_name: 'Lola',
+    description: 'Sour pork soup.',
+    servings: '4',
+    cuisine: 'Filipino',
+    ingredients: [
+      { name: 'tamarind', amount: '', quantity_type: 'unmeasured' },
+      { name: 'ginger', amount: 'about a thumb', quantity_type: 'unmeasured' },
+      { name: 'kangkong', amount: 'some', quantity_type: 'unmeasured' },
+    ],
+    steps: [
+      { content: 'Boil the pork until tender', note: '' },
+      { content: 'Add the tamarind', note: "don't overcook the greens" },
+    ],
+  }
+
+  async function speak(text = SPOKEN) {
+    renderFlow()
+    await userEvent.click(
+      screen.getByRole('button', { name: /paste the whole thing/i }),
+    )
+    await userEvent.type(screen.getByRole('textbox'), text)
+    await userEvent.click(screen.getByRole('button', { name: /sort this out/i }))
+  }
+
+  it('splits run-on speech the local parser cannot', async () => {
+    parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
+    await speak()
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    expect(lastProps.initialValues.ingredients.map((i) => i.name)).toEqual([
+      'tamarind',
+      'ginger',
+      'kangkong',
+    ])
+  })
+
+  it('keeps an amount in the words it was said in', async () => {
+    // The one thing that would make this feature worse than nothing: "about a thumb"
+    // coming back as "15 g". The server re-types every amount with the app's own
+    // classifier, and the words pass through untouched.
+    parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
+    await speak()
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    const ginger = lastProps.initialValues.ingredients.find((i) => i.name === 'ginger')
+    expect(ginger.quantity).toBe('about a thumb')
+  })
+
+  it('puts a remark about a step into that step’s note', async () => {
+    // voice_note exists precisely for the thing an ingredient list can't hold. Folding
+    // it into the step text would lose the distinction the app is built on.
+    parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
+    await speak()
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    expect(lastProps.initialValues.steps[1]).toMatchObject({
+      content: 'Add the tamarind',
+      voice_note: "don't overcook the greens",
+    })
+  })
+
+  it('fills the extras it heard, and the person it came from', async () => {
+    parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
+    await speak()
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    expect(lastProps.initialValues).toMatchObject({
+      name: 'Sinigang',
+      servings: '4',
+      cuisine: 'Filipino',
+      description: 'Sour pork soup.',
+    })
+    // Attribution reaches the SourceFields the inherited door uses, not a second path.
+    expect(screen.getByDisplayValue('Lola')).toBeInTheDocument()
+  })
+
+  it('does not claim to have guessed when the model did the work', async () => {
+    parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
+    await speak()
+    expect(await screen.findByText(/sorted out what you said/i)).toBeInTheDocument()
+    expect(screen.queryByText(/as best we could/i)).toBeNull()
+  })
+
+  it('falls back to the local parser when the model is unavailable', async () => {
+    // ai:false covers a missing key, a rate limit, a timeout and malformed JSON. The
+    // door has to keep working — this is the difference between a feature and a
+    // dependency.
+    parseRecipeWithAI.mockResolvedValue({ data: { ai: false } })
+    await speak(TIDY)
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    expect(lastProps.initialValues.name).toBe('Adobo')
+    expect(screen.getByText(/as best we could/i)).toBeInTheDocument()
+  })
+
+  it('falls back silently when the request itself throws', async () => {
+    // Offline, 500, DNS failure. The user must not see a stack of red — the local
+    // parser produces something usable and the flow continues.
+    parseRecipeWithAI.mockRejectedValue(new Error('offline'))
+    await speak(TIDY)
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    expect(lastProps.initialValues.name).toBe('Adobo')
+    // No error surface at all: checked by the app's own error styling rather than by
+    // matching words, since "wrong" appears in the form's ordinary copy.
+    expect(document.querySelector('.error-pill')).toBeNull()
+  })
+
+  it('falls back when the model returns nothing usable', async () => {
+    // ai:true but empty is a model that answered without finding a recipe. Trusting it
+    // would drop someone into a blank form having lost their text.
+    parseRecipeWithAI.mockResolvedValue({
+      data: { ai: true, name: '', ingredients: [], steps: [] },
+    })
+    await speak(TIDY)
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    expect(lastProps.initialValues.ingredients).toHaveLength(1)
+  })
+
+  it('still saves nothing until the form is submitted', async () => {
+    parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
+    await speak()
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    expect(plantRecipe).not.toHaveBeenCalled()
   })
 })

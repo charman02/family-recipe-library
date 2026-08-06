@@ -19,6 +19,8 @@ from app.schemas.recipe import (
     IngredientResponse,
     IngredientSectionResponse,
     IngredientSuggestions,
+    ParseTextIn,
+    ParsedRecipe,
     StepResponse,
     CookIn,
     HandoffIn,
@@ -28,6 +30,7 @@ from app.schemas.recipe import (
 from app.services.scaling import scale_ingredient
 from app.services.sharing import effective_visibility, can_view
 from app.services.growth import soul_count, growth_stage, growth_vitality
+from app.services.recipe_ai import RecipeAIUnavailable, extract_recipe
 
 from datetime import datetime, timezone
 
@@ -309,6 +312,32 @@ def shared_with_me(
     for r in recipes:
         _attach_growth_fields(r, db)
     return recipes
+
+
+@router.post("/parse", response_model=ParsedRecipe)
+async def parse_recipe_text(
+    payload: ParseTextIn,
+    current_user: User = Depends(get_current_user),
+):
+    """Structure whatever someone said about a recipe into the app's fields.
+
+    Nothing is saved. The client shows the result for correction before anything is
+    written, because the model is allowed to be wrong — see PasteRecipe.jsx.
+
+    Auth-gated even though it touches no rows: it spends money per call, so it must not
+    be reachable by anyone who happens to find the URL.
+
+    NEVER 500s on the model's account. A missing key, a timeout, a rate limit or
+    malformed JSON all return ai=False with empty fields, and the client falls back to
+    its own line-based parser. That keeps /add working exactly as it did before this
+    endpoint existed, which is the difference between adding a feature and adding a
+    dependency.
+    """
+    try:
+        data = await extract_recipe(payload.text)
+    except RecipeAIUnavailable:
+        return ParsedRecipe(ai=False)
+    return ParsedRecipe(**data, ai=True)
 
 
 @router.get("/ingredient-suggestions", response_model=IngredientSuggestions)
