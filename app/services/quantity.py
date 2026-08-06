@@ -56,6 +56,50 @@ _UNICODE_FRACTIONS = {
 }
 
 
+# A leading count spelled as a word. "three soup spoons" is the same amount as "3 soup
+# spoons" and must scale the same way — before this, the digit form typed `imprecise`
+# (scalable) and the spoken form typed `unmeasured` (never scalable), so whether your
+# recipe could be doubled depended on whether you wrote a numeral. Nobody types these,
+# but the LLM path returns whatever was SAID, and people say "three".
+#
+# Stops at ten: past that, spoken counts in recipes are rare and multi-word ("twenty
+# five"), and a half-parsed compound would be worse than leaving it alone.
+_WORD_NUMBERS = {
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+    "half": "1/2",
+    "a couple": "2",
+    "a dozen": "12",
+}
+# Longest first so "a couple" wins over "a", and word-bounded so "oneida" can't match.
+_WORD_NUMBER_RE = re.compile(
+    r"^\s*(" + "|".join(sorted(map(re.escape, _WORD_NUMBERS), key=len, reverse=True)) + r")\b",
+    re.I,
+)
+
+
+def _digits_for_words(text: str) -> str:
+    """Rewrite a leading spoken count as a digit, leaving every other word alone.
+
+    Deliberately NOT a conversion: the unit and all wording survive untouched, only the
+    numeral's spelling changes. "about a kilo" is unaffected because there's no count in
+    it — "a" is an article there, not a quantity.
+    """
+
+    def sub(m):
+        return _WORD_NUMBERS[m.group(1).lower()] + " "
+
+    return _WORD_NUMBER_RE.sub(sub, text, count=1)
+
+
 def _leading_number(text: str) -> tuple[float | None, str]:
     m = _MIXED.match(text)
     if m:
@@ -93,6 +137,8 @@ def classify_amount(raw: str | None) -> dict:
 
     hedged = bool(_HEDGE.match(normalized))
     working = _HEDGE.sub("", normalized)
+    # After the hedge, so "about three cups" is both hedged AND counted.
+    working = _digits_for_words(working)
 
     value, rest = _leading_number(working)
     unit = rest.strip() or None

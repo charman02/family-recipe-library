@@ -56,6 +56,14 @@ given. This app exists to keep imprecise measurements intact.
 NEVER convert, normalise, round, or add a unit that was not said. If no amount was
 given for an ingredient, leave amount empty — do not invent one.
 
+ONE EXCEPTION, and only this one: write a spoken count as a DIGIT. "three soup
+spoons" becomes "3 soup spoons". Keep EVERY other word, including any hedge —
+"about three cups" becomes "about 3 cups", never "3 cups", because dropping
+"about" turns a guess into a measurement. "about a kilo" stays exactly as it is:
+there is no count in it, "a" is an article. Only the numeral's spelling changes;
+nothing is added, removed, or converted. It matters because a recipe with a real
+count can be scaled up or down and a count spelled as a word cannot be.
+
 Other rules:
   · Split run-on speech into separate ingredients. "you need tamarind, about a thumb
     of ginger, and some kangkong" is THREE ingredients.
@@ -67,8 +75,12 @@ Other rules:
     rush") goes in that step's note, not in its text.
   · servings only if a number was actually said. cuisine only if named or
     unmistakable from the dish name.
-  · If the speaker says who the recipe came from, put that person's name in
-    source_name. Names only — not "my mom's friend's recipe".
+  · If the speaker says who the recipe came from, put that person in source_name,
+    as the RECIPE'S OWNER would be named on a card. Strip the speaker's possessive:
+    "my mom's sinigang" → "Mom", not "mom" and never "my mom". A relationship word
+    IS a name when it's what they're called — "Mom", "Lola", "Auntie Ling" are all
+    fine; capitalise it. Leave it empty rather than writing a phrase: not "my mom's
+    friend", not "a recipe from work".
 """
 
 # json_schema mode, not "please return JSON" — this is what makes the response shape
@@ -175,6 +187,14 @@ async def extract_recipe(text: str, *, timeout: float = 25.0) -> dict[str, Any]:
         "response_format": RESPONSE_SCHEMA,
         # Deterministic extraction. Creativity here would mean inventing ingredients.
         "temperature": 0,
+        # NO REASONING. Measured, not assumed: with thinking on, DeepSeek V4 Flash took
+        # 72.9s for one recipe; off, the same call took 5.9s for the same output. Hybrid
+        # models think by default, and there is nothing here to think ABOUT — the task is
+        # copying spans out of a sentence into a fixed schema. It also costs money:
+        # reasoning tokens bill as output.
+        #
+        # Ignored by models without a reasoning mode, so this is safe for every model.
+        "reasoning": {"enabled": False},
     }
     headers = {
         "Authorization": f"Bearer {settings.openrouter_api_key}",

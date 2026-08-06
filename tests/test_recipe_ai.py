@@ -59,6 +59,44 @@ class TestClassifyAmount:
     def test_types(self, text, expected):
         assert classify_amount(text)["quantity_type"] == expected
 
+    @pytest.mark.parametrize(
+        "spoken,digits",
+        [
+            ("three soup spoons", "3 soup spoons"),
+            ("about three cups", "about 3 cups"),
+            ("two cups", "2 cups"),
+            ("a couple of pinches", "2 of pinches"),
+        ],
+    )
+    def test_a_spoken_count_scales_like_a_written_one(self, spoken, digits):
+        # Found by a LIVE model call: DeepSeek returned "three soup spoons" because
+        # that is what was said, and it typed `unmeasured` — never scalable — while
+        # "3 soup spoons" typed `imprecise`. Whether a recipe could be doubled
+        # depended on whether the cook happened to say a numeral. Both classifiers
+        # had the bug identically, so it wasn't drift; it was a shared blind spot
+        # that only the LLM path could reach, since nobody TYPES "three".
+        assert (
+            classify_amount(spoken)["quantity_type"]
+            == classify_amount(digits)["quantity_type"]
+        )
+        assert (
+            classify_amount(spoken)["quantity_value"]
+            == classify_amount(digits)["quantity_value"]
+        )
+
+    def test_a_spoken_count_keeps_its_own_spelling(self):
+        # The digit rewrite is for CLASSIFICATION only. What gets stored and shown is
+        # still what the person said — that's the entire product.
+        assert (
+            classify_amount("three soup spoons")["quantity_text"] == "three soup spoons"
+        )
+
+    def test_an_article_is_not_a_count(self):
+        # "about a kilo" has no count in it — "a" is an article. Reading it as 1 would
+        # invent precision the cook never offered.
+        assert classify_amount("about a kilo")["quantity_type"] == "unmeasured"
+        assert classify_amount("a good splash")["quantity_value"] is None
+
     def test_keeps_the_words_exactly(self):
         # The whole product rests on this line.
         assert classify_amount("3 soup spoons")["quantity_text"] == "3 soup spoons"
