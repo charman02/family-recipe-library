@@ -103,6 +103,14 @@ export default function PlantRecipe() {
       ingredients: collected.ingredients,
       steps: collected.steps,
     }
+    // Only send what was actually given. servings must be a number or absent — an
+    // empty string would fail RecipeCreate's Optional[int] validation.
+    if (collected.coverPhotoUrl) payload.cover_photo_url = collected.coverPhotoUrl
+    if (collected.cuisine) payload.cuisine = collected.cuisine
+    if (collected.servings) {
+      const n = parseInt(collected.servings, 10)
+      if (Number.isFinite(n) && n > 0) payload.servings = n
+    }
     // The guided flow asks for the name itself, so attribution doesn't depend on which
     // doorway door was chosen — it can be reached directly from the doorway with no
     // originMode at all.

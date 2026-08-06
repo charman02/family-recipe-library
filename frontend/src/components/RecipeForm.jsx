@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import client, { toUserMessage } from '../api/client'
+import { createUploader, PHOTO_ACCEPT } from '../lib/photoUpload'
 import Icon from './Icon'
 import MarkerTitle from './MarkerTitle'
 import FieldLabel from './FieldLabel'
@@ -52,27 +53,6 @@ const emptyRows = (make, n) => Array.from({ length: n }, make)
 // keyed ticket map — a plain string can't collide with a generated `s<n>` uid.
 const COVER_SLOT = 'cover'
 
-const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const ACCEPTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
-
-function hasAcceptedExtension(filename) {
-  const lower = filename.toLowerCase()
-  return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
-}
-
-// iPhones shoot HEIC/HEIF by default, which the backend rejects. Detect it by
-// extension or MIME (browsers often report an empty type for HEIC).
-function isHeic(file) {
-  const t = (file.type || '').toLowerCase()
-  const n = (file.name || '').toLowerCase()
-  return (
-    t === 'image/heic' ||
-    t === 'image/heif' ||
-    n.endsWith('.heic') ||
-    n.endsWith('.heif')
-  )
-}
 
 // A section heading for the form — a chunky Fraunces title with a highlighter
 // swipe, so the form reads as playful sections rather than a flat field list.
@@ -157,119 +137,10 @@ export default function RecipeForm({
   // during an upload on purpose — on a slow phone connection a disabled input
   // that sits there "Uploading…" for 30s is indistinguishable from a hung app,
   // and the user's instinct (pick again) has to keep working. So instead of
-  // locking the input we make a second pick unambiguously win:
-  //   • uploadSeq — every pick claims a ticket; only the newest ticket may write
-  //     state. Without it whichever response lands LAST wins, which on a flaky
-  //     link is often the FIRST photo, so replacing A with B silently kept A.
-  //   • abortRefs — cancel the superseded request so it stops competing for the
-  //     phone's uplink, making the photo the user actually wants arrive sooner.
-  // The seq guard is what makes correctness not depend on the abort landing in
-  // time: a response already in flight when we abort is still ignored.
-  //
-  // Both are Maps because "supersedes" is a per-slot relation, not a global one.
-  // With N step photos plus the cover, a single counter would make ANY later pick
-  // cancel and discard an earlier one — pick a photo for step 3 and step 1's
-  // upload silently dies. Keying the ticket by slot ('cover', or a step's uid)
-  // means picks for different slots proceed in parallel and only a re-pick of
-  // the SAME slot invalidates the one before it, which is the race that exists.
-  const uploadSeq = useRef(new Map())
-  const abortRefs = useRef(new Map())
+  const uploader = useRef(createUploader())
+  const uploadPhotoFor = (args) => uploader.current.upload(args)
+  const retireSlot = (slot) => uploader.current.retire(slot)
 
-  // Retire a slot's ticket without starting a new upload: an in-flight response
-  // for it must no longer be allowed to write (used when a photo is removed or
-  // its whole step row is deleted).
-  function retireSlot(slot) {
-    uploadSeq.current.set(slot, (uploadSeq.current.get(slot) || 0) + 1)
-    abortRefs.current.get(slot)?.abort()
-  }
-
-  // The shared pick → HEIC-convert → validate → upload pipeline, run for one
-  // slot. Callers supply only where the result goes; every correctness-critical
-  // part (the ticket, the abort, the format/size rules, resetting the input so
-  // re-picking the same file re-fires onChange) lives here once, so the cover
-  // and N step photos cannot drift apart.
-  async function uploadPhotoFor({ slot, event, onBusy, onError, onUrl }) {
-    let file = event.target.files?.[0]
-    if (!file) return
-    const input = event.target
-
-    const seq = (uploadSeq.current.get(slot) || 0) + 1
-    uploadSeq.current.set(slot, seq)
-    // Any pick supersedes the one before it FOR THIS SLOT, so drop that request.
-    abortRefs.current.get(slot)?.abort()
-    const controller =
-      typeof AbortController === 'function' ? new AbortController() : null
-    abortRefs.current.set(slot, controller)
-    // Superseded picks must not touch state (that's the race) — and must not
-    // clear busy/reset the input either, or the newer upload's spinner would
-    // vanish while it's still running.
-    const isCurrent = () => uploadSeq.current.get(slot) === seq
-
-    // A rejected pick only reports itself if it's still the current one.
-    function reject(message) {
-      if (!isCurrent()) return
-      onError(message)
-      onBusy(false)
-      input.value = ''
-    }
-
-    onError('')
-    onBusy(true)
-
-    try {
-      // iPhone HEIC → convert to JPEG in the browser so the upload just works.
-      if (isHeic(file)) {
-        try {
-          const { default: heic2any } = await import('heic2any')
-          const blob = await heic2any({
-            blob: file,
-            toType: 'image/jpeg',
-            quality: 0.9,
-          })
-          const out = Array.isArray(blob) ? blob[0] : blob
-          file = new File([out], file.name.replace(/\.hei[cf]$/i, '.jpg'), {
-            type: 'image/jpeg',
-          })
-        } catch {
-          reject("Couldn't read that iPhone photo. Try again, or pick a JPEG.")
-          return
-        }
-      }
-
-      // Validate (post-conversion) for instant feedback, matching the backend.
-      // Check both MIME type and extension: some browsers report an empty or
-      // unexpected file.type, so the extension is a reliable fallback.
-      const typeOk = ACCEPTED_IMAGE_TYPES.includes(file.type)
-      const extOk = hasAcceptedExtension(file.name)
-      if (!typeOk && !extOk) {
-        reject('Please choose a JPEG, PNG, or WebP image.')
-        return
-      }
-      if (file.size > MAX_UPLOAD_BYTES) {
-        reject('That image is too large (max 10 MB).')
-        return
-      }
-
-      const formData = new FormData()
-      formData.append('file', file)
-      const { data } = await client.post('/upload/recipe-photo', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        signal: controller?.signal,
-      })
-      if (!isCurrent()) return // a newer pick owns this slot now
-      onUrl(data.url)
-    } catch (err) {
-      // Includes the abort of a superseded request, which isn't a user-facing
-      // failure — isCurrent() filters it out along with any other stale error.
-      if (!isCurrent()) return
-      onError(toUserMessage(err, 'Photo upload failed. Please try again.'))
-    } finally {
-      if (isCurrent()) {
-        onBusy(false)
-        input.value = '' // reset so re-selecting the same file fires onChange
-      }
-    }
-  }
 
   // Ingredient autosuggest source. Starts as the shipped common list so the very
   // first keystroke suggests something, then folds in the words this user has
@@ -553,7 +424,7 @@ export default function RecipeForm({
                 stable while the visible copy swaps between states. */}
             <input
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+              accept={PHOTO_ACCEPT}
               onChange={handlePhotoSelect}
               aria-label="Add a cover photo"
               className="sr-only"
@@ -963,7 +834,7 @@ export default function RecipeForm({
                 >
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+                    accept={PHOTO_ACCEPT}
                     onChange={(e) => handleStepPhotoSelect(step.uid, e)}
                     aria-label={`Add a photo of step ${idx + 1}`}
                     className="sr-only"

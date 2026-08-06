@@ -2,6 +2,7 @@ import { useState } from 'react'
 import BackButton from './BackButton'
 import DictateButton from './DictateButton'
 import { parseRecipeText } from '../lib/parseRecipeText'
+import { isDictationSupported } from '../lib/speech'
 
 // Paste (or dictate) a whole recipe at once, instead of filling 19 fields.
 //
@@ -47,40 +48,24 @@ export default function PasteRecipe({ onParsed, onBack, initialText = '' }) {
         Paste it in, or say it
       </h1>
 
-      {/* THREE RULES, not vague encouragement.
-          The parser is line-based, so its accuracy depends entirely on how the text is
-          shaped — and every one of its measured failures traces to a rule broken here.
-          Saying so up front costs three lines and converts the two known failure modes
-          into things the user can simply avoid:
-            · "one per line" is the whole contract; run-on prose is the one input no
-              heuristic can split ("tamarind, a thumb of ginger, and some kangkong").
-            · "amounts in your own words" pre-empts the assumption that this wants
-              grams — the opposite of what the app is for.
-            · "ingredients first" is what lets a bare noun with no amount ("tamarind")
-              be recognised at all: it's read from its neighbours. */}
-      <ul className="mt-3 mb-1 space-y-1.5">
-        {[
-          ['One thing per line', 'an ingredient or a step — not a paragraph'],
-          ['Amounts however you say them', '“a good splash” beats 15 ml'],
-          ['Ingredients first, then the steps', 'the usual order is the easy one'],
-        ].map(([rule, why]) => (
-          <li key={rule} className="flex gap-2.5">
-            <span
-              aria-hidden="true"
-              className="flex-none mt-[7px] w-2 h-2 rounded-full bg-terra"
-            />
-            <span className="min-w-0">
-              <span className="font-display font-bold text-[14px] text-ink leading-snug">
-                {rule}
-              </span>
-              <span className="font-display italic text-[13px] text-ink-soft">
-                {' '}
-                — {why}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
+      {/* ONE rule, in one line.
+          A first pass listed three rules, each with an em-dashed explanation — six
+          lines of small type between the heading and the box, which is a lot of
+          reading on the screen whose whole promise is "this is the fast way".
+          What survived is the only rule the parser genuinely depends on: it is
+          line-based, so run-on prose is the one input no heuristic can split
+          ("tamarind, a thumb of ginger, and some kangkong" is three ingredients on
+          one line).
+          The other two were cut because the PLACEHOLDER already teaches them by
+          example — it shows folk amounts ("a good splash of vinegar") and shows
+          ingredients before steps — and a shown format is copied more reliably than
+          a stated one. Their failure modes are also both recoverable: an amount in
+          the wrong shape still lands in the right field, and out-of-order lines are
+          fixed by the touch rule or by one tap on the form that follows. */}
+      <p className="font-display italic text-[14.5px] text-ink-soft mt-2">
+        One thing per line &mdash; an ingredient or a step. Amounts however you say
+        them.
+      </p>
 
       <div className="relative mt-4">
         <textarea
@@ -122,27 +107,35 @@ Simmer until the sauce coats a spoon`}
         />
       </div>
 
-      <p className="font-display italic text-[12.5px] text-ink-soft mt-2">
-        Using the mic? Pause between each one — every pause starts a new line.
-      </p>
-
-      {tooThin && (
-        <p className="error-pill mt-3">
-          That looks like just a name — add the ingredients or the steps too.
+      {/* Only shown where a mic exists. Firefox has no Web Speech implementation and
+          DictateButton renders nothing there, so this advice was addressing a control
+          that wasn't on the page. Gated on the same check rather than a guess. */}
+      {isDictationSupported() && (
+        <p className="font-display italic text-[12.5px] text-ink-soft mt-2">
+          Using the mic? Pause between each one &mdash; every pause starts a new line.
         </p>
       )}
 
+      {tooThin && (
+        <p className="error-pill mt-3">
+          That looks like just a name &mdash; add the ingredients or the steps too.
+        </p>
+      )}
+
+      {/* "Nothing is saved yet" was a third line of small print under the button. It
+          matters — it's what makes trusting the parser cheap — so it moved INTO the
+          button's own second line, where it's read as part of the action instead of
+          competing with two other captions. */}
       <button
         onClick={handleSort}
         disabled={lines < 2}
-        className="btn-primary mt-4"
+        className="btn-primary mt-4 flex flex-col items-center py-2.5"
       >
-        Sort this out &rarr;
+        <span>Sort this out &rarr;</span>
+        <span className="font-display italic font-normal text-[12px] text-cream/85 mt-0.5">
+          Nothing is saved until you say so
+        </span>
       </button>
-
-      <p className="font-display italic text-[12.5px] text-ink-soft/90 mt-3 text-center">
-        Nothing is saved yet &mdash; you&rsquo;ll see it all before it is.
-      </p>
     </div>
   )
 }

@@ -40,7 +40,7 @@ async function toIngredients(dish = 'Kare-Kare') {
 async function addIngredient(name, amount) {
   await type(screen.getByPlaceholderText(/soy sauce/i), name)
   if (amount) await type(screen.getByPlaceholderText(/a dash/i), amount)
-  await userEvent.click(screen.getByRole('button', { name: /next ingredient/i }))
+  await userEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
 }
 
 describe('GuidedRecipe — one question at a time', () => {
@@ -73,8 +73,8 @@ describe('GuidedRecipe — one question at a time', () => {
     await addIngredient('peanut butter', '3 soup spoons')
     expect(screen.getByText('oxtail')).toBeInTheDocument()
     expect(screen.getByText('peanut butter')).toBeInTheDocument()
-    // Still screen 3 of 5.
-    expect(screen.getByText('3 of 5')).toBeInTheDocument()
+    // Still on the same screen: adding an ingredient must not advance the flow.
+    expect(screen.getByText('3 of 6')).toBeInTheDocument()
   })
 
   it('returns to the ingredient field after each one', async () => {
@@ -112,18 +112,18 @@ describe('GuidedRecipe — never losing what was entered', () => {
     // The failure that motivated all of this: someone abandoned the long form midway
     // and lost everything typed.
     open()
-    expect(screen.queryByRole('button', { name: /done for now/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /keep what i have/i })).toBeNull()
     await type(screen.getByPlaceholderText(/adobo/i), 'Kare-Kare')
     await next()
     expect(
-      screen.getByRole('button', { name: /done for now/i }),
+      screen.getByRole('button', { name: /keep what i have/i }),
     ).toBeInTheDocument()
   })
 
   it('saves partway through, keeping what exists', async () => {
     await toIngredients()
     await addIngredient('oxtail', '1 kg')
-    await userEvent.click(screen.getByRole('button', { name: /done for now/i }))
+    await userEvent.click(screen.getByRole('button', { name: /keep what i have/i }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
     const payload = onDone.mock.calls[0][0]
     expect(payload.name).toBe('Kare-Kare')
@@ -137,7 +137,7 @@ describe('GuidedRecipe — never losing what was entered', () => {
     // data loss this flow exists to prevent.
     await toIngredients()
     await type(screen.getByPlaceholderText(/soy sauce/i), 'annatto')
-    await userEvent.click(screen.getByRole('button', { name: /done for now/i }))
+    await userEvent.click(screen.getByRole('button', { name: /keep what i have/i }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
     expect(onDone.mock.calls[0][0].ingredients[0].name).toBe('annatto')
   })
@@ -147,7 +147,7 @@ describe('GuidedRecipe — never losing what was entered', () => {
     // its words intact, never converted.
     await toIngredients()
     await addIngredient('peanut butter', '3 soup spoons')
-    await userEvent.click(screen.getByRole('button', { name: /done for now/i }))
+    await userEvent.click(screen.getByRole('button', { name: /keep what i have/i }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
     expect(onDone.mock.calls[0][0].ingredients[0]).toMatchObject({
       name: 'peanut butter',
@@ -178,11 +178,64 @@ describe('GuidedRecipe — moving around', () => {
     await addIngredient('oxtail', '1 kg')
     await userEvent.click(screen.getByRole('button', { name: /that's everything/i }))
     await type(screen.getByPlaceholderText(/step 1/i), 'Simmer it')
-    await userEvent.click(screen.getByRole('button', { name: /next step/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add step/i }))
     await userEvent.click(
       screen.getByRole('button', { name: /that's the last step/i }),
     )
+    // The extras screen sits between the steps and the summary.
+    await userEvent.click(screen.getByRole('button', { name: /nothing else/i }))
     expect(screen.getByText('Kare-Kare')).toBeInTheDocument()
     expect(screen.getByText(/1 ingredient · 1 step/)).toBeInTheDocument()
+  })
+})
+
+// The extras screen exists because this door collected NONE of photo / cuisine /
+// servings, and servings is not cosmetic: GET /recipes/{id}/scale returns 400 without
+// it, so scaling was silently unavailable for anything saved through here.
+describe('GuidedRecipe — the extras', () => {
+  async function toExtras() {
+    await toIngredients()
+    await userEvent.click(screen.getByRole('button', { name: /skip the ingredients/i }))
+    await userEvent.click(screen.getByRole('button', { name: /skip the steps/i }))
+  }
+
+  it('asks for a photo, servings and cuisine, all optional', async () => {
+    await toExtras()
+    expect(screen.getByText(/anything else/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/add a photo of the dish/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('4')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Filipino')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /nothing else/i })).toBeInTheDocument()
+  })
+
+  it('sends servings and cuisine when given', async () => {
+    await toExtras()
+    await type(screen.getByPlaceholderText('4'), '6')
+    await type(screen.getByPlaceholderText('Filipino'), 'Filipino')
+    await userEvent.click(screen.getByRole('button', { name: /keep what i have/i }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+    expect(onDone.mock.calls[0][0]).toMatchObject({
+      servings: '6',
+      cuisine: 'Filipino',
+    })
+  })
+
+  it('sends them empty when skipped, never a guess', async () => {
+    await toExtras()
+    await userEvent.click(screen.getByRole('button', { name: /nothing else/i }))
+    await userEvent.click(screen.getByRole('button', { name: /keep this recipe/i }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+    expect(onDone.mock.calls[0][0]).toMatchObject({
+      servings: '',
+      cuisine: '',
+      coverPhotoUrl: '',
+    })
+  })
+
+  it('says what servings actually buys', async () => {
+    // It's the only one of the three that unlocks behaviour rather than labelling the
+    // dish, and nobody would guess that from the word alone.
+    await toExtras()
+    expect(screen.getByText(/lets the recipe be scaled/i)).toBeInTheDocument()
   })
 })

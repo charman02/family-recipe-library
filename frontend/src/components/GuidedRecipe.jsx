@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import client from '../api/client'
 import BackButton from './BackButton'
 import DictateButton from './DictateButton'
 import IngredientNameField from './IngredientNameField'
 import AmountUnitChips from './AmountUnitChips'
+import Icon from './Icon'
 import { mergeSuggestions } from '../lib/commonIngredients'
 import { parseQuantity } from '../utils/quantity'
+import { createUploader, PHOTO_ACCEPT } from '../lib/photoUpload'
 
 // One question at a time, instead of a form nineteen fields long.
 //
@@ -29,7 +31,7 @@ import { parseQuantity } from '../utils/quantity'
 // AmountUnitChips for tappable units) rather than reimplementing them, so the two doors
 // can't drift apart in behaviour.
 
-const STEPS = ['name', 'from', 'ingredients', 'steps', 'finish']
+const STEPS = ['name', 'from', 'ingredients', 'steps', 'extras', 'finish']
 
 // A screen's worth of chrome: the progress dots, a question, and the answer area.
 function Screen({ index, total, title, hint, children, onBack, onSkip, skipLabel }) {
@@ -96,6 +98,18 @@ export default function GuidedRecipe({ onDone, onBack }) {
   const [draftStep, setDraftStep] = useState('')
   const [suggestions, setSuggestions] = useState(() => mergeSuggestions([]))
   const [saving, setSaving] = useState(false)
+  // The extras. Servings is NOT cosmetic: GET /recipes/{id}/scale returns 400 without
+  // it, so a recipe saved through this door could never be scaled at all — which is
+  // most of the reason this screen exists rather than leaving all three to the form.
+  const [coverPhotoUrl, setCoverPhotoUrl] = useState('')
+  const [servings, setServings] = useState('')
+  const [cuisine, setCuisine] = useState('')
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  // Shared with RecipeForm rather than reimplemented — it carries the per-slot request
+  // ticket and abort that stop a re-picked photo being overwritten by the earlier
+  // upload landing last. See lib/photoUpload.js.
+  const uploader = useRef(createUploader())
 
   // The user's own ingredient vocabulary, same source the form uses. Failure is silent
   // and harmless: mergeSuggestions([]) already holds the shipped common list.
@@ -160,6 +174,9 @@ export default function GuidedRecipe({ onDone, onBack }) {
       await onDone({
         name: name.trim(),
         sourceName: sourceName.trim(),
+        coverPhotoUrl,
+        servings: servings.trim(),
+        cuisine: cuisine.trim(),
         ingredients: ing.map((i, position) => ({
           name: i.name,
           position,
@@ -176,19 +193,16 @@ export default function GuidedRecipe({ onDone, onBack }) {
   // recipe needs to exist.
   const doneNow =
     screen > 0 && name.trim() ? (
-      <button
-        type="button"
-        onClick={save}
-        disabled={saving}
-        className="mt-5 w-full sticker sticker-press bg-sage px-4 py-3 text-left"
-      >
-        <span className="block font-display font-black text-[14.5px] text-ink">
-          {saving ? 'Keeping…' : 'Done for now →'}
-        </span>
-        <span className="block font-display italic text-[12.5px] text-ink-soft mt-0.5">
-          Keeps what you&rsquo;ve got. You can add the rest later.
-        </span>
-      </button>
+      <div className="mt-4 text-center">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="font-display font-bold text-[13.5px] text-terra"
+        >
+          {saving ? 'Keeping…' : 'Keep what I have so far →'}
+        </button>
+      </div>
     ) : null
 
   if (at === 'name') {
@@ -344,7 +358,7 @@ export default function GuidedRecipe({ onDone, onBack }) {
           disabled={!draftName.trim()}
           className="btn-primary mt-4"
         >
-          Add it &mdash; next ingredient &rarr;
+          Add ingredient
         </button>
         {doneNow}
       </Screen>
@@ -415,7 +429,103 @@ export default function GuidedRecipe({ onDone, onBack }) {
           disabled={!draftStep.trim()}
           className="btn-primary mt-4"
         >
-          Add it &mdash; next step &rarr;
+          Add step
+        </button>
+        {doneNow}
+      </Screen>
+    )
+  }
+
+  if (at === 'extras') {
+    // The three things this door would otherwise never collect. Without it a guided
+    // recipe had NO photo (so its card falls back to a quote or a monogram) and no
+    // servings, which means /scale rejects it outright — a whole feature quietly
+    // unavailable depending on which door you came in by. One screen, all three
+    // optional, so the shortcut stops producing thinner recipes than the long form.
+    return (
+      <Screen
+        index={screen}
+        total={STEPS.length}
+        title="Anything else?"
+        hint="All optional — skip it and keep going."
+        onBack={back}
+        onSkip={() => go(1)}
+        skipLabel="Nothing else"
+      >
+        <label
+          className={`flex flex-col items-center justify-center w-full sticker sticker-press bg-peach px-4 py-6 cursor-pointer ${
+            photoBusy ? 'opacity-70' : ''
+          }`}
+        >
+          <input
+            type="file"
+            accept={PHOTO_ACCEPT}
+            aria-label="Add a photo of the dish"
+            className="sr-only"
+            onChange={(e) =>
+              uploader.current.upload({
+                slot: 'cover',
+                event: e,
+                onBusy: setPhotoBusy,
+                onError: setPhotoError,
+                onUrl: setCoverPhotoUrl,
+              })
+            }
+          />
+          {coverPhotoUrl ? (
+            <img
+              src={coverPhotoUrl}
+              alt=""
+              className="w-full h-[130px] object-cover rounded-[12px] border-2 border-ink"
+            />
+          ) : (
+            <>
+              <span className="flex items-center justify-center w-12 h-12 rounded-full bg-cream border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] text-ink -rotate-[6deg]">
+                <Icon name="camera" className="w-6 h-6" />
+              </span>
+              <span className="font-display font-black text-[16px] text-ink mt-2.5 leading-none">
+                {photoBusy ? 'Uploading…' : 'Add a photo'}
+              </span>
+            </>
+          )}
+        </label>
+        {photoError && (
+          <p className="mt-2">
+            <span className="error-pill">{photoError}</span>
+          </p>
+        )}
+
+        <div className="flex gap-3 mt-4">
+          <label className="flex-1">
+            <span className="section-label block mb-1.5">Serves</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              value={servings}
+              onChange={(e) => setServings(e.target.value)}
+              placeholder="4"
+              className="field"
+            />
+          </label>
+          <label className="flex-1">
+            <span className="section-label block mb-1.5">Cuisine</span>
+            <input
+              value={cuisine}
+              onChange={(e) => setCuisine(e.target.value)}
+              placeholder="Filipino"
+              className="field"
+            />
+          </label>
+        </div>
+        {/* Says what servings BUYS, because it's the only one of the three that
+            unlocks behaviour rather than just labelling the dish. */}
+        <p className="font-display italic text-[12.5px] text-ink-soft mt-2">
+          Serves is what lets the recipe be scaled up or down later.
+        </p>
+
+        <button type="button" onClick={() => go(1)} className="btn-primary mt-5">
+          Next
         </button>
         {doneNow}
       </Screen>
@@ -431,7 +541,15 @@ export default function GuidedRecipe({ onDone, onBack }) {
       hint="Private to start. You can send it to someone right after."
       onBack={back}
     >
-      <div className="sticker bg-card px-4 py-4">
+      <div className="sticker bg-card overflow-hidden">
+        {coverPhotoUrl && (
+          <img
+            src={coverPhotoUrl}
+            alt=""
+            className="w-full h-[120px] object-cover block border-b-[2.5px] border-ink"
+          />
+        )}
+        <div className="px-4 py-4">
         <p className="font-display font-black text-[19px] text-ink leading-tight">
           {name.trim() || 'Untitled'}
         </p>
@@ -447,7 +565,9 @@ export default function GuidedRecipe({ onDone, onBack }) {
           {ingredients.length || 'No'}{' '}
           {ingredients.length === 1 ? 'ingredient' : 'ingredients'} &middot;{' '}
           {steps.length || 'no'} {steps.length === 1 ? 'step' : 'steps'}
+          {servings.trim() && ` · serves ${servings.trim()}`}
         </p>
+        </div>
       </div>
 
       <button
