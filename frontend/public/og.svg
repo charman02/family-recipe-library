@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="issei — someone cooked you something you'd never had; this is how they send you the recipe.">
+  <rect width="1200" height="630" fill="#FBF3E2"/>
+  <text x="600" y="340" text-anchor="middle" font-family="Fraunces, 'Playfair Display', Georgia, 'Times New Roman', serif" font-weight="900" font-size="210" letter-spacing="-6" fill="#2E3A24">issei<tspan fill="#B5502A">.</tspan></text>
+  <rect x="556" y="386" width="88" height="8" rx="4" fill="#B5502A"/>
+  <g font-family="'Nunito Sans', system-ui, -apple-system, 'Segoe UI', sans-serif" fill="#2E3A24" text-anchor="middle" font-weight="700">
+    <text x="600" y="464" font-size="38">Someone cooked you something you'd never had.</text>
+    <text x="600" y="518" font-size="38">This is how they send you the recipe.</text>
+  </g>
+</svg>
