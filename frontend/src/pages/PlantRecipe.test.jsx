@@ -325,7 +325,9 @@ describe('PlantRecipe — the guided door', () => {
       /passed down to you/i,
       /one of your own/i,
       /paste the whole thing/i,
-      /ask me one thing at a time/i,
+      // Demoted to a quiet text link under the paste card, but still a button with
+      // an accessible name — reachable and keyboard-focusable, just visibly secondary.
+      /ask you one thing at a time/i,
     ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
@@ -337,7 +339,7 @@ describe('PlantRecipe — the guided door', () => {
     // this way.
     renderFlow()
     await userEvent.click(
-      screen.getByRole('button', { name: /ask me one thing at a time/i }),
+      screen.getByRole('button', { name: /ask you one thing at a time/i }),
     )
     expect(screen.getByText(/what did you make/i)).toBeInTheDocument()
   })
@@ -345,7 +347,7 @@ describe('PlantRecipe — the guided door', () => {
   it('back from the guided flow returns to the doorway, not out of the app', async () => {
     renderFlow()
     await userEvent.click(
-      screen.getByRole('button', { name: /ask me one thing at a time/i }),
+      screen.getByRole('button', { name: /ask you one thing at a time/i }),
     )
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     expect(screen.getByText(/where does this/i)).toBeInTheDocument()

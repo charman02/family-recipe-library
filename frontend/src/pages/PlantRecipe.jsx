@@ -226,7 +226,7 @@ export default function PlantRecipe() {
         </div>
         <button
           onClick={() => setStep('paste')}
-          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-cream p-4 mb-3"
+          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-cream p-4"
         >
           <span className="flex-none flex items-center justify-center w-12 h-12 rounded-[14px] bg-card border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink">
             <Icon name="list" className="w-6 h-6" />
@@ -241,26 +241,21 @@ export default function PlantRecipe() {
           </span>
         </button>
 
-        {/* THE THIRD DOOR. Pasting needs the recipe already written down; the form needs
-            you to hold all of it at once. Neither fits the case this app most exists
-            for — someone telling you how they make it — so this one just asks, one
-            thing at a time. See GuidedRecipe. */}
-        <button
-          onClick={() => setStep('guided')}
-          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-cream p-4"
-        >
-          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-[14px] bg-card border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink">
-            <Icon name="mic" className="w-6 h-6" />
-          </span>
-          <span className="min-w-0">
-            <span className="font-display font-black text-[18px] text-ink">
-              Ask me one thing at a time
-            </span>
-            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
-              Good for writing it down as someone tells you.
-            </span>
-          </span>
-        </button>
+        {/* THE THIRD DOOR, demoted. Pasting is the recommended way in, so this one
+            sits under it as a quiet text link rather than a third equal-weight card —
+            reachable and keyboard-focusable, but visibly secondary. It still exists
+            because neither pasting (needs the recipe written down) nor the form (needs
+            you to hold all of it at once) fits the case this app most exists for:
+            someone telling you how they make it, one thing at a time. See GuidedRecipe. */}
+        <div className="mt-3 text-center">
+          <button
+            type="button"
+            onClick={() => setStep('guided')}
+            className="font-display italic text-[13px] text-ink-soft underline decoration-line underline-offset-4"
+          >
+            or have me ask you one thing at a time &rarr;
+          </button>
+        </div>
       </div>
     )
   }
