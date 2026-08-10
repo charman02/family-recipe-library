@@ -88,6 +88,51 @@ describe('GuidedRecipe — one question at a time', () => {
     )
   })
 
+  it('keeps a unit tapped from the chip strip', async () => {
+    // MOM'S BUG, reported as "it omitted some of the ingredient amount units". Typing
+    // "2" and tapping "cup" saved "2" — the unit vanished and the row committed early.
+    // Three defects in the same eight lines:
+    //   · AmountUnitChips hands onPick the FULLY COMPOSED string (it calls
+    //     appendUnit(value, unit) internally), and this screen appended it AGAIN to the
+    //     old value — so "2" + "cup" tried to become "2 2 cup".
+    //   · onDone={commitIngredient} fired on the same tap, committing the row before
+    //     the state update landed. The form wires onDone to a REFOCUS, not a commit.
+    //   · the strip rendered even with no leading count, where appendUnit is a no-op.
+    // Every guided test typed its amount, which is why 17 passing tests missed it.
+    await toIngredients()
+    await type(screen.getByPlaceholderText(/soy sauce/i), 'rice')
+    await type(screen.getByPlaceholderText(/a dash/i), '2')
+    await userEvent.click(screen.getByRole('button', { name: /^cup$/i }))
+    // Still composing — the tap must NOT commit the row.
+    expect(screen.getByPlaceholderText(/a dash/i)).toHaveValue('2 cups')
+    await userEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
+    expect(screen.getByText('2 cups')).toBeInTheDocument()
+  })
+
+  it('sends the tapped unit all the way to the payload', async () => {
+    // The typed-only tests couldn't catch this: without the unit, "2" types `precise`
+    // and scaling would multiply a bare number with no idea what it measures.
+    await toIngredients()
+    await type(screen.getByPlaceholderText(/soy sauce/i), 'rice')
+    await type(screen.getByPlaceholderText(/a dash/i), '2')
+    await userEvent.click(screen.getByRole('button', { name: /^cup$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add ingredient/i }))
+    await userEvent.click(screen.getByRole('button', { name: /keep what i have/i }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+    expect(onDone.mock.calls[0][0].ingredients[0]).toMatchObject({
+      name: 'rice',
+      quantity_text: '2 cups',
+    })
+  })
+
+  it('offers no unit strip until there is a count to attach one to', async () => {
+    // appendUnit is a no-op without a leading number, so the chips were decoration
+    // that did nothing — and tapping one still committed the row.
+    await toIngredients()
+    await type(screen.getByPlaceholderText(/soy sauce/i), 'salt')
+    expect(screen.queryByRole('button', { name: /^cup$/i })).toBeNull()
+  })
+
   it('lets an ingredient be taken back out', async () => {
     await toIngredients()
     await addIngredient('oxtail', '1 kg')

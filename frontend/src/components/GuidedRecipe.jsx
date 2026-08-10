@@ -6,6 +6,7 @@ import IngredientNameField from './IngredientNameField'
 import AmountUnitChips from './AmountUnitChips'
 import Icon from './Icon'
 import { mergeSuggestions } from '../lib/commonIngredients'
+import { shouldOfferUnits } from '../lib/amountChips'
 import { parseQuantity } from '../utils/quantity'
 import { createUploader, PHOTO_ACCEPT } from '../lib/photoUpload'
 
@@ -342,14 +343,31 @@ export default function GuidedRecipe({ onDone, onBack }) {
             placeholder="1/2 cup · a dash · to taste"
             className="field"
           />
-          <AmountUnitChips
-            value={draftAmount}
-            onPick={(unit) =>
-              setDraftAmount((v) => (v ? `${v.trimEnd()} ${unit}` : unit))
-            }
-            onDone={commitIngredient}
-            index={ingredients.length}
-          />
+          {/* Wired exactly as RecipeForm wires it (RecipeForm.jsx:666), because three
+              separate defects lived in the four lines that used to be here — and
+              together they are the bug reported as "it omitted some of the ingredient
+              amount units":
+
+              1. onPick receives the FULLY COMPOSED amount. AmountUnitChips calls
+                 appendUnit(value, unit) itself and hands the result over, so appending
+                 it to the old value again turned "2" + "cup" into "2 2 cup".
+              2. onDone is a "move along" signal, not a save. It was wired to
+                 commitIngredient, so tapping a chip committed the row in the same tick
+                 as the state update — and the row that landed was the pre-tap one.
+                 Net effect: "2" + tap "cup" saved as "2", typed `precise`, which is a
+                 bare number scaling with no idea what it measures.
+              3. The strip rendered with no leading count, where appendUnit is a no-op —
+                 so those chips did nothing except trigger defect 2.
+
+              Only shown when there is a number to attach a unit to. */}
+          {shouldOfferUnits(draftAmount) && (
+            <AmountUnitChips
+              value={draftAmount}
+              onPick={setDraftAmount}
+              onDone={() => document.getElementById('guided-amount')?.focus()}
+              index={ingredients.length}
+            />
+          )}
         </div>
 
         <button
