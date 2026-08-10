@@ -30,7 +30,7 @@ This document outlines planned features and improvements for Issei — a full-st
 
 **What this adds:** A native iOS experience with faster performance, push notifications for family recipe updates, and camera access for photographing handwritten recipes or dishes.
 
-**Why it matters:** The use case is fundamentally mobile — someone cooking in a kitchen checks a recipe on their phone, not a laptop. Native mobile also enables things a web app can't do well, like hands-free navigation through the steps while your hands are covered in flour. (**Nothing audio-related exists today** — see the note at the bottom of this file. Any speech input would be new capability built from scratch, not an extension of something already in the product.)
+**Why it matters:** The use case is fundamentally mobile — someone cooking in a kitchen checks a recipe on their phone, not a laptop. Native mobile also enables things a web app can't do well, like hands-free navigation through the steps while your hands are covered in flour. (**No audio of a person is captured or stored today** — see the note at the bottom of this file. Dictation exists as a keyboard substitute — the mic types into a text field via the browser and the utterance is discarded — but recorded audio of someone speaking would be new capability built from scratch.)
 
 **Implementation notes:** React Native for cross-platform coverage (iOS and Android), TestFlight for beta testing with initial users, App Store launch after beta validation.
 

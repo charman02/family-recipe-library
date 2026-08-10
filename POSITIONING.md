@@ -137,8 +137,16 @@ to a true thing that it gets overstated. Check against this list before writing 
 
 ### Never claim audio, voice recording, or verbatim speech
 
-There is **no audio anywhere in the product** — no recording, no playback, no
-transcription, no microphone.
+**No audio of a person is ever captured, stored, played back, or transmitted.** No
+recording, no voice notes, no playback. The recipe is text end to end.
+
+One exception to state precisely, because dictation now ships (`frontend/src/lib/speech.js`,
+`DictateButton.jsx`): the device microphone can be used to *type into a text field* via the
+browser's own speech-to-text. The spoken words become characters the user can see and edit;
+the utterance itself is never saved, sent to our servers, or replayed. So the claim is not
+"no microphone" — it is that issei keeps **no audio and no recording of anyone's voice**.
+"Their voice", "a recording", "in their own words" remain false and banned: the microphone
+is a keyboard substitute, not a record of a person.
 
 The trap is a column name. `Step.voice_note` (`app/models/step.py`) is a `Text` column
 typed into a plain text input by whoever wrote the recipe down
@@ -222,8 +230,8 @@ is at the `garden-v1` tag; the old docs are in `docs/archive/garden/`.
 
 ### Don't inflate the numbers — measure them
 
-As measured on this branch (see `README.md` for the method): **18 routes**, **7 models**,
-**100 backend tests**, **202 frontend tests in 22 files**. Endpoint and test counts have
+As measured on this branch (see `README.md` for the method): **22 routes**, **8 models**,
+**187 backend tests**, **481 frontend tests in 33 files**. Endpoint and test counts have
 each changed several times during the removals; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 
