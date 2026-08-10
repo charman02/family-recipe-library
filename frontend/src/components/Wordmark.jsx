@@ -33,14 +33,32 @@ const SIZES = {
   lg: 'text-[44px] px-6 py-2.5 rounded-[20px] shadow-[0_5px_0_#2E3A24]',
 }
 
-export default function Wordmark({ size = 'sm', className = '' }) {
+// `bare` drops the ink plate and renders the type alone in ink.
+//
+// For use ON an existing colour field — a photo-less recipe cover. The plate is what
+// makes the mark unmistakable in a page header, but inside another rounded, outlined
+// box it reads as a box in a box, and the cover frame already supplies the shape and
+// the colour. The terra period survives, which is the part people actually recognise.
+export default function Wordmark({ size = 'sm', bare = false, className = '' }) {
+  const type = (
+    <span
+      className={`font-display font-black leading-none tracking-[-0.01em] ${
+        bare ? 'text-ink' : 'text-cream'
+      }`}
+    >
+      issei<span className="text-terra">.</span>
+    </span>
+  )
+
+  if (bare) {
+    return <span className={`inline-block ${SIZES[size].split(' ')[0]} ${className}`}>{type}</span>
+  }
+
   return (
     <span
       className={`inline-block bg-ink border-[2.5px] border-ink ${SIZES[size]} ${className}`}
     >
-      <span className="font-display font-black leading-none tracking-[-0.01em] text-cream">
-        issei<span className="text-terra">.</span>
-      </span>
+      {type}
     </span>
   )
 }

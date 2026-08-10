@@ -1,76 +1,58 @@
-import { coverLine, coverField } from '../lib/coverText'
-import { sourceNameOf } from '../lib/sourceName'
+import Wordmark from './Wordmark'
+import { coverField } from '../lib/coverText'
 
-// Renders a recipe cover photo — or, when there's no photo, fills the frame with
-// TYPE rather than announcing an absence. See lib/coverText.js for the full
-// reasoning and what other apps do here; the short version is that a plate glyph or
-// an "add a photo" nudge renders a hole, and this app's claim is that the words are
-// the content, so type in the frame is closer to the thesis than a stock photo.
+// Renders a recipe cover photo — or, with no photo, the issei mark on a colour field.
 //
-// CHOSEN from three treatments compared side by side on real data: a quote from the
-// recipe's own words, the dish name as art, and this — a HYBRID using the quote when
-// the recipe has one and the title when it doesn't. Each pure version had one flaw
-// the hybrid avoids: the title alone repeats the dish name already printed directly
-// beneath the frame on every card, and the quote alone never says what the dish IS.
-// Mixing them also makes a grid visually varied rather than uniformly redundant.
-// The rejected two are deleted, not kept behind a flag.
+// THIS IS THE THIRD ANSWER to "what fills an empty frame", and the history matters
+// because each version was a reaction to a real problem with the one before it:
+//
+//   1. The `issei.` wordmark plus "A photo brings this dish to life". Replaced because
+//      that copy renders an ABSENCE: it names the missing thing, scolds an owner for not
+//      having done it, and means nothing at all to a recipient with no upload button.
+//   2. A pull quote from the recipe's own words — a folk amount or a step remark, set
+//      large. Reasonable on paper (this app's claim is that the words ARE the content)
+//      and it survived a three-way comparison. It failed on contact with a real user.
+//   3. This: the mark alone, no copy.
+//
+// WHY (2) FAILED. The developer's mother, looking at a recipe page, asked "why are there
+// ingredients on the cover photo?" — and she was reading it correctly. The frame is
+// photo-shaped, photo-sized and photo-positioned, so 26px italic type inside it has no
+// cue that it is a pull quote rather than a label printed over an image. Worse, the
+// recipe page passed avoid="notes", which made it skip step remarks and reach for an
+// imprecise AMOUNT specifically — so every recipe with a folk amount got an ingredient
+// line on its cover, on the one screen where the ingredient table is also visible.
+//
+// WHY THIS ISN'T A RETURN TO (1). Only half of what replaced the wordmark was
+// load-bearing. "A photo brings this dish to life" was the scolding part and it stays
+// gone; the mark itself was never the problem. What ships here is the mark with NO copy
+// beneath it — no nudge, no plate glyph, nothing naming what's missing.
+//
+// The per-recipe tint survives from (2): coverField picks from four colours keyed off
+// the recipe id, so a grid of photo-less recipes still varies instead of reading as one
+// repeated tile, and a given dish keeps its colour everywhere it appears.
 
-const sizes = {
-  // pt is larger than pb on the card sizes: the cuisine pill is absolutely
-  // positioned in the frame's top-left corner, so text starting at the top ran
-  // underneath it.
-  sm: { mono: 'text-[34px]', by: 'text-[9px]', pad: 'px-2.5 pt-8 pb-2', quote: 'text-[14px]' },
-  md: { mono: 'text-[52px]', by: 'text-[11px]', pad: 'px-4 pt-11 pb-3.5', quote: 'text-[19px]' },
-  lg: { mono: 'text-[68px]', by: 'text-[13px]', pad: 'px-6 pt-6 pb-5', quote: 'text-[26px]' },
-}
-
-// The last resort: no photo AND nothing quotable in the recipe.
-//
-// It draws the dish's INITIAL, not its name. Setting the full name here was the
-// obvious move and it's what the rejected title-only variant did — but every card
-// prints the dish name directly beneath the frame, so it was the same words twice
-// ~20px apart. A monogram is the pattern Slack, Gmail and Contacts all use, it reads
-// instantly as "no image and that's fine", and it repeats nothing.
-//
-// The last resort: no photo AND nothing quotable in the recipe.
-//
-// It draws the dish's INITIAL, not its name — every surface that shows a cover also
-// prints the dish name within ~20px of it, so the full name here was the same words
-// twice (three page tests caught that immediately when it was tried at lg). A
-// monogram is the pattern Slack, Gmail and Contacts use: instantly read as "no image
-// and that's fine", and it repeats nothing.
-//
-// `word` adds the name SMALL beneath the letter, for the one frame big enough that a
-// lone letter floats — the Home hero at 150px. It's a different treatment from the
-// card's own title below it (uppercase, tracked, small), so the pair reads as a
-// designed cover rather than as an accidental echo.
-function TitleCover({ recipe, s, field, className, word = false }) {
-  const name = (recipe?.name || '').trim()
-  return (
-    <div
-      className={`${field} flex flex-col items-center justify-center text-center ${s.pad} ${className}`}
-      aria-hidden="true"
-    >
-      <span className={`font-display font-black leading-none text-ink ${s.mono}`}>
-        {name.charAt(0).toUpperCase()}
-      </span>
-      {word && (
-        <span className="font-display font-bold uppercase tracking-[0.16em] text-[10px] text-ink/85 mt-2">
-          {name}
-        </span>
-      )}
-    </div>
-  )
+// How big the mark is in each frame. Scaled rather than swapped, so it's recognisably
+// the same object at every size — a different treatment per size would read as several
+// different placeholders.
+const MARK_SCALE = {
+  sm: 'scale-[0.62]', // grid card thumbnails
+  md: 'scale-[0.92]', // recipe cards
+  lg: 'scale-[1.15]', // the recipe page's own hero
 }
 
 export default function CoverImage({
   url,
   size = 'md',
+  // Kept in the signature because callers pass it and it still means something for
+  // future treatments, but the mark is now identical for owner and reader. The old
+  // reader branch existed to avoid stamping a second brand mark under the invite page's
+  // header — see the note in InviteLanding about why that surface is the one to watch.
   context = 'owner',
   recipe = null,
-  // Text already visible elsewhere on the calling screen — see coverText.coverLine.
+  // Retained for call-site compatibility; the cover no longer reads recipe text at all,
+  // so nothing can collide with what a page prints elsewhere. See git history for the
+  // pull-quote version this replaced.
   avoid = null,
-  // The Home hero card: a 150px frame where a lone monogram floats.
   hero = false,
   className = '',
 }) {
@@ -78,57 +60,18 @@ export default function CoverImage({
     return <img src={url} alt="" className={`object-cover ${className}`} />
   }
 
-  // The hero frame has no cuisine pill in its corner, so it doesn't need the
-  // asymmetric top padding the grid cards use to clear one — and with it, a short
-  // quote sat visibly below centre in a 150px box.
-  const s = hero
-    ? { ...(sizes.md), pad: 'px-5 py-4', quote: 'text-[21px]' }
-    : sizes[size] || sizes.md
   const field = coverField(recipe)
-
-  // No recipe passed — keep a plain colour field rather than throwing.
-  if (!recipe) {
-    return <div className={`${field} ${className}`} aria-hidden="true" />
-  }
-
-  const line = coverLine(recipe, { avoid })
-  if (!line) {
-    return (
-      <TitleCover
-        recipe={recipe}
-        s={s}
-        field={field}
-        className={className}
-        word={hero}
-      />
-    )
-  }
-
-  // The quote carries NO attribution on an owner surface: a first pass put the
-  // person's name inside the frame, and since a card prints "from Tita Baby" 40px
-  // below, that was the same name twice — the identical mistake the title-only
-  // version makes with the dish name. `reader` surfaces (the invite landing) do get
-  // it, because there the frame is the first thing on the page and nothing above has
-  // named anyone yet.
-  const person = context === 'reader' ? sourceNameOf(recipe) : null
+  const scale = hero ? MARK_SCALE.lg : MARK_SCALE[size] || MARK_SCALE.md
 
   return (
     <div
-      className={`${field} flex flex-col justify-center ${s.pad} ${className}`}
+      className={`${field} flex items-center justify-center ${className}`}
       aria-hidden="true"
     >
-      <span
-        className={`font-display font-bold italic leading-[1.2] text-ink text-balance ${s.quote}`}
-      >
-        &ldquo;{line.text}&rdquo;
-      </span>
-      {person && (
-        <span
-          className={`font-display font-bold uppercase tracking-[0.1em] text-ink/85 mt-2.5 ${s.by}`}
-        >
-          {person}
-        </span>
-      )}
+      {/* BARE, not the plated header mark. Both were rendered side by side on a real
+          recipe: the plate puts a rounded outlined box inside a rounded outlined box,
+          and the frame already supplies the shape, the outline and the colour. */}
+      <Wordmark size="sm" bare className={scale} />
     </div>
   )
 }

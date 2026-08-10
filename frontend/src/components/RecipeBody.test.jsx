@@ -29,11 +29,21 @@ describe('RecipeBody', () => {
     expect(getByText('Brown the chicken.')).toBeTruthy()
     expect(getByText('Add vinegar.')).toBeTruthy()
   })
-  // The no-photo cover used to be the `issei.` wordmark plus "A photo brings this
-  // dish to life" — it named the missing thing, scolded an owner, and meant nothing
-  // to a recipient with no upload button. It now fills the frame with the recipe's
-  // OWN words. See lib/coverText.js.
-  it('fills a photo-less cover with this recipe’s own words', () => {
+  // THE NO-PHOTO COVER, third iteration. History, because each version answered a real
+  // complaint about the one before it:
+  //   1. the `issei.` wordmark + "A photo brings this dish to life" — the copy scolded
+  //      an owner and meant nothing to a recipient with no upload button
+  //   2. a pull quote from the recipe's own words, set large
+  //   3. the mark alone, no copy — what these now assert
+  //
+  // (2) was replaced because a real user read it wrong, correctly: the developer's
+  // mother asked "why are there ingredients on the cover photo?" A photo-shaped frame
+  // full of 26px italic type has no cue that it's a pull quote, and this page passed
+  // avoid="notes", which made it reach for an imprecise AMOUNT specifically — putting an
+  // ingredient line on the cover of the one screen that also shows the ingredient table.
+  it('does NOT print recipe text in the cover frame', () => {
+    // The direct inversion of the test that used to live here. An amount must appear
+    // exactly once on this page — in the ingredient table, where it belongs.
     const { container } = render(
       <RecipeBody
         recipe={{
@@ -44,42 +54,25 @@ describe('RecipeBody', () => {
         }}
       />,
     )
-    expect(container.textContent).toMatch(/a whole head of garlic/)
+    const hits = container.textContent.match(/a whole head/g) || []
+    expect(hits).toHaveLength(1)
   })
 
-  it('never begs for a photo or stamps the brand on a recipe', () => {
-    // Both misfire on a recipient's page especially: they can't upload, and a second
-    // `issei.` under the invite header's reads as a rendering bug.
+  it('still never begs for a photo', () => {
+    // The surviving half of the guard that (2) installed. Mom's feedback moved the
+    // wordmark half of it — the mark is back, deliberately — but the anti-scolding rule
+    // was right and is untouched: no copy names what's missing, on either surface.
     for (const context of ['owner', 'reader']) {
       const { container, unmount } = render(
         <RecipeBody recipe={base} context={context} />,
       )
-      expect(container.textContent.toLowerCase()).not.toContain('issei')
       expect(container.textContent).not.toMatch(/brings this dish to life/i)
+      expect(container.textContent).not.toMatch(/add a photo/i)
       unmount()
     }
   })
 
-  it('does not quote a step remark it is about to print in full below', () => {
-    // The cover quoted "Don't crowd the pan" and the Steps list printed the same
-    // sentence a few hundred pixels down — one screen, same words twice.
-    const { container } = render(
-      <RecipeBody
-        recipe={{
-          ...base,
-          steps: [
-            { id: 1, position: 1, content: 'Brown it.', voice_note: 'Do not crowd the pan.' },
-          ],
-          ingredients: [
-            { id: 1, name: 'garlic', quantity_text: 'a whole head', quantity_type: 'imprecise' },
-          ],
-        }}
-      />,
-    )
-    const hits = container.textContent.match(/Do not crowd the pan/g) || []
-    expect(hits).toHaveLength(1)
-  })
-  it('displays servings and description when present', () => {
+ it('displays servings and description when present', () => {
     const { getByText } = render(
       <RecipeBody recipe={{ ...base, servings: 4, description: 'A tangy braise.' }} />,
     )
