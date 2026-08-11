@@ -37,8 +37,9 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # A small, cheap, fast model is the right tool: this is extraction, not reasoning. The
 # task is bounded and the schema is fixed, so paying for a frontier model would buy
-# nothing a user could perceive. Overridable per-deploy without a code change.
-DEFAULT_MODEL = "google/gemini-2.0-flash-001"
+# nothing a user could perceive. Overridable per-deploy without a code change (prod
+# sets OPENROUTER_MODEL to this same value; keep the default in step with what runs).
+DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 
 # The whole point of the app, stated as a rule rather than hoped for. Repeated in the
 # schema description too, because a single instruction is easy for a model to drift from
