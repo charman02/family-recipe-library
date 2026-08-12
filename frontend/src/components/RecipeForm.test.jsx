@@ -952,10 +952,10 @@ describe('RecipeForm dictation', () => {
     expect(
       screen.getAllByLabelText('A note on this step (optional)'),
     ).toHaveLength(3)
-    expect(screen.getByLabelText(/their story \(optional\)/i)).toHaveAttribute(
-      'placeholder',
-      'My grandmother made this every Lunar New Year…',
-    )
+    // No source named → the self-authored story prompt.
+    expect(
+      screen.getByLabelText(/what makes it yours \(optional\)/i),
+    ).toHaveAttribute('placeholder', 'I started making this the winter I moved out…')
   })
 
   it('does not submit the form when a mic is tapped', () => {
@@ -990,22 +990,42 @@ describe('RecipeForm dictation', () => {
 })
 
 describe('RecipeForm story prompt', () => {
-  it('asks about the person who taught you on the inherited path', () => {
-    render(<RecipeForm mode="add" storyVariant="inherited" onSubmit={() => {}} />)
-    expect(screen.getByText(/their story \(optional\)/i)).toBeInTheDocument()
-    expect(screen.getByText(/who taught you/i)).toBeInTheDocument()
-  })
+  // The story prompt now follows the optional "Passed down from" field rather than
+  // a doorway-chosen prop: name someone and it asks about them; leave it blank and
+  // the recipe is the user's own.
+  const sourceField = () => screen.getByPlaceholderText(/lola remedios/i)
 
-  it('never says "who taught you" when the recipe starts with the user', () => {
+  it('starts self-authored — no "who taught you" when no source is named', () => {
     // Asking a self-authored cook who taught them is the kind of thing that makes
     // the app feel like it isn't listening — testers noticed.
-    render(<RecipeForm mode="add" storyVariant="own" onSubmit={() => {}} />)
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
     expect(screen.getByText(/what makes it yours \(optional\)/i)).toBeInTheDocument()
     expect(screen.queryByText(/who taught you/i)).not.toBeInTheDocument()
   })
 
+  it('asks about the person once a source name is filled in', () => {
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    fireEvent.change(sourceField(), { target: { value: 'Lola' } })
+    expect(screen.getByText(/their story \(optional\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/who taught you/i)).toBeInTheDocument()
+  })
+
+  it('seeds the source field (and the inherited prompt) from initialValues', () => {
+    // A paste that detected a source pre-fills the field, so the prompt arrives
+    // already in the inherited variant.
+    render(
+      <RecipeForm
+        mode="add"
+        initialValues={{ sourceName: 'Lola' }}
+        onSubmit={() => {}}
+      />,
+    )
+    expect(sourceField()).toHaveValue('Lola')
+    expect(screen.getByText(/their story \(optional\)/i)).toBeInTheDocument()
+  })
+
   it('marks the story optional so nobody stalls on it', () => {
     render(<RecipeForm mode="add" onSubmit={() => {}} />)
-    expect(screen.getByText(/their story \(optional\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/what makes it yours \(optional\)/i)).toBeInTheDocument()
   })
 })

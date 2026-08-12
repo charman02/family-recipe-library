@@ -4,6 +4,7 @@ import client from '../api/client'
 import RecipeForm from '../components/RecipeForm'
 import BackButton from '../components/BackButton'
 import Loader from '../components/Loader'
+import { sourceNameOf } from '../lib/sourceName'
 
 // Loads an existing recipe, maps it to RecipeForm's initial-value shape, and
 // PATCHes on save. Editing is owner-only: the backend PATCH already scopes to
@@ -51,6 +52,12 @@ export default function EditRecipe() {
 
         setInitialValues({
           name: recipe.name,
+          // Surface the existing attribution so an edit doesn't silently wipe it:
+          // the form rebuilds origin from this field on save. Only the name round-
+          // trips (place/year aren't shown on the form's single source input); a
+          // recipe that had them keeps its stored place/year untouched unless the
+          // name is cleared. See buildOriginPayload.
+          sourceName: sourceNameOf(recipe) || '',
           servings: recipe.servings,
           cuisine: recipe.cuisine,
           description: recipe.description,

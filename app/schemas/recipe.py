@@ -267,3 +267,7 @@ class RecipeUpdate(BaseModel):
     ingredient_sections: Optional[list[IngredientSectionCreate]] = None
     ingredients: Optional[list[IngredientCreate]] = None
     steps: Optional[list[StepCreate]] = None
+    # Editing the "passed down from" attribution. Sent as a structured OriginIn
+    # (same as create) and flattened to origin_attribution in the router. A null
+    # name clears the byline; omitting the field entirely leaves it untouched.
+    origin: Optional[OriginIn] = None

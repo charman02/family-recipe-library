@@ -10,6 +10,7 @@ import DictateButton from './DictateButton'
 import { parseQuantity } from '../utils/quantity'
 import { mergeSuggestions } from '../lib/commonIngredients'
 import { shouldOfferUnits } from '../lib/amountChips'
+import { buildOriginPayload } from '../lib/originPayload'
 
 // Shared Add/Edit recipe form. Owns all field state, photo upload, ingredient/
 // step management, client-side validation, and payload assembly. The parent
@@ -96,10 +97,13 @@ export default function RecipeForm({
   topSlot = null,
   // Save with the dish name alone. See the button below the name field.
   onQuickSave = null,
-  // 'inherited' — someone taught them this. 'own' — the recipe starts with them.
-  storyVariant = 'inherited',
 }) {
   const [name, setName] = useState(initialValues.name || '')
+  // Who passed this recipe down — optional, and asked right on the form now that
+  // the add flow no longer forks into "inherited vs your own" doorways. Empty
+  // means self-authored (no byline). The paste parser seeds this when the model
+  // detects a source; the user can always edit or clear it.
+  const [sourceName, setSourceName] = useState(initialValues.sourceName || '')
   const [servings, setServings] = useState(
     initialValues.servings != null ? String(initialValues.servings) : '',
   )
@@ -161,7 +165,11 @@ export default function RecipeForm({
     }
   }, [])
 
-  const storyCopy = STORY_COPY[storyVariant] || STORY_COPY.inherited
+  // The story prompt follows the optional source field: name someone and it asks
+  // about them ("who taught you"); leave it blank and the recipe starts with you.
+  // Asking "who taught you this?" of a dish you invented was one of the things
+  // testers said made the app feel like it wasn't listening.
+  const storyCopy = sourceName.trim() ? STORY_COPY.inherited : STORY_COPY.own
   const heading = mode === 'edit' ? 'Edit recipe' : 'Keep a recipe'
   const defaultSubmitLabel =
     mode === 'edit' ? 'Save changes' : 'Keep this recipe'
@@ -341,6 +349,21 @@ export default function RecipeForm({
         })),
     }
 
+    // Attribution.
+    //  · ADD: always send it (nothing is stored yet). A blank field → null origin
+    //    → no byline; a parsed or typed name → the byline. buildOriginPayload
+    //    handles both.
+    //  · EDIT: send only when the name actually changed from what was seeded, so an
+    //    edit that never touched the field leaves the stored byline — including any
+    //    place/year the single name input can't show — untouched rather than
+    //    flattening it to just the name. Clearing the field sends an empty origin,
+    //    which the backend reads as "remove the byline".
+    if (mode === 'add') {
+      payload.origin = buildOriginPayload({ name: sourceName })
+    } else if (sourceName.trim() !== (initialValues.sourceName || '').trim()) {
+      payload.origin = buildOriginPayload({ name: sourceName })
+    }
+
     try {
       await onSubmit(payload)
       // On success the parent navigates away and this unmounts — don't touch state.
@@ -482,10 +505,6 @@ export default function RecipeForm({
                 what="the dish name"
               />
             </div>
-            <p className="font-display italic text-[12px] text-ink-soft mt-1">
-              You’ll say whose recipe it is next.
-            </p>
-
             {/* KEEP JUST THE NAME — the escape hatch for the failure testers actually
                 described. One person abandoned this form mid-way, and abandoning meant
                 losing everything typed so far. Only `name` is required (in the form AND
@@ -512,6 +531,20 @@ export default function RecipeForm({
               </button>
             )}
           </div>
+          {/* Optional attribution, right on the form. Naming someone makes the
+              recipe read "from {name}" (a byline in plum) and switches the story
+              prompt to ask about them; leaving it blank means the recipe is your
+              own. The paste parser seeds this when the model detects a source. */}
+          <label className="block">
+            <FieldLabel accent="plum">Passed down from (optional)</FieldLabel>
+            <input
+              type="text"
+              placeholder="e.g. Lola Remedios"
+              value={sourceName}
+              onChange={(e) => setSourceName(e.target.value)}
+              className="field"
+            />
+          </label>
           <div className="flex gap-3">
             <label className="block flex-1">
               <FieldLabel>Servings</FieldLabel>

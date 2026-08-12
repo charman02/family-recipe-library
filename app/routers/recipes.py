@@ -657,11 +657,23 @@ def patch_recipe(
     new_ingredients = recipe_in.ingredients if ingredients_sent else None
     new_steps = recipe_in.steps if steps_sent else None
 
-    # Apply scalar fields only (skip the child collections handled below).
+    # Attribution edit: `origin` is a structured OriginIn, not a column, so it maps
+    # to origin_attribution the same way create does rather than being setattr'd
+    # raw. A sent origin with a name (re)writes the byline; a sent origin whose name
+    # is empty/None clears it. Omitting `origin` entirely leaves it untouched.
+    if "origin" in sent_fields:
+        o = recipe_in.origin
+        if o is not None and o.name and o.name.strip():
+            parts = [o.name.strip()] + [p for p in (o.place, o.year) if p]
+            recipe.origin_attribution = " · ".join(parts)
+        else:
+            recipe.origin_attribution = None
+
+    # Apply scalar fields only (skip the child collections + origin handled above).
     scalar_fields = {
         k: v
         for k, v in sent_fields.items()
-        if k not in ("ingredient_sections", "ingredients", "steps")
+        if k not in ("ingredient_sections", "ingredients", "steps", "origin")
     }
     for field, value in scalar_fields.items():
         setattr(recipe, field, value)

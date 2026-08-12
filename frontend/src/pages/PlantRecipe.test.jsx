@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { buildOriginPayload } from '../lib/originPayload'
 
 vi.mock('../api/sharing', () => ({
   plantRecipe: vi.fn(() =>
@@ -18,10 +19,10 @@ vi.mock('../api/sharing', () => ({
   // fallback — which is the path that has to keep working when the model is down.
   parseRecipeWithAI: vi.fn(() => Promise.resolve({ data: { ai: false } })),
 }))
-// RecipeForm is heavy; stub it to immediately submit a minimal payload. The stub
-// renders the slots (topSlot carries the source fields, beforeSubmitSlot the
-// visibility choice) and records storyVariant, since branching that prompt by
-// path is part of what this flow owes the user.
+// RecipeForm is heavy; stub it to immediately submit a minimal payload. The real
+// form now OWNS the optional "Passed down from" field and builds the origin into
+// its own payload, so the stub mirrors that: it seeds a source input from
+// initialValues.sourceName and includes buildOriginPayload({ name }) on submit.
 let lastProps = null
 vi.mock('../components/RecipeForm', () => ({
   default: (props) => {
@@ -29,6 +30,7 @@ vi.mock('../components/RecipeForm', () => ({
     const {
       onSubmit,
       onQuickSave,
+      initialValues = {},
       intro = null,
       topSlot = null,
       beforeSubmitSlot = null,
@@ -38,15 +40,26 @@ vi.mock('../components/RecipeForm', () => ({
         {topSlot}
         {intro}
         {beforeSubmitSlot}
+        <label>
+          Passed down from (optional)
+          <input
+            aria-label="Passed down from (optional)"
+            defaultValue={initialValues.sourceName || ''}
+          />
+        </label>
         <button
-          onClick={() =>
+          onClick={() => {
+            const src = document.querySelector(
+              'input[aria-label="Passed down from (optional)"]',
+            ).value
             onSubmit({
               name: 'Congee',
+              origin: buildOriginPayload({ name: src }),
               ingredients: [],
               steps: [],
               story: 'typed in the form',
             })
-          }
+          }}
         >
           submit-form
         </button>
@@ -56,6 +69,19 @@ vi.mock('../components/RecipeForm', () => ({
       </div>
     )
   },
+}))
+// The save celebration is decorative; its reveal IS the terminal saved screen
+// (checkmark + card + share). Stub it to expose the two actions as buttons so the
+// page's wiring (view → recipe page, share → handoff) is testable without waiting
+// on animation timers. Its own animation is covered in SaveCelebration.test.jsx.
+vi.mock('../components/SaveCelebration', () => ({
+  default: ({ recipe, onView, onShare }) => (
+    <div>
+      <p>celebration for {recipe?.name}</p>
+      <button onClick={onView}>celebrate-view</button>
+      <button onClick={onShare}>celebrate-share</button>
+    </div>
+  ),
 }))
 import { plantRecipe, parseRecipeWithAI } from '../api/sharing'
 import PlantRecipe from './PlantRecipe'
@@ -77,83 +103,88 @@ function renderFlow() {
 
 const enterDoor = (name) => userEvent.click(screen.getByRole('button', { name }))
 
-describe('PlantRecipe', () => {
-  it('goes doorway → form in ONE hop (the source step was folded in)', async () => {
-    // The flow used to be doorway → source → form. Testers found it too
-    // effortful, so the source fields moved into the top of the form itself.
+describe('PlantRecipe — two doors', () => {
+  it('offers exactly two ways in: fill it in, or paste', () => {
     renderFlow()
-    await enterDoor(/passed down to you/i)
-    // No intermediate "continue to the recipe" screen any more: the form is here.
+    expect(
+      screen.getByRole('button', { name: /fill it in yourself/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /paste the whole thing/i }),
+    ).toBeInTheDocument()
+    // The old third door is gone.
+    expect(
+      screen.queryByRole('button', { name: /one thing at a time/i }),
+    ).toBeNull()
+  })
+
+  it('the form door lands straight on the form', async () => {
+    renderFlow()
+    await enterDoor(/fill it in yourself/i)
     expect(
       screen.getByRole('button', { name: /submit-form/i }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/whose recipe is this\?/i)).toBeInTheDocument()
   })
 
-  it('self-authored path never asks who taught you', async () => {
+  it('the source is asked on the form itself, not as its own step', async () => {
+    // The doorway no longer forks on "inherited vs your own"; the form carries a
+    // single optional "Passed down from" field.
     renderFlow()
-    await enterDoor(/one of your own/i)
-    expect(screen.queryByText(/whose recipe is this\?/i)).not.toBeInTheDocument()
-    expect(lastProps.storyVariant).toBe('own')
+    await enterDoor(/fill it in yourself/i)
+    expect(
+      screen.getByLabelText(/passed down from/i),
+    ).toBeInTheDocument()
   })
 
-  it('inherited path asks for the source and sends it as attribution', async () => {
+  it('sends the origin when a source name is filled in', async () => {
     renderFlow()
-    await enterDoor(/passed down to you/i)
-    expect(lastProps.storyVariant).toBe('inherited')
-
-    await userEvent.type(screen.getByPlaceholderText(/lola remedios/i), 'Lola')
-    await userEvent.type(screen.getByPlaceholderText(/cebu/i), 'Cebu')
+    await enterDoor(/fill it in yourself/i)
+    await userEvent.type(screen.getByLabelText(/passed down from/i), 'Lola')
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
-
-    const payload = plantRecipe.mock.calls[0][0]
-    expect(payload.origin.name).toBe('Lola')
-    expect(payload.origin.place).toBe('Cebu')
-    // ONE story input: the dish's story comes from the form, never from a
-    // separate source-memory field that could disagree with it.
-    expect(payload.story).toBe('typed in the form')
+    expect(plantRecipe.mock.calls[0][0].origin.name).toBe('Lola')
+    // ONE story input: the dish's story comes from the form, never a separate field.
+    expect(plantRecipe.mock.calls[0][0].story).toBe('typed in the form')
   })
 
   it('sends no origin when the source name is left blank', async () => {
-    // Attribution is optional even on the inherited path — a half-filled source
-    // block must not create an origin record with an empty name.
     renderFlow()
-    await enterDoor(/passed down to you/i)
+    await enterDoor(/fill it in yourself/i)
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     expect(plantRecipe.mock.calls[0][0].origin ?? null).toBeNull()
   })
 
-  it('sends no origin on the self-authored path', async () => {
+  it('lands on the save celebration, carrying the saved recipe', async () => {
+    // The celebration's reveal is the terminal saved screen now (checkmark + card
+    // + share); the old text-only "Congee is saved." screen was replaced by it.
     renderFlow()
-    await enterDoor(/one of your own/i)
-    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
-    expect(plantRecipe.mock.calls[0][0].origin ?? null).toBeNull()
-  })
-
-  it('confirms the save and names the next acts', async () => {
-    renderFlow()
-    await enterDoor(/one of your own/i)
-    // The capture step frames itself as low-pressure.
+    await enterDoor(/fill it in yourself/i)
     expect(screen.getByText(/a splash of vinegar/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
 
-    expect(await screen.findByText('Congee is saved.')).toBeInTheDocument()
-    expect(screen.getByText(/saved to your kitchen/i)).toBeInTheDocument()
-    // no source name on this path → the generic act
-    expect(screen.getByText(/add a memory/i)).toBeInTheDocument()
-    // The CTA names its destination — "Take me to it" left testers unsure what
-    // "it" was.
     expect(
-      screen.getByRole('button', { name: /view congee/i }),
+      await screen.findByText(/celebration for Congee/i),
+    ).toBeInTheDocument()
+  })
+
+  it('share from the celebration goes to the hand-off step', async () => {
+    renderFlow()
+    await enterDoor(/fill it in yourself/i)
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+    await userEvent.click(
+      await screen.findByRole('button', { name: /celebrate-share/i }),
+    )
+    // The hand-off compose screen is now showing.
+    expect(
+      await screen.findByRole('button', { name: /get a link to send/i }),
     ).toBeInTheDocument()
   })
 
   it('back from the form returns to the doorway, not out of the flow', async () => {
     renderFlow()
-    await enterDoor(/passed down to you/i)
+    await enterDoor(/fill it in yourself/i)
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     expect(
-      screen.getByRole('button', { name: /passed down to you/i }),
+      screen.getByRole('button', { name: /fill it in yourself/i }),
     ).toBeInTheDocument()
   })
 })
@@ -163,7 +194,7 @@ describe('PlantRecipe', () => {
 describe('PlantRecipe visibility', () => {
   async function reachTheForm() {
     renderFlow()
-    await enterDoor(/one of your own/i)
+    await enterDoor(/fill it in yourself/i)
   }
 
   it('renders the choice on the form step with "Only me" preselected', async () => {
@@ -188,7 +219,7 @@ describe('PlantRecipe visibility', () => {
   })
 })
 
-// PASTE — the second door. It exists because the form asks for 19 fields when only the
+// PASTE — the second door. It exists because the form asks for many fields when only the
 // dish name is required, and testers called capture "too effortful".
 describe('PlantRecipe — pasting a whole recipe', () => {
   const PASTED = ['Adobo', '3 soup spoons soy sauce', 'Brown the chicken'].join('\n')
@@ -214,14 +245,12 @@ describe('PlantRecipe — pasting a whole recipe', () => {
     await userEvent.click(screen.getByRole('button', { name: /sort this out/i }))
   }
 
-  it('offers pasting SECOND, after the two origin doors', async () => {
-    // The origin doors ask the question this app is about (whose dish is this?), and
-    // pasting doesn't answer it — so the shortcut must not outrank them.
+  it('offers pasting SECOND, after the fill-it-in door', async () => {
     renderFlow()
     const shortcut = screen.getByRole('button', { name: /paste the whole thing/i })
-    const own = screen.getByRole('button', { name: /one of your own/i })
+    const form = screen.getByRole('button', { name: /fill it in yourself/i })
     // 4 === Node.DOCUMENT_POSITION_FOLLOWING
-    expect(own.compareDocumentPosition(shortcut) & 4).toBeTruthy()
+    expect(form.compareDocumentPosition(shortcut) & 4).toBeTruthy()
   })
 
   it('lands on the form with the recipe already sorted', async () => {
@@ -245,9 +274,6 @@ describe('PlantRecipe — pasting a whole recipe', () => {
   })
 
   it('will not sort a single line — that is a name, not a recipe', async () => {
-    // The button stays disabled below two lines, so there's no path to the form with
-    // nothing in it. A SECOND line of any kind is real content: "Adobo / something"
-    // parses to one step, which is a terse but legitimate recipe and is let through.
     await openPaste()
     await userEvent.type(screen.getByRole('textbox'), 'Adobo')
     expect(screen.getByRole('button', { name: /sort this out/i })).toBeDisabled()
@@ -255,13 +281,11 @@ describe('PlantRecipe — pasting a whole recipe', () => {
   })
 
   it('saves nothing until the form is submitted', async () => {
-    // The parser is allowed to be wrong, so it must not be allowed to write.
     await paste(GUESSED)
     expect(plantRecipe).not.toHaveBeenCalled()
   })
 
   it('goes back to the paste box from the form, keeping the text', async () => {
-    // Correcting the source text has to be possible without re-pasting it.
     await paste(GUESSED)
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     expect(screen.getByRole('textbox')).toHaveValue(GUESSED)
@@ -271,86 +295,19 @@ describe('PlantRecipe — pasting a whole recipe', () => {
 // NAME-ONLY SAVE — the escape hatch for the failure testers described: one abandoned
 // the form mid-way, and abandoning meant losing everything typed.
 describe('PlantRecipe — keeping just the name', () => {
-  it('saves with the dish name alone', async () => {
+  it('saves with the dish name alone, then celebrates', async () => {
     renderFlow()
-    await enterDoor(/one of your own/i)
+    await enterDoor(/fill it in yourself/i)
     await userEvent.click(screen.getByRole('button', { name: /quick-save/i }))
     expect(plantRecipe).toHaveBeenCalledWith({
       name: 'Congee',
       visibility: 'private',
     })
-    expect(await screen.findByText('Congee is saved.')).toBeInTheDocument()
-  })
-
-  it('keeps the origin even when nothing else is filled in', async () => {
-    // "Lola's" is worth keeping on its own — it's the byline the whole app is built
-    // around, and on the inherited path it's already been entered by this point.
-    renderFlow()
-    await enterDoor(/passed down to you/i)
-    await userEvent.type(screen.getByLabelText(/their name/i), 'Lola Remedios')
-    await userEvent.click(screen.getByRole('button', { name: /quick-save/i }))
-    expect(plantRecipe).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Congee',
-        origin: expect.objectContaining({ name: 'Lola Remedios' }),
-      }),
-    )
-  })
-
-  it('does not tell you to cook a recipe with no steps', async () => {
-    renderFlow()
-    await enterDoor(/one of your own/i)
-    await userEvent.click(screen.getByRole('button', { name: /quick-save/i }))
-    await screen.findByText('Congee is saved.')
-    expect(screen.queryByText(/cook it/i)).toBeNull()
-    expect(screen.getByText(/add the rest whenever you like/i)).toBeInTheDocument()
-  })
-
-  it('still says "cook it" after a full save', async () => {
-    // The confirmation keys off HOW it was saved, not off the response's shape — the
-    // mocked response carries no steps either way, and conflating the two broke this.
-    renderFlow()
-    await enterDoor(/one of your own/i)
-    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
-    await screen.findByText('Congee is saved.')
-    expect(screen.getByText(/cook it/i)).toBeInTheDocument()
-  })
-})
-
-// The third door. Verifies the PAGE's wiring; GuidedRecipe.test.jsx covers the flow.
-describe('PlantRecipe — the guided door', () => {
-  it('offers all three ways in', async () => {
-    renderFlow()
-    for (const name of [
-      /passed down to you/i,
-      /one of your own/i,
-      /paste the whole thing/i,
-      // Demoted to a quiet text link under the paste card, but still a button with
-      // an accessible name — reachable and keyboard-focusable, just visibly secondary.
-      /ask you one thing at a time/i,
-    ]) {
-      expect(screen.getByRole('button', { name })).toBeInTheDocument()
-    }
-  })
-
-  it('is reachable straight from the doorway, without choosing an origin first', async () => {
-    // It asks whose the dish is itself, so it doesn't need a door chosen — and a first
-    // version that depended on originMode silently dropped attribution when entered
-    // this way.
-    renderFlow()
-    await userEvent.click(
-      screen.getByRole('button', { name: /ask you one thing at a time/i }),
-    )
-    expect(screen.getByText(/what did you make/i)).toBeInTheDocument()
-  })
-
-  it('back from the guided flow returns to the doorway, not out of the app', async () => {
-    renderFlow()
-    await userEvent.click(
-      screen.getByRole('button', { name: /ask you one thing at a time/i }),
-    )
-    await userEvent.click(screen.getByRole('button', { name: /back/i }))
-    expect(screen.getByText(/where does this/i)).toBeInTheDocument()
+    // Same celebration reveal as a full save — a name-only recipe is a smaller
+    // recipe, not a different kind of thing.
+    expect(
+      await screen.findByText(/celebration for Congee/i),
+    ).toBeInTheDocument()
   })
 })
 
@@ -404,9 +361,6 @@ describe('PlantRecipe — the model reads it first', () => {
   })
 
   it('keeps an amount in the words it was said in', async () => {
-    // The one thing that would make this feature worse than nothing: "about a thumb"
-    // coming back as "15 g". The server re-types every amount with the app's own
-    // classifier, and the words pass through untouched.
     parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
     await speak()
     await waitFor(() => expect(lastProps).not.toBeNull())
@@ -415,8 +369,6 @@ describe('PlantRecipe — the model reads it first', () => {
   })
 
   it('puts a remark about a step into that step’s note', async () => {
-    // voice_note exists precisely for the thing an ingredient list can't hold. Folding
-    // it into the step text would lose the distinction the app is built on.
     parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
     await speak()
     await waitFor(() => expect(lastProps).not.toBeNull())
@@ -426,7 +378,7 @@ describe('PlantRecipe — the model reads it first', () => {
     })
   })
 
-  it('fills the extras it heard, and the person it came from', async () => {
+  it('fills the extras it heard, and seeds the source field with the person it came from', async () => {
     parseRecipeWithAI.mockResolvedValue({ data: AI_ANSWER })
     await speak()
     await waitFor(() => expect(lastProps).not.toBeNull())
@@ -435,8 +387,9 @@ describe('PlantRecipe — the model reads it first', () => {
       servings: '4',
       cuisine: 'Filipino',
       description: 'Sour pork soup.',
+      sourceName: 'Lola',
     })
-    // Attribution reaches the SourceFields the inherited door uses, not a second path.
+    // The seeded source name appears in the form's own field.
     expect(screen.getByDisplayValue('Lola')).toBeInTheDocument()
   })
 
@@ -448,9 +401,6 @@ describe('PlantRecipe — the model reads it first', () => {
   })
 
   it('falls back to the local parser when the model is unavailable', async () => {
-    // ai:false covers a missing key, a rate limit, a timeout and malformed JSON. The
-    // door has to keep working — this is the difference between a feature and a
-    // dependency.
     parseRecipeWithAI.mockResolvedValue({ data: { ai: false } })
     await speak(TIDY)
     await waitFor(() => expect(lastProps).not.toBeNull())
@@ -459,20 +409,14 @@ describe('PlantRecipe — the model reads it first', () => {
   })
 
   it('falls back silently when the request itself throws', async () => {
-    // Offline, 500, DNS failure. The user must not see a stack of red — the local
-    // parser produces something usable and the flow continues.
     parseRecipeWithAI.mockRejectedValue(new Error('offline'))
     await speak(TIDY)
     await waitFor(() => expect(lastProps).not.toBeNull())
     expect(lastProps.initialValues.name).toBe('Adobo')
-    // No error surface at all: checked by the app's own error styling rather than by
-    // matching words, since "wrong" appears in the form's ordinary copy.
     expect(document.querySelector('.error-pill')).toBeNull()
   })
 
   it('falls back when the model returns nothing usable', async () => {
-    // ai:true but empty is a model that answered without finding a recipe. Trusting it
-    // would drop someone into a blank form having lost their text.
     parseRecipeWithAI.mockResolvedValue({
       data: { ai: true, name: '', ingredients: [], steps: [] },
     })

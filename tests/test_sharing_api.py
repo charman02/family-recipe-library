@@ -24,6 +24,65 @@ def test_origin_becomes_the_recipe_byline(client, make_user):
     assert "Abruzzo" in body["origin_attribution"]
 
 
+def test_patch_can_set_and_clear_the_byline(client, make_user):
+    # The add/edit form now carries the "passed down from" name, so PATCH has to be
+    # able to write the byline onto a self-authored recipe and clear it again. This
+    # was silently impossible before: RecipeUpdate had no `origin` field, so the
+    # form's edit could never change attribution.
+    _, headers = make_user()
+    created = client.post(
+        "/recipes",
+        json={"name": "Adobo", "steps": [{"content": "Brown the meat", "position": 1}]},
+        headers=headers,
+    ).json()
+    assert created["origin_attribution"] is None
+
+    # Set it.
+    r = client.patch(
+        f"/recipes/{created['id']}",
+        json={"origin": {"name": "Lola Remedios", "place": "Cebu"}},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert "Lola Remedios" in r.json()["origin_attribution"]
+    assert "Cebu" in r.json()["origin_attribution"]
+
+    # Clear it — an empty name means "remove the byline".
+    r = client.patch(
+        f"/recipes/{created['id']}",
+        json={"origin": {"name": ""}},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["origin_attribution"] is None
+
+
+def test_patch_without_origin_leaves_the_byline_untouched(client, make_user):
+    # An edit that never touches the source field omits `origin`, so a stored byline
+    # (including a place/year the form's single name input can't show) must survive.
+    _, headers = make_user()
+    created = client.post(
+        "/recipes",
+        json={
+            "name": "Sinigang",
+            "origin": {"name": "Tita Bing", "place": "Manila", "year": "1985"},
+            "steps": [{"content": "Boil", "position": 1}],
+        },
+        headers=headers,
+    ).json()
+    before = created["origin_attribution"]
+    assert "Tita Bing" in before and "Manila" in before
+
+    # A scalar-only edit that doesn't send origin.
+    r = client.patch(
+        f"/recipes/{created['id']}",
+        json={"description": "sour soup"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["origin_attribution"] == before
+
+
 def _make_root(client, headers):
     payload = {
         "name": "Adobo",
