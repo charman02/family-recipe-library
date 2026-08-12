@@ -11,11 +11,11 @@ The name is the reason it's built this way: *Issei* (一世) means "first genera
 
 So a recipe here is attributed to a **person** — the dish is the title, the person is the byline ("from Lola") — and their imprecise measurements ("a dash," "three soup spoons," "until it smells right") are preserved verbatim and celebrated as fidelity rather than normalized away. The knowledge that an ingredient list can't hold lives as a note on the individual step it belongs to. The UI is a warm, playful "kitchen": bold color-block stickers, chunky display type, and food-forward illustration, mobile-first.
 
-**Getting a recipe in is meant to feel like telling someone how you make it.** The primary way to add a recipe is to paste (or dictate) the whole thing as one blob — "you need about a kilo of pork belly, a good splash of fish sauce, simmer till it smells right" — and a language model structures it into title, ingredients, and steps, which you then correct before saving. Two guarantees make this safe rather than lossy: **amounts come back verbatim** ("a good splash" stays "a good splash"; the app re-classifies every amount with its own parser, so the model can't quietly normalize "a kilo" into "1000 g"), and **the feature is optional** — with no API key the endpoint reports itself unavailable and the client falls back to a local line-based parser, so recipe capture never depends on a third party being up. Long text fields also support **speak-to-type dictation** via the browser's own speech-to-text: the microphone types characters into the field you can see and edit — **no audio is recorded, stored, or sent anywhere.** There are three doors in all: this paste-or-dictate blob (the default), a *guided* mode that asks one thing at a time (with tappable amount/unit chips), and the plain field-by-field form — each lands on the same editable draft before it saves.
+**Getting a recipe in is meant to feel like telling someone how you make it.** The primary way to add a recipe is to paste (or dictate) the whole thing as one blob — "you need about a kilo of pork belly, a good splash of fish sauce, simmer till it smells right" — and a language model structures it into title, ingredients, and steps, which you then correct before saving. Two guarantees make this safe rather than lossy: **amounts come back verbatim** ("a good splash" stays "a good splash"; the app re-classifies every amount with its own parser, so the model can't quietly normalize "a kilo" into "1000 g"), and **the feature is optional** — with no API key the endpoint reports itself unavailable and the client falls back to a local line-based parser, so recipe capture never depends on a third party being up. Long text fields also support **speak-to-type dictation** via the browser's own speech-to-text: the microphone types characters into the field you can see and edit — **no audio is recorded, stored, or sent anywhere.** There are two doors: this paste-or-dictate blob (the default) and the plain field-by-field form — each lands on the same editable draft before it saves.
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private → shared → public visibility.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 22 endpoints, 8 data models, 668 automated tests (187 pytest + 481 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (Render) → PostgreSQL (Neon). JWT auth, 23 endpoints, 8 data models, 671 automated tests (200 pytest + 471 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -32,9 +32,9 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - backend tests (187) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup validation).
+**pytest** - backend tests (200) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (481 in 33 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (471 in 33 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -72,6 +72,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | POST | /auth/signup | No | Creates a new user account. Returns id, email, and created_at. |
 | POST | /auth/login | No | Verifies credentials and returns a JWT access token. |
 | GET | /auth/me | Yes | Returns the currently authenticated user. |
+| PATCH | /auth/me | Yes | Edits the account: name, email, and/or password. Email and password changes require the correct current password; a name change doesn't. Email must be unique. Returns the updated user. |
 | POST | /recipes | Yes | Creates and returns a new recipe. |
 | GET | /recipes | Yes | Returns the current user's recipes. |
 | GET | /recipes/{recipe_id} | Yes | Returns the queried recipe. |
@@ -91,7 +92,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | GET | /recipes/ingredient-suggestions | Yes | The caller's own ingredient vocabulary, for autosuggest. |
 | POST | /recipes/parse | Yes | Structures a spoken/pasted recipe into fields via an LLM (OpenRouter). Saves nothing — returns a draft the client shows for correction. Amounts come back verbatim and are re-typed server-side, never converted. Returns `ai: false` (client falls back to a local parser) when the model is unavailable, so `/add` keeps working with no key. |
 
-*22 routes as committed — the table is the whole surface. This count has changed several times as features were removed, so verify rather than trust it: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
+*23 routes as committed — the table is the whole surface. This count has changed several times as features were added and removed, so verify rather than trust it: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
 
 **Three visibility tiers — Private → Shared → Public.** A recipe is viewable by a user when: its visibility is `public`, **or** they own it, **or** they hold an accepted handoff (grant) on it. "Shared" is not a stored enum value — `visibility` stays `private | public`; a private recipe with ≥1 accepted grant *is* shared with those people. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `can_view` (`app/services/sharing.py`) is the single read-authorization rule every recipe read funnels through. **Read is not write:** editing and deleting stay owner-only, enforced by a `user_id` filter in `patch_recipe`/`delete_recipe` — a grantee can read and cook a recipe they were handed, never change someone else's record of it.
 
