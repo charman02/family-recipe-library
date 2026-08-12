@@ -57,11 +57,11 @@ export default function HandoffPage() {
           </button>
         </div>
         <h1 className="font-display font-black text-[28px] leading-tight text-ink">
-          Send {recipe.name}
+          Send <span className="text-terra">{recipe.name}</span>
         </h1>
         <p className="font-display italic text-[14.5px] text-ink-soft mt-1">
-          You&rsquo;ll get a link to send. Whoever opens it can read this
-          recipe and cook it, with no account needed.
+          You&rsquo;ll get a link to send. Whoever opens it can read and cook it,
+          no account needed.
         </p>
       </header>
 
@@ -73,6 +73,7 @@ export default function HandoffPage() {
           sourceName={source}
           onSent={back}
           onSkip={back}
+          showHeading={false}
         />
       </div>
     </div>

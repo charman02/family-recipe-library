@@ -36,6 +36,10 @@ export default function HandoffInvite({
   sourceName = null,
   onSent,
   onSkip,
+  // HandoffPage prints its own "Send {recipe}" header + subline, so it suppresses
+  // this component's — otherwise the same "you'll get a link…" line appeared twice
+  // on one screen. The post-save flow in PlantRecipe has no header, so it keeps it.
+  showHeading = true,
 }) {
   const seedKey = defaultStarterKey(sourceName)
   const seedNote = seedKey
@@ -173,24 +177,29 @@ export default function HandoffInvite({
   // ---- STAGE 1: compose ----
   return (
     <div className="px-[18px] py-6 text-center">
-      <h1 className="font-display font-black text-[26px] text-ink leading-tight">
-        Who else should
-        <br />
-        have this recipe?
-      </h1>
-      <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
-        {recipeVisibility === 'public'
-          ? 'You’ll get a link to send them, so they don’t have to go looking. This recipe is already in Browse for anyone to find.'
-          : 'You’ll get a link to send them. Whoever opens it can read this recipe, cook it, and keep a copy — and add the parts only they know.'}
-      </p>
-      {/* The reassurance testers actually asked for, stated only as strongly as
-          the backend backs up: handing off mints a grant and leaves `visibility`
-          alone, so the recipe stays out of Browse. Shown for private recipes
-          only — for a public one it would be false. */}
+      {/* Heading only where the surrounding page hasn't already printed one
+          (see showHeading). The post-save flow has no page header, so it needs
+          this; HandoffPage suppresses it to avoid saying the same thing twice. */}
+      {showHeading && (
+        <>
+          <h1 className="font-display font-black text-[26px] text-ink leading-tight">
+            Who else should
+            <br />
+            have this recipe?
+          </h1>
+          <p className="font-display italic text-[14px] text-ink-soft mt-2 mb-5">
+            {recipeVisibility === 'public'
+              ? 'You’ll get a link to send. This recipe is already in Browse for anyone to find.'
+              : 'You’ll get a link to send. Whoever opens it can read and cook it, no account needed.'}
+          </p>
+        </>
+      )}
+      {/* The reassurance testers asked for — a private recipe stays out of Browse —
+          stated only as strongly as the backend backs up (handoff mints a grant and
+          leaves visibility alone). Private recipes only; false for a public one. */}
       {recipeVisibility !== 'public' && (
         <p className="font-display text-[12.5px] text-ink leading-snug bg-sage/40 border-2 border-ink rounded-[12px] px-3 py-2 mb-4 text-left">
-          This doesn’t put your recipe in Browse — nobody can come across it on
-          their own. Only someone holding the link can open it.
+          This won’t put your recipe in Browse — only someone with the link can open it.
         </p>
       )}
       <div className="flex gap-2 mb-2.5">
@@ -230,10 +239,10 @@ export default function HandoffInvite({
       {/* Deliberately does NOT say "we'll email them" — nothing in this app sends
           mail. The email only pre-addresses the invite, which auth.py's signup
           auto-accepts (pending handoffs matching the new user's email). You still
-          have to send the link yourself. */}
+          send the link yourself. */}
       <p className="font-display italic text-[12px] text-ink-soft mb-3">
-        We won&rsquo;t email them — you send the link. Adding their address just
-        means the recipe is already waiting if they make an account.
+        We won&rsquo;t email them — you send the link. Their address just saves the
+        recipe for them if they sign up.
       </p>
       {error && (
         <p className="mb-3">

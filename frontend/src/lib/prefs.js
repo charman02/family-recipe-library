@@ -26,3 +26,16 @@ export function setPref(key, value) {
   localStorage.setItem(PREFS_KEY, JSON.stringify(next))
   return next
 }
+
+// Should motion be suppressed? True when EITHER the user's in-app "Turn off
+// animations" toggle is on OR the OS-level prefers-reduced-motion is set. Either
+// signal is a request for stillness, so decorative motion (the save celebration)
+// honors both — the app toggle existed but nothing consumed it until now.
+export function prefersReducedMotion() {
+  if (loadPrefs().reduceMotion) return true
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  } catch {
+    return false
+  }
+}

@@ -59,7 +59,7 @@ describe('HandoffInvite', () => {
     expect(onSkip).toHaveBeenCalled()
   })
 
-  it('invites cooking and keeping, never remixing (private)', () => {
+  it('invites reading and cooking, never remixing or completing (private)', () => {
     render(
       <HandoffInvite
         recipeId={1}
@@ -68,8 +68,11 @@ describe('HandoffInvite', () => {
         onSkip={() => {}}
       />,
     )
-    expect(screen.getByText(/cook it, and keep a copy/i)).toBeInTheDocument()
+    expect(screen.getByText(/read and cook it/i)).toBeInTheDocument()
     expect(screen.queryByText(/remix/i)).not.toBeInTheDocument()
+    // The sharing purpose is to give a dish to someone who's never had it — not to
+    // ask them to fill in or edit it (a recipient can't edit anyway).
+    expect(screen.queryByText(/add the part/i)).not.toBeInTheDocument()
   })
 
   it('shows nudge copy for a public recipe', () => {
@@ -100,7 +103,7 @@ describe('HandoffInvite', () => {
       />,
     )
     expect(
-      screen.getByText(/doesn’t put your recipe in Browse/i),
+      screen.getByText(/won’t put your recipe in Browse/i),
     ).toBeInTheDocument()
   })
 
@@ -113,7 +116,7 @@ describe('HandoffInvite', () => {
         onSkip={() => {}}
       />,
     )
-    expect(screen.queryByText(/doesn’t put your recipe in Browse/i)).toBeNull()
+    expect(screen.queryByText(/won’t put your recipe in Browse/i)).toBeNull()
   })
 
   it('warns on the share step that the link itself is the permission', async () => {
@@ -135,14 +138,16 @@ describe('HandoffInvite', () => {
   it('tapping a starter fills the note', async () => {
     render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
     await userEvent.click(
-      screen.getByRole('button', { name: /add the part i.m missing/i }),
+      screen.getByRole('button', { name: /you.d love this/i }),
     )
     expect(screen.getByPlaceholderText(/a note in your words/i)).toHaveValue(
-      'Add the part I’m missing — the measures, the timing, the way you know it.',
+      'You’d love this — I wanted you to have it.',
     )
   })
 
-  it('pre-selects the fill-in starter note when passing back to the source', () => {
+  it('pre-selects no starter — the note is empty and optional by default', () => {
+    // The fill-in starter that auto-armed when passing back to the source was
+    // removed along with the "complete my recipe" framing; nothing auto-fills now.
     render(
       <HandoffInvite
         recipeId={7}
@@ -151,8 +156,6 @@ describe('HandoffInvite', () => {
         onSkip={() => {}}
       />,
     )
-    expect(screen.getByPlaceholderText(/a note in your words/i)).toHaveValue(
-      'Add the part I’m missing — the measures, the timing, the way you know it.',
-    )
+    expect(screen.getByPlaceholderText(/a note in your words/i)).toHaveValue('')
   })
 })
