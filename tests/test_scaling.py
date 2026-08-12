@@ -48,11 +48,14 @@ def test_imprecise_without_value():
         quantity_type="imprecise",
     )
     scaled_ing = scale_ingredient(ingredient, 3)
+    # The words never change — there's no number to multiply.
     assert scaled_ing["quantity_text"] == "a dash"
     assert scaled_ing["quantity_value"] is None
+    # ...but the cook is still told the batch tripled, via the multiplier note.
+    assert scaled_ing["scale_note"] == "×3"
 
 
-def test_unmeasured_unchanged():
+def test_unmeasured_shows_the_multiplier_but_keeps_the_words():
     ingredient = Ingredient(
         name="salt",
         quantity_text="to taste",
@@ -61,6 +64,21 @@ def test_unmeasured_unchanged():
     scaled_ing = scale_ingredient(ingredient, 2.5)
     assert scaled_ing["quantity_text"] == "to taste"
     assert scaled_ing["quantity_value"] is None
+    # "a good splash" doubled is still a good splash — but at 2.5× the cook should
+    # know the batch grew, so the yellow ×N tag renders beside the verbatim words.
+    assert scaled_ing["scale_note"] == "×2.5"
+
+
+def test_unmeasured_has_no_multiplier_at_one_x():
+    # At the recipe's own serving count nothing is scaled, so no tag appears.
+    ingredient = Ingredient(
+        name="salt",
+        quantity_text="to taste",
+        quantity_type="unmeasured",
+    )
+    scaled_ing = scale_ingredient(ingredient, 1)
+    assert scaled_ing["quantity_text"] == "to taste"
+    assert scaled_ing["scale_note"] is None
 
 
 # --- folk / body / vessel units: the hybrid rule ---

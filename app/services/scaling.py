@@ -45,7 +45,14 @@ def scale_ingredient(ingredient: Ingredient, multiplier: float) -> dict:
         elif ingredient.quantity_type == "imprecise":
             _scale_imprecise(ingredient, multiplier, scaled_ing)
 
-    # "imprecise" without value or "unmeasured": return unchanged
+    # "unmeasured" ("a good splash", "to taste") and "imprecise" with no numeric
+    # value are kept in the cook's own words — there is nothing to multiply. But at
+    # a non-1 scale the cook still needs to know the batch grew, so hand back the
+    # multiplier as a scale_note (the same ×N the verbatim folk-unit path uses),
+    # rendered as the yellow tag beside the amount. The words themselves never change.
+    elif multiplier != 1:
+        scaled_ing["scale_note"] = f"×{_tidy(multiplier)}"
+
     return scaled_ing
 
 

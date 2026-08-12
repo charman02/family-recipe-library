@@ -17,6 +17,14 @@ export const setVisibility = (id, visibility) =>
 // signal to fall back to the local line-based parser rather than trust an empty result.
 export const parseRecipeWithAI = (text) => client.post('/recipes/parse', { text })
 
+// Rescale a recipe to a target serving count. Returns the full recipe with its
+// ingredient amounts scaled — precise ones by arithmetic, folk/imprecise ones only
+// when the result is still a whole vessel, and non-linear ones kept verbatim with a
+// `scale_note` (×N) for the cook to apply by feel. Saves nothing; the recipe's own
+// stored amounts are never touched.
+export const scaleRecipe = (id, servings) =>
+  client.get(`/recipes/${id}/scale`, { params: { servings } })
+
 export const getSharedWithMe = () => client.get('/recipes/shared')
 export const getInvitePreview = (token) =>
   client.get(`/recipes/invite/${token}`)

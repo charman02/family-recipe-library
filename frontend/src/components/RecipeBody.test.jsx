@@ -1,7 +1,18 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import RecipeBody from './RecipeBody'
+
+// The servings stepper calls GET /recipes/{id}/scale via scaleRecipe. Stub it so
+// the component is drivable without a backend; each test sets its own resolution.
+vi.mock('../api/sharing', () => ({
+  scaleRecipe: vi.fn(),
+}))
+import { scaleRecipe } from '../api/sharing'
+
+beforeEach(() => {
+  scaleRecipe.mockReset()
+})
 
 const base = {
   name: 'Adobo',
@@ -569,5 +580,87 @@ describe('RecipeBody — a step’s technique photo', () => {
     expect(photoFor(1).className).toMatch(/opacity-/)
     await userEvent.click(box)
     expect(photoFor(1).className).not.toMatch(/opacity-/)
+  })
+})
+
+// SERVINGS STEPPER. The scaling itself is the backend's job (fidelity: folk units
+// stay verbatim); this just drives GET /scale and renders what comes back.
+describe('RecipeBody — servings stepper', () => {
+  const scalable = {
+    id: 7,
+    name: 'Adobo',
+    servings: 4,
+    ingredients: [
+      { name: 'Chicken', quantity_text: '2 lbs', quantity_type: 'precise', position: 1 },
+      { name: 'Water', quantity_text: '3 fingers', quantity_type: 'imprecise', position: 2 },
+    ],
+    ingredient_sections: [],
+    steps: [{ content: 'Brown it.', position: 1 }],
+  }
+
+  it('does not show the stepper unless the page opts in (scalable)', () => {
+    // The public invite page has no authenticated /scale, so it must never render.
+    render(<RecipeBody recipe={scalable} />)
+    expect(screen.queryByLabelText(/more servings/i)).toBeNull()
+  })
+
+  it('does not show the stepper when the recipe has no servings', () => {
+    render(<RecipeBody recipe={{ ...scalable, servings: null }} scalable />)
+    expect(screen.queryByLabelText(/more servings/i)).toBeNull()
+  })
+
+  it('starts at the recipe’s own count and fetches nothing at rest', () => {
+    render(<RecipeBody recipe={scalable} scalable />)
+    expect(screen.getByLabelText(/more servings/i)).toBeInTheDocument()
+    // The count reads 4 and no scale request has fired yet.
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(scaleRecipe).not.toHaveBeenCalled()
+  })
+
+  it('fetches the scaled amounts when the count changes, and shows them', async () => {
+    scaleRecipe.mockResolvedValue({
+      data: {
+        ...scalable,
+        servings: 8,
+        ingredients: [
+          { name: 'Chicken', quantity_text: '4.0 lbs', quantity_type: 'precise', position: 1 },
+          // Non-linear: kept verbatim, with the multiplier as a scale_note.
+          {
+            name: 'Water',
+            quantity_text: '3 fingers',
+            quantity_type: 'imprecise',
+            position: 2,
+            scale_note: '×2',
+          },
+        ],
+      },
+    })
+    render(<RecipeBody recipe={scalable} scalable />)
+    await userEvent.click(screen.getByLabelText(/more servings/i)) // 4 → 5
+    await waitFor(() => expect(scaleRecipe).toHaveBeenCalledWith(7, 5))
+    // The scaled ingredient and the verbatim-with-×N note both render.
+    expect(await screen.findByText('4.0 lbs')).toBeInTheDocument()
+    expect(screen.getByText('×2')).toBeInTheDocument()
+    // "3 fingers" stayed verbatim — fidelity held.
+    expect(screen.getByText('3 fingers')).toBeInTheDocument()
+  })
+
+  it('offers a reset back to the original count', async () => {
+    scaleRecipe.mockResolvedValue({
+      data: { ...scalable, servings: 5, ingredients: scalable.ingredients },
+    })
+    render(<RecipeBody recipe={scalable} scalable />)
+    await userEvent.click(screen.getByLabelText(/more servings/i))
+    const reset = await screen.findByText(/scaled from 4 — reset/i)
+    await userEvent.click(reset)
+    // Back at 4, the reset link is gone.
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.queryByText(/scaled from/i)).toBeNull()
+  })
+
+  it('never goes below 1 serving', async () => {
+    render(<RecipeBody recipe={{ ...scalable, servings: 1 }} scalable />)
+    const minus = screen.getByLabelText(/fewer servings/i)
+    expect(minus).toBeDisabled()
   })
 })

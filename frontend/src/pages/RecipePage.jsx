@@ -101,7 +101,7 @@ export default function RecipePage() {
 
       {/* BODY — cover, byline, story, ingredients + steps (with cooking mode). */}
       <div className="px-5 pb-8">
-        <RecipeBody recipe={recipe} />
+        <RecipeBody recipe={recipe} scalable />
 
         {/* OWNER SURFACES — who can see it, and passing it on to the next hand. */}
         {isOwner && (

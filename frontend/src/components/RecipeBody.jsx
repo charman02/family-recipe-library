@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { isImprecise, impreciseLabel } from '../lib/measures'
+import { scaleRecipe } from '../api/sharing'
 import CoverImage from './CoverImage'
 import MarkerTitle from './MarkerTitle'
 
@@ -46,7 +47,7 @@ function SecHead({ children }) {
 // "owner" (the default, so every existing caller is unchanged) shows the add-a-
 // photo nudge, "reader" shows a quiet placeholder — see CoverImage for why the
 // recipient's page must not get the nudge or a second wordmark.
-export default function RecipeBody({ recipe, context = 'owner' }) {
+export default function RecipeBody({ recipe, context = 'owner', scalable = false }) {
   // Which steps the cook has ticked off THIS session. Deliberately not persisted:
   // it's a place-holder for the next ten minutes, not a record — and saving it
   // would raise questions (whose progress? cleared when?) that the feature
@@ -64,10 +65,60 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
   // distraction-free cook. Rich-by-default honors the soul; one tap = focus.
   const [cooking, setCooking] = useState(false)
 
+  // Serving-size scaling. The stepper below sets a TARGET count; when it differs
+  // from the recipe's own servings we fetch GET /recipes/{id}/scale and render the
+  // amounts it returns. The scaling is the backend's job on purpose — precise
+  // amounts scale by arithmetic, folk units only when the result is still a whole
+  // vessel, and a non-linear "3 fingers of water" is kept verbatim with a ×N note
+  // for the cook to apply by feel. `scalable` is off by default so the public
+  // invite page (which has no authenticated /scale) is unaffected; RecipePage
+  // turns it on. A recipe with no servings can't be scaled at all.
+  const canScale = scalable && recipe.servings != null && recipe.servings > 0
+  const [targetServings, setTargetServings] = useState(recipe.servings ?? null)
+  const [scaled, setScaled] = useState(null) // the /scale response, or null at 1×
+  const [scaling, setScaling] = useState(false)
+  // A recipe change (navigating between recipes reuses this component) resets the
+  // stepper to the recipe's own serving count.
+  useEffect(() => {
+    setTargetServings(recipe.servings ?? null)
+    setScaled(null)
+  }, [recipe.id, recipe.servings])
+
+  // Guard against a slow response landing after a newer one: only the latest
+  // requested target may write state.
+  const scaleReqRef = useRef(0)
+  useEffect(() => {
+    if (!canScale) return
+    if (targetServings == null || targetServings === recipe.servings) {
+      setScaled(null)
+      return
+    }
+    const reqId = ++scaleReqRef.current
+    setScaling(true)
+    scaleRecipe(recipe.id, targetServings)
+      .then(({ data }) => {
+        if (reqId === scaleReqRef.current) setScaled(data)
+      })
+      .catch(() => {
+        // A failed scale falls back to the unscaled amounts rather than showing an
+        // error mid-recipe — the original is always correct, just not rescaled.
+        if (reqId === scaleReqRef.current) {
+          setScaled(null)
+          setTargetServings(recipe.servings)
+        }
+      })
+      .finally(() => {
+        if (reqId === scaleReqRef.current) setScaling(false)
+      })
+  }, [targetServings, canScale, recipe.id, recipe.servings])
+
+  // The recipe to READ FROM: the scaled response when active, else the original.
+  const shown = scaled || recipe
+
   // Direct-FK ingredients + sectioned ingredients, merged and ordered by position.
   const allIngredients = [
-    ...(recipe.ingredients || []),
-    ...(recipe.ingredient_sections || []).flatMap((s) =>
+    ...(shown.ingredients || []),
+    ...(shown.ingredient_sections || []).flatMap((s) =>
       s.ingredients.map((ing) => ({ ...ing, sectionName: s.name })),
     ),
   ].sort((a, b) => a.position - b.position)
@@ -286,6 +337,57 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
       )}
 
       <SecHead>Ingredients</SecHead>
+
+      {/* Servings stepper — rescales the amounts below to a target count. Only on
+          the owner-authenticated page (canScale) and only when the recipe has a
+          serving count to scale from. The amounts a person left in their own words
+          ("a good splash") don't change — those come back verbatim with a ×N note
+          instead, honoring the fidelity rule while still helping the cook. */}
+      {canScale && (
+        <div className="flex items-center justify-between gap-3 mb-1 mt-0.5">
+          <span className="font-display font-bold text-[12.5px] uppercase tracking-[0.08em] text-ink-soft">
+            {scaling ? 'Scaling…' : 'Serves'}
+          </span>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              aria-label="Fewer servings"
+              disabled={targetServings <= 1}
+              onClick={() => setTargetServings((n) => Math.max(1, (n ?? 1) - 1))}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-cream border-2 border-ink text-ink font-display font-black text-[18px] leading-none shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-40 disabled:active:translate-y-0"
+            >
+              −
+            </button>
+            <span
+              aria-live="polite"
+              className="font-display font-black text-[19px] text-ink min-w-[1.5ch] text-center tabular-nums"
+            >
+              {targetServings}
+            </span>
+            <button
+              type="button"
+              aria-label="More servings"
+              disabled={targetServings >= 99}
+              onClick={() => setTargetServings((n) => Math.min(99, (n ?? 1) + 1))}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-cream border-2 border-ink text-ink font-display font-black text-[18px] leading-none shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-40 disabled:active:translate-y-0"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      )}
+      {/* When scaled away from the original, offer a one-tap reset and name the
+          starting point, so the change is never a mystery. */}
+      {canScale && scaled && targetServings !== recipe.servings && (
+        <button
+          type="button"
+          onClick={() => setTargetServings(recipe.servings)}
+          className="font-display italic text-[12px] text-terra underline decoration-line underline-offset-2 mb-1"
+        >
+          scaled from {recipe.servings} — reset
+        </button>
+      )}
+
       <ul className="list-none m-0 p-0">
         {allIngredients.map((ing, idx) => (
           <li
@@ -295,6 +397,14 @@ export default function RecipeBody({ recipe, context = 'owner' }) {
             <span className="text-ink">{ing.name}</span>
             <span className="flex items-baseline flex-wrap justify-end gap-1.5 text-right flex-shrink-0 font-display font-black text-[17px] text-ink">
               {ing.quantity_text}
+              {/* The multiplier for an amount the scaler deliberately kept verbatim
+                  (a non-linear folk measure like "3 fingers of water"): the cook
+                  gets the ×N to apply by feel rather than an invented number. */}
+              {ing.scale_note && (
+                <span className="font-display font-bold text-[10.5px] tracking-[0.3px] text-ink bg-saffron border-2 border-ink rounded-full px-2 py-0.5 leading-tight whitespace-nowrap">
+                  {ing.scale_note}
+                </span>
+              )}
               {isImprecise(ing) && (
                 <span className="font-display font-bold text-[10.5px] tracking-[0.3px] lowercase text-cream bg-plum border-2 border-ink rounded-full px-2 py-0.5 leading-tight whitespace-nowrap">
                   {impreciseLabel(ing)}
