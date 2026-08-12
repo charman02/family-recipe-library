@@ -225,8 +225,9 @@ handwritten face exists, and only two families are loaded.**
 The seed → sprout → sapling → tree plant UI was removed in the kitchen redesign. The
 backend still *computes* `growth_stage` / `growth_vitality` / `soul_count`
 (`app/services/growth.py`, returned on `RecipeResponse`) but **no frontend surface
-displays them**. Don't describe growth stages as a feature a user can see. The old UI
-is at the `garden-v1` tag; the old docs are in `docs/archive/garden/`.
+displays them**. Don't describe growth stages as a feature a user can see. The garden
+UI and its docs were removed once the kitchen design was locked in; they live only in
+git history now.
 
 ### Don't inflate the numbers — measure them
 

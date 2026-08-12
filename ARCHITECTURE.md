@@ -15,8 +15,9 @@ of things the app does *not* do, see `POSITIONING.md`.
 > plants. That UI was replaced by the current kitchen design. The backend still
 > *computes* growth fields (`growth_stage`/`growth_vitality` via
 > `services/growth.py`) and returns them on `RecipeResponse`, but the frontend
-> no longer surfaces them. The old garden-era docs are archived under
-> `docs/archive/garden/`, and the full garden UI lives at the `garden-v1` tag.
+> no longer surfaces them. The garden UI and its docs were removed once the
+> kitchen design was locked in; they remain in the project's git history for
+> anyone who needs to see how it worked.
 
 > **Note on the removed lineage model.** Recipes used to form generational trees
 > (`parent_recipe_id`, a `ghost_ancestors` table, `lineage_relation`, root-bound
@@ -237,7 +238,7 @@ factored into small reusable components. The core `.sticker` / `.field` /
 | `Feedback.jsx` | `/feedback` | The native in-app feedback form — a note (and its `VITE_APP_VERSION` stamp) posted via `api/feedback.js` (`POST /feedback`) to the `feedback` table. Replaced the old external-link-to-a-hosted-form (`VITE_FEEDBACK_URL`, now gone), so a report stays in the app and is tied to the deploy it came from. |
 | `Welcome.jsx` | `/welcome` | The post-signup intro — two panels, once, then never again (seen-state in `lib/prefs.js`). Teaches the app *after* signup rather than on the sign-in screen, using `<RecipeGlimpse>` (a real-looking sample recipe) and `<IsseiMeaning>`. A route rather than an overlay on Home, because Home can't render until three API calls answer — an overlay would make a new user watch a spinner before being taught anything. Protected, but pointedly **not** wrapped in `Layout`: no bottom nav, since a tab bar invites wandering off mid-explanation. Self-redirects to Home once seen. |
 
-(Removals, so nobody hunts for them: **`AddRecipe.jsx` is gone** — `/add` maps to `PlantRecipe`. **Remix** was removed entirely — page, API helper, and backend endpoint. **The shopping list** and `services/units.py` were removed (see `FUTURE.md` for why). **The lineage model** was removed in `8a3b734` — no `parent_recipe_id` substrate remains. The garden-era plant/growth components — `Plant`, `GardenBed`, `GardenPlant`, `LivingPlant`, `SoulSheet`, `Provenance`, `SectionHeader`, and the `growth`/`gardenBands`/`plantedBeat` libs + `useGrowthAnimation` hook — were removed in the kitchen redesign; they live at the `garden-v1` tag.)
+(Removals, so nobody hunts for them: **`AddRecipe.jsx` is gone** — `/add` maps to `PlantRecipe`. **Remix** was removed entirely — page, API helper, and backend endpoint. **The shopping list** and `services/units.py` were removed (see `FUTURE.md` for why). **The lineage model** was removed in `8a3b734` — no `parent_recipe_id` substrate remains. The garden-era plant/growth components — `Plant`, `GardenBed`, `GardenPlant`, `LivingPlant`, `SoulSheet`, `Provenance`, `SectionHeader`, and the `growth`/`gardenBands`/`plantedBeat` libs + `useGrowthAnimation` hook — were removed in the kitchen redesign; they remain in git history.)
 
 ### `lib/` — non-UI logic
 
