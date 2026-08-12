@@ -169,9 +169,21 @@ export default function DictateButton({
       {/* Status line. Announced politely — it's the state change a screen-reader
           user needs. The GUESS beside it is not announced: it is superseded
           several times a second, and the committed text lands in the field where
-          a screen reader reads it anyway. */}
+          a screen reader reads it anyway.
+
+          `absolute top-full` — NOT in-flow. The mic button is absolutely
+          positioned against this same wrapper (the field's `.relative` parent),
+          so a status line that grew the wrapper's height would drag the button
+          DOWN past the field's bottom border on the first tap — the "mic sticks
+          outside the box" bug. Floating the status just beneath the field keeps
+          the wrapper at field height, so the button stays glued where it rests.
+          The cream backing keeps it legible on the brief occasions it overlaps
+          the help line below; it only shows while actively dictating. */}
       {(listening || problem) && (
-        <p className="mt-1 flex items-baseline gap-1.5" aria-live="polite">
+        <p
+          className="absolute left-0 top-full z-10 mt-1 flex items-baseline gap-1.5 max-w-full bg-cream/95 rounded pr-1.5"
+          aria-live="polite"
+        >
           {problem ? (
             <span className="error-pill">{problem}</span>
           ) : (

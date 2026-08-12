@@ -589,54 +589,10 @@ describe('RecipeForm amount unit chips', () => {
   })
 })
 
-describe('RecipeForm inline ingredient confirm', () => {
-  const confirms = () => screen.queryAllByText(/done — next ingredient/i)
-
-  it('offers no confirm on an empty row', () => {
-    // A button offering to save nothing is a button that lies.
-    render(<RecipeForm mode="add" onSubmit={() => {}} />)
-    expect(confirms()).toHaveLength(0)
-  })
-
-  it('appears once the row has a name', () => {
-    render(<RecipeForm mode="add" onSubmit={() => {}} />)
-    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
-      target: { value: 'soy sauce' },
-    })
-    expect(confirms()).toHaveLength(1)
-  })
-
-  it('one tap moves into the next row, focused and ready', () => {
-    render(<RecipeForm mode="add" onSubmit={() => {}} />)
-    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
-      target: { value: 'soy sauce' },
-    })
-    fireEvent.click(confirms()[0])
-    expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[1]).toHaveFocus()
-  })
-
-  it('adds a row when confirming the last one', () => {
-    render(<RecipeForm mode="add" onSubmit={() => {}} />)
-    const rows = screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)
-    fireEvent.change(rows[rows.length - 1], { target: { value: 'ginger' } })
-    fireEvent.click(confirms()[0])
-    expect(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i).length).toBe(
-      rows.length + 1,
-    )
-  })
-
-  it('does not submit the form', () => {
-    // It's type=button; a confirm that saved a half-written recipe would be a
-    // disaster on the last row.
-    const onSubmit = vi.fn().mockResolvedValue(undefined)
-    render(<RecipeForm mode="add" onSubmit={onSubmit} />)
-    fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
-      target: { value: 'soy sauce' },
-    })
-    fireEvent.click(confirms()[0])
-    expect(onSubmit).not.toHaveBeenCalled()
-  })
-})
+// The inline "Done — next ingredient" button was removed: it duplicated the
+// "+ Add ingredient" button below, and Enter on the amount field already banks
+// the row and opens the next one (covered by "Enter on an amount advances to the
+// next ingredient" above). No inline confirm remains to test.
 
 // An optional technique photo per step. Two things have to hold at once: it must
 // be genuinely available (the feature exists because prose can't carry "fold it

@@ -300,20 +300,6 @@ export default function RecipeForm({
     openNextRow(opts)
   }
 
-  // The inline confirm: bank this ingredient and land in a fresh one. Same
-  // destination as Enter on the amount field, reachable by thumb — testers who
-  // never found the keyboard's return key were tapping "+ Add ingredient" and
-  // then tapping into the new row, which is the three-taps-per-line the flow was
-  // losing people to.
-  function confirmIngredient(index) {
-    openNextRow({
-      container: ingredients,
-      index,
-      addRow: () => setIngredients((prev) => [...prev, emptyIngredient()]),
-      selector: '[data-ingredient-name]',
-    })
-  }
-
   function focusIngredientField(index, selector) {
     document.querySelectorAll(selector)[index]?.focus()
   }
@@ -643,6 +629,11 @@ export default function RecipeForm({
                 <input
                   type="text"
                   data-ingredient-qty
+                  // The phone keyboard's action key reads "next" and, on this last
+                  // field of the row, advances to the next ingredient — the same
+                  // thing Enter does, surfaced where a thumb already is. No on-screen
+                  // button needed (that duplicated "+ Add ingredient").
+                  enterKeyHint="next"
                   placeholder="1/2 cup · a dash · to taste"
                   value={ing.quantity}
                   onChange={(e) =>
@@ -672,19 +663,9 @@ export default function RecipeForm({
                   }
                 />
               )}
-              {/* Confirm only once there's something to confirm — an empty row
-                  offering to save itself is a button that lies. */}
-              {ing.name.trim() && (
-                <button
-                  type="button"
-                  data-ingredient-confirm
-                  onClick={() => confirmIngredient(idx)}
-                  className="mt-2.5 inline-flex items-center gap-1.5 font-display font-bold text-[12.5px] text-terra"
-                >
-                  <Icon name="plus" className="w-3.5 h-3.5" />
-                  Done — next ingredient
-                </button>
-              )}
+              {/* No inline "next ingredient" confirm here: it duplicated the
+                  "+ Add ingredient" button below, and pressing Enter on the amount
+                  field already banks the row and opens the next one. */}
             </div>
           ))}
         </div>
@@ -738,6 +719,9 @@ export default function RecipeForm({
                   <textarea
                     id={`step-content-${step.uid}`}
                     data-step-content
+                    // Enter advances to the next step (Shift+Enter still inserts a
+                    // newline); the keyboard action key mirrors it with "next".
+                    enterKeyHint="next"
                     placeholder="Describe this step…"
                     value={step.content}
                     onChange={(e) => updateStep(idx, 'content', e.target.value)}

@@ -57,16 +57,20 @@ export default function PasteRecipe({ onParsed, onBack, initialText = '' }) {
   const [tooThin, setTooThin] = useState(false)
   const [working, setWorking] = useState(false)
 
-  // Enough to be worth sending, measured in WORDS rather than lines.
+  // Enough to be worth sending. The gate exists only to refuse a lone dish name
+  // typed into the box by mistake — everything past that is the parser's job, and
+  // an over-eager gate blocks exactly the input this feature was built for.
   //
-  // It required two lines while only the line-based parser existed, which was
-  // reasonable then and became a real bug the moment the model went in front of it: the
-  // gate blocked exactly the input this feature was built for. "sinigang, you need
-  // tamarind, a thumb of ginger, and some kangkong" is ONE line and a whole recipe, and
-  // the Sort button sat disabled on it. Words instead — a lone dish name is still
-  // refused, and anything a person actually said gets through.
-  const words = text.trim().split(/\s+/).filter(Boolean).length
-  const enough = words >= 4
+  // TWO signals, either one opens the button. A short-but-real recipe like
+  // "adobo. soy, vinegar, garlic. simmer." is only ~6 words but has the commas
+  // and line breaks that separate items — the old words>=4 gate refused plenty of
+  // real recipes just for being terse. So: 4+ words OR any item separator (a
+  // comma or a newline). A bare "Chicken Adobo" still has neither and is still
+  // (correctly) refused; the too-thin parse check downstream is the real backstop.
+  const cleaned = text.trim()
+  const words = cleaned.split(/\s+/).filter(Boolean).length
+  const hasSeparator = /[,\n]/.test(cleaned)
+  const enough = words >= 4 || (words >= 2 && hasSeparator)
 
   async function handleSort() {
     if (working) return
