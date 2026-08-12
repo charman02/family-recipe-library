@@ -176,10 +176,13 @@ export default function RecipeForm({
   // Has the user put in anything BEYOND the dish name? Drives the "just keep the
   // name" escape: once there's real content, offering to discard it isn't a shortcut.
   // Reads the same fields the payload does, so it can't drift out of agreement with
-  // what would actually be saved.
+  // what would actually be saved. Includes sourceName — the byline is the app's
+  // signature datum, so a typed "from Lola" must not be silently dropped by the
+  // name-only shortcut (which posts name+visibility only).
   const hasMoreThanName =
     Boolean(
-      description.trim() ||
+      sourceName.trim() ||
+        description.trim() ||
         story.trim() ||
         servings.trim() ||
         cuisine.trim() ||
@@ -354,14 +357,20 @@ export default function RecipeForm({
     //    → no byline; a parsed or typed name → the byline. buildOriginPayload
     //    handles both.
     //  · EDIT: send only when the name actually changed from what was seeded, so an
-    //    edit that never touched the field leaves the stored byline — including any
-    //    place/year the single name input can't show — untouched rather than
-    //    flattening it to just the name. Clearing the field sends an empty origin,
-    //    which the backend reads as "remove the byline".
+    //    edit that never touched the field leaves the stored byline untouched.
+    //    When the name DID change, carry the seeded place/year through — the form
+    //    shows only the name, but a recipe may have place/year from the older
+    //    multi-field door, and rebuilding from the name alone would silently drop
+    //    them. Clearing the name → null origin → the backend removes the byline.
     if (mode === 'add') {
       payload.origin = buildOriginPayload({ name: sourceName })
     } else if (sourceName.trim() !== (initialValues.sourceName || '').trim()) {
-      payload.origin = buildOriginPayload({ name: sourceName })
+      const seededParts = initialValues.sourceParts || {}
+      payload.origin = buildOriginPayload({
+        name: sourceName,
+        place: seededParts.place || null,
+        year: seededParts.year || null,
+      })
     }
 
     try {

@@ -1029,3 +1029,67 @@ describe('RecipeForm story prompt', () => {
     expect(screen.getByText(/what makes it yours \(optional\)/i)).toBeInTheDocument()
   })
 })
+
+describe('RecipeForm attribution is not silently dropped', () => {
+  const sourceField = () => screen.getByPlaceholderText(/lola remedios/i)
+
+  it('hides the name-only shortcut once a source is typed', () => {
+    // The "just keep the name" shortcut posts name+visibility only — no origin.
+    // A typed byline is real content, so the shortcut must step aside (the full
+    // save, which carries the origin, is used instead). Otherwise "from Lola"
+    // would vanish on the one path built to avoid losing typed data.
+    render(<RecipeForm mode="add" onQuickSave={() => {}} onSubmit={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Dish name'), {
+      target: { value: 'Adobo' },
+    })
+    expect(screen.getByText(/just keep the name for now/i)).toBeInTheDocument()
+    fireEvent.change(sourceField(), { target: { value: 'Lola' } })
+    expect(screen.queryByText(/just keep the name for now/i)).not.toBeInTheDocument()
+  })
+
+  it('carries a stored place/year through when only the name is edited', async () => {
+    // The form shows only the name, but a recipe may carry place/year from the
+    // older multi-field door. Editing the name must rebuild the byline WITH the
+    // unshown place/year, not flatten it to just the name.
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{
+          name: 'Adobo',
+          sourceName: 'Tita Bing',
+          sourceParts: { name: 'Tita Bing', place: 'Manila', year: '1985' },
+        }}
+        onSubmit={onSubmit}
+      />,
+    )
+    fireEvent.change(sourceField(), { target: { value: 'Tita Bea' } })
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const origin = onSubmit.mock.calls[0][0].origin
+    expect(origin).toMatchObject({ name: 'Tita Bea', place: 'Manila', year: '1985' })
+  })
+
+  it('omits origin entirely when the source name is untouched on edit', async () => {
+    // A scalar-only edit shouldn't send origin at all, so the stored byline
+    // (place/year included) is left exactly as it was.
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{
+          name: 'Adobo',
+          sourceName: 'Tita Bing',
+          sourceParts: { name: 'Tita Bing', place: 'Manila', year: '1985' },
+        }}
+        onSubmit={onSubmit}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Dish name'), {
+      target: { value: 'Chicken Adobo' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect('origin' in onSubmit.mock.calls[0][0]).toBe(false)
+  })
+})
