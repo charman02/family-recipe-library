@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, StringConstraints
 from datetime import datetime
 
@@ -37,3 +37,19 @@ class UserResponse(UserBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Editing an existing account (PATCH /auth/me). Every field is optional so a caller
+# sends only what's changing. The name rules match UserCreate (a byline can't become
+# blank); email is validated + checked unique in the router. Changing email or
+# password requires current_password — those alter the login identity, so a stolen,
+# unlocked session shouldn't be able to lock the real owner out. A name edit is
+# low-risk and needs no password.
+class AccountUpdate(BaseModel):
+    first_name: Optional[PersonName] = None
+    last_name: Optional[PersonName] = None
+    email: Optional[EmailStr] = None
+    # bcrypt's 72-byte ceiling, same as signup — longer is silently truncated.
+    new_password: Optional[str] = Field(default=None, min_length=8, max_length=72)
+    # Verified in the router before an email or password change is allowed.
+    current_password: Optional[str] = None

@@ -8,6 +8,14 @@ vi.mock('react-router-dom', async () => ({
   ...(await vi.importActual('react-router-dom')),
   useNavigate: () => mockNavigate,
 }))
+// Account edits go through client.patch('/auth/me'); toUserMessage passes through
+// the real formatter's behavior for the error test.
+vi.mock('../api/client', () => ({
+  default: { patch: vi.fn() },
+  toUserMessage: (err, fallback) =>
+    err?.response?.data?.detail || fallback,
+}))
+import client from '../api/client'
 import Profile from './Profile'
 
 // Covers the settings copy: round-2 testers read "Reduce motion" as jargon and
@@ -25,9 +33,15 @@ function renderProfile() {
 beforeEach(() => {
   localStorage.clear()
   mockNavigate.mockClear()
+  client.patch.mockReset()
   localStorage.setItem(
     'issei_user',
-    JSON.stringify({ id: 1, first_name: 'Yoko', email: 'yoko@example.com' }),
+    JSON.stringify({
+      id: 1,
+      first_name: 'Yoko',
+      last_name: 'M',
+      email: 'yoko@example.com',
+    }),
   )
 })
 
@@ -107,6 +121,77 @@ describe('Profile feedback entry point', () => {
     renderProfile()
     expect(
       screen.getByRole('button', { name: /send feedback/i }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('Profile account editing', () => {
+  it('replaces the old "Soon" placeholders with working editors', () => {
+    renderProfile()
+    // The three rows exist as real controls now, not disabled "Soon" badges.
+    expect(screen.getByRole('button', { name: /edit name/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /change email/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /change password/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/^soon$/i)).toBeNull()
+  })
+
+  it('saves a new name via PATCH /auth/me and refreshes the cached user', async () => {
+    client.patch.mockResolvedValue({
+      data: { first_name: 'Yoko', last_name: 'Ono', email: 'yoko@example.com' },
+    })
+    renderProfile()
+    await userEvent.click(screen.getByRole('button', { name: /edit name/i }))
+    const last = screen.getByLabelText('Last name')
+    await userEvent.clear(last)
+    await userEvent.type(last, 'Ono')
+    await userEvent.click(screen.getByRole('button', { name: /save name/i }))
+
+    expect(client.patch).toHaveBeenCalledWith('/auth/me', {
+      first_name: 'Yoko',
+      last_name: 'Ono',
+    })
+    // localStorage now reflects the server's response.
+    expect(JSON.parse(localStorage.getItem('issei_user')).last_name).toBe('Ono')
+    expect(await screen.findByText(/your name is updated/i)).toBeInTheDocument()
+  })
+
+  it('sends the current password when changing email', async () => {
+    client.patch.mockResolvedValue({
+      data: { first_name: 'Yoko', last_name: 'M', email: 'new@example.com' },
+    })
+    renderProfile()
+    await userEvent.click(screen.getByRole('button', { name: /change email/i }))
+    const email = screen.getByLabelText('New email')
+    await userEvent.clear(email)
+    await userEvent.type(email, 'new@example.com')
+    await userEvent.type(screen.getByLabelText('Current password'), 'password123')
+    await userEvent.click(screen.getByRole('button', { name: /save email/i }))
+
+    expect(client.patch).toHaveBeenCalledWith('/auth/me', {
+      email: 'new@example.com',
+      current_password: 'password123',
+    })
+    expect(JSON.parse(localStorage.getItem('issei_user')).email).toBe(
+      'new@example.com',
+    )
+  })
+
+  it('surfaces the server error (e.g. wrong current password) without crashing', async () => {
+    client.patch.mockRejectedValue({
+      response: { data: { detail: "Your current password isn't right." } },
+    })
+    renderProfile()
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }))
+    await userEvent.type(screen.getByLabelText('Current password'), 'wrong')
+    await userEvent.type(
+      screen.getByLabelText('New password'),
+      'a-new-password',
+    )
+    await userEvent.click(screen.getByRole('button', { name: /save password/i }))
+    expect(
+      await screen.findByText(/current password isn.t right/i),
     ).toBeInTheDocument()
   })
 })
