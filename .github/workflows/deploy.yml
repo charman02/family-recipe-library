@@ -1,0 +1,110 @@
+# Deploy to AWS ECS Fargate on push to main.
+# Replaces the former Render auto-deploy. Migration is gated — a failure blocks
+# the deploy BEFORE the ECS service is touched.
+#
+# Prerequisites (one-time):
+#   1. ECR repo "issei-api" exists (CDK creates it).
+#   2. GitHub OIDC provider + "issei-github-deploy" IAM role (CDK creates it).
+#   3. GitHub repo secrets: MIGRATION_DATABASE_URL (Neon direct/non-pooler endpoint
+#      with ?sslmode=require), AWS_ACCOUNT_ID.
+#   4. .aws/task-definition.json committed (container name: issei-api, ARM64,
+#      secrets block referencing SSM params).
+#   5. Render auto-deploy is OFF.
+
+name: Deploy to ECS (prod)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch: {}  # rebuild + redeploy HEAD; NOT a rollback
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: issei-api
+  ECS_CLUSTER: issei
+  ECS_SERVICE: issei-api
+  CONTAINER_NAME: issei-api
+  TASK_DEF_PATH: .aws/task-definition.json
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04-arm  # native arm64 — no emulation needed
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/issei-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (linux/arm64)
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        run: |
+          docker buildx build --platform linux/arm64 --load \
+            --cache-from type=gha --cache-to type=gha,mode=max \
+            -t "$IMAGE" .
+
+      - name: Assert migration container is valid
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        run: |
+          # Prove the image has alembic.ini AND can import the app (catches
+          # missing deps or broken COPY). If either fails, no migration runs
+          # and no push happens — the deploy is dead here, safely.
+          docker run --rm "$IMAGE" test -f alembic.ini
+          docker run --rm \
+            -e DATABASE_URL="sqlite://" \
+            -e JWT_SECRET="ci-smoke" \
+            "$IMAGE" python -c "import app.main"
+
+      - name: Run Alembic migrations (gated, exactly once)
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+        run: |
+          # Uses the DIRECT (non-pooler) Neon endpoint so advisory locks work.
+          # JWT_SECRET is required by pydantic-settings at import time but
+          # unused during migration. A non-zero exit stops the job here — the
+          # image is never pushed and the service is never touched.
+          docker run --rm \
+            -e DATABASE_URL="$MIGRATION_DATABASE_URL" \
+            -e JWT_SECRET="migration-time-unused-but-required-by-Settings" \
+            "$IMAGE" alembic upgrade head
+
+      - name: Push image to ECR
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        run: docker push "$IMAGE"
+
+      - name: Render task definition with new image
+        id: taskdef
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.TASK_DEF_PATH }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.taskdef.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true

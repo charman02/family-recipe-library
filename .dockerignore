@@ -1,0 +1,53 @@
+# Keep the build context tiny and the image free of anything the service or
+# migrations don't need. Everything not explicitly required is excluded.
+
+# --- VCS / tooling ---
+.git
+.gitattributes
+.gitignore
+.vscode
+.idea
+.claude
+.superpowers
+.ruff_cache
+.pytest_cache
+
+# --- Python cruft ---
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# --- secrets & local state (never bake into an image) ---
+.env
+.env.*
+!.env.example
+*.db
+recipes.db
+
+# --- the entire frontend (built + deployed separately to Vercel) ---
+frontend/
+
+# --- tests & test config (not shipped to the runtime image) ---
+tests/
+conftest.py
+pyproject.toml
+
+# --- docs ---
+docs/
+*.md
+
+# --- infrastructure (CDK stack, task def template) ---
+infra/
+.aws/
+.github/
+
+# --- the full/untrimmed requirements (image installs requirements-prod.txt) ---
+requirements.txt
+
+# --- misc host junk ---
+.DS_Store
+Thumbs.db
+switch
