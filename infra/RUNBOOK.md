@@ -1,18 +1,21 @@
-# issei on AWS — deploy → verify → capture → destroy
+# issei on AWS — live deploy runbook (api.issei.app)
 
-A **verify-and-teardown** runbook. The goal is not to *run* issei on AWS long-term —
-it stays on the free stack (Vercel + Render + Neon) until real usage justifies the
-~$36/mo. The goal is to prove the ECS/Fargate/CDK/OIDC infrastructure genuinely
-works end-to-end, capture the evidence, and tear it down (~$1–3 for a few hours).
-Re-spin any time with the same steps.
+Deploys the issei API to AWS ECS Fargate behind an ALB, served over **HTTPS at
+`https://api.issei.app`**, and cuts the live Vercel frontend over to it. This is a
+**keep-it-running** deploy (not the teardown artifact) — cost is ~$36/mo, mostly
+the ALB + public IPs, which bill even at zero traffic. Tear down later with
+`cdk destroy` (Step 6) if the cost isn't worth it; the app falls back to Render.
 
-**No custom domain in this mode.** The API is served over HTTP on the raw ALB DNS
-(`http://<alb>.us-west-2.elb.amazonaws.com`). That's enough to prove the deploy.
-To serve HTTPS at `api.<domain>` later: register the domain in Route53, uncomment
-the two lines in `infra/bin/issei.ts`, redeploy — no other change.
+The stack is domain-ON (`infra/bin/issei.ts` has `domainName: 'issei.app'`,
+`apiSubdomain: 'api'`). To go back to raw-ALB HTTP, comment those two lines out.
 
-Everything below runs with **your** AWS credentials, in **us-west-2**. Nothing here
-was run for you; each step is yours to execute and watch.
+**Prerequisite that gates everything: the `issei.app` Route53 hosted zone must
+exist** (auto-created when you register the domain through Route53). The ACM cert
+DNS-validates against it during `cdk deploy`, so the deploy will hang on cert
+validation if the zone isn't there yet. Confirm it first (Step 0).
+
+Everything below runs with **your** AWS credentials, in **us-west-2**. Each step is
+yours to execute and watch.
 
 ---
 
@@ -34,6 +37,26 @@ export AWS_DEFAULT_REGION=us-west-2
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 echo "account: $ACCOUNT  region: $AWS_REGION"
 ```
+
+---
+
+## Step 0 — Confirm the issei.app hosted zone exists (the gate)
+
+The deploy DNS-validates the ACM cert against this zone, so it MUST exist first.
+Route53 creates it automatically when the domain registration completes:
+```bash
+aws route53 list-hosted-zones-by-name --dns-name issei.app \
+  --query "HostedZones[?Name=='issei.app.'].[Id,Name]" --output text
+```
+- **Prints a zone id + `issei.app.`** → good, proceed.
+- **Prints nothing** → registration hasn't finished creating the zone yet. Check
+  registration status and wait:
+  ```bash
+  aws route53domains get-domain-detail --domain-name issei.app --region us-east-1 \
+    --query 'StatusList' --output text 2>/dev/null || echo "not yet visible"
+  ```
+  (route53domains is only in us-east-1 — the `--region us-east-1` is intentional and
+  doesn't change where the app deploys.) Re-run Step 0 until the zone appears.
 
 ---
 
@@ -85,21 +108,29 @@ cd infra
 npx cdk deploy
 ```
 Review the IAM/security-group changes it prints, type `y`. First deploy takes
-~10–15 min (it builds the ARM64 image, pushes to ECR, then stands up VPC → ALB →
-ECS service and waits for the task to pass health checks).
+~15–20 min: it builds the ARM64 image, pushes to ECR, requests the ACM cert and
+**DNS-validates it against the issei.app zone** (a few min), then stands up
+VPC → ALB → ECS service and waits for the task to pass health checks.
+
+> If it stalls a long time on the certificate: the hosted zone isn't resolving
+> (re-check Step 0), or the domain registration is still finalizing. The cert
+> can't validate until Route53 is answering for issei.app.
 
 On success it prints outputs, including:
 ```
-IsseiStack.ApiUrl = http://IsseiStack-Alb...elb.amazonaws.com
+IsseiStack.ApiUrl = https://api.issei.app
 IsseiStack.AlbDns = IsseiStack-Alb...elb.amazonaws.com
 IsseiStack.DeployRoleArn = arn:aws:iam::...:role/issei-github-deploy
 ```
-Save `ApiUrl` — that's your live API. Export it for the checks:
+Export the API URL for the checks:
 ```bash
 API=$(aws cloudformation describe-stacks --stack-name IsseiStack --region "$AWS_REGION" \
   --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
-echo "$API"
+echo "$API"   # → https://api.issei.app
 ```
+The Route53 A-alias for `api.issei.app` is created by the stack, but public DNS
+can take a few minutes to answer. If `curl` can't resolve it yet, wait and retry,
+or test against the raw `AlbDns` over HTTP in the meantime.
 
 ---
 
@@ -137,7 +168,36 @@ curl -s -X POST "$API/recipes" -H "Authorization: Bearer $TOKEN" \
 
 ---
 
-## Step 5 — Destroy (stop the meter)
+## Step 5 — Cut the live app over to the AWS API
+
+Point the Vercel frontend at `https://api.issei.app` so the real app uses AWS.
+
+1. **Vercel dashboard → issei project → Settings → Environment Variables**: set
+   `VITE_API_URL = https://api.issei.app` (Production). Then **redeploy** the
+   frontend (Deployments → ⋯ → Redeploy, or push a trivial commit) — Vite inlines
+   the var at build time, so it only takes effect on a fresh build.
+2. Verify end to end in a browser at `https://issei-delta.vercel.app`: sign in,
+   open a recipe, add one. Watch the **Network tab** — calls should go to
+   `api.issei.app` and succeed (no CORS error; the stack already allows the Vercel
+   origin). If you see CORS failures, confirm `CORS_ORIGINS` on the task includes
+   the exact Vercel origin.
+
+> Both APIs share the same Neon DB and are stateless, so Render and AWS can serve
+> simultaneously during the switch — no data migration, no downtime. Leave Render
+> running until AWS is confirmed healthy; you can suspend it afterward (or keep it
+> as a warm fallback).
+
+**Résumé/GitHub is now truthful in the present tense** — the app is live on AWS.
+If you later tear this down (Step 6), revert `VITE_API_URL` to the Render URL and
+redeploy Vercel FIRST, then destroy — otherwise the live app 500s until you do.
+
+---
+
+## Step 6 — Destroy (only when you want to stop the ~$36/mo)
+
+**If the live app is pointed here, revert it first** (Step 5, in reverse): set
+Vercel's `VITE_API_URL` back to the Render URL and redeploy, confirm the app works
+on Render, THEN destroy — so users never hit a dead API.
 
 ```bash
 cd infra
@@ -180,17 +240,38 @@ Each of these is itself a "Dive Deep" story worth writing down.
   build `linux/arm64` (needs buildx / QEMU on an x86 machine — Docker Desktop has it
   by default). The base image is digest-pinned and verified multi-arch, so the FROM
   line itself is fine.
+- **Deploy hangs on the ACM certificate.** The cert DNS-validates against the
+  issei.app hosted zone; if the zone doesn't exist or isn't resolving yet (domain
+  registration still finalizing), validation never completes. Re-check Step 0; the
+  cert can't validate until Route53 answers for issei.app. CDK will wait a long
+  time, then fail — safe to re-run `cdk deploy` once the zone is live.
+- **`api.issei.app` doesn't resolve right after deploy.** The A-alias exists but
+  public DNS caches take a few minutes. Wait/retry, or hit the raw `AlbDns` over
+  HTTP meanwhile. (Not a stack problem.)
 - **`Need to perform AWS calls for account …, but no credentials`** during synth/deploy
-  → your shell lost its AWS creds; re-run the `export` block at the top.
+  → your shell lost its AWS creds; re-run the `export` block at the top. (Note: with
+  the domain ON, `cdk synth`/`deploy` needs live creds to look up the hosted zone —
+  it can't synth fully offline anymore.)
+- **`cdk deploy` can't build the image.** Docker Desktop not running, or can't build
+  `linux/arm64` (Docker Desktop has buildx/QEMU by default). The base image is
+  digest-pinned and verified multi-arch, so the FROM line itself is fine.
 - **Bootstrap complains about an existing CDKToolkit** → harmless, it's already there.
 
 ---
 
-## What ships vs. what's parked
+## What deploys what
 
-This runbook + the `infra/` stack + the Dockerfile are committed on the
-`aws-migration` branch. They are **not** merged to `main` and **do not** deploy
-anything on their own — `main` still auto-deploys the frontend/backend to
-Vercel/Render as before. The `/health/ready` endpoint added to `app/main.py` is part
-of this branch too; it's harmless on Render (an unused extra route) but only becomes
-load-bearing behind the ALB target group here.
+- **`cdk deploy`** (this runbook) is what stands up the AWS infra. It's manual —
+  nothing here fires automatically.
+- **Merging to `main`** still auto-deploys the frontend to Vercel and (until you
+  suspend it) the backend to Render, exactly as before. The `infra/` code on `main`
+  does **not** deploy anything on a push — CloudFormation only changes when you run
+  `cdk deploy`.
+- The **GitHub Actions workflow** (`.github/workflows/deploy.yml`) is the *ongoing*
+  image-update path — build → push → update the ECS service on pushes to main. It
+  only works once the stack (and its OIDC deploy role) exists, and needs the
+  `AWS_ACCOUNT_ID` / `MIGRATION_DATABASE_URL` repo secrets set. Wire it up after the
+  first successful manual `cdk deploy` if you want push-to-deploy; it's optional for
+  the initial launch.
+- The `/health/ready` route in `app/main.py` is harmless on Render (an unused extra
+  route) and load-bearing only behind the ALB target group here.
