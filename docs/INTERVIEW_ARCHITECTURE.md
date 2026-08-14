@@ -3,8 +3,9 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 22 endpoints · 8 tables · 12 migrations · 187 backend tests · 481 frontend
-tests · ~2,200 lines of Python, deployed (Render + Vercel + Neon Postgres).
+**Scale:** 23 endpoints · 8 tables · 12 migrations · 200 backend tests · 471 frontend
+tests · ~2,200 lines of Python, deployed (Render + Vercel + Neon Postgres). AWS
+ECS/Fargate infrastructure authored as code in `infra/` — see `infra/README.md`.
 
 ---
 
