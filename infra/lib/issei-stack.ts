@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecr_assets from 'aws-cdk-lib/aws-ecr-assets';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
@@ -105,6 +106,13 @@ export class IsseiStack extends cdk.Stack {
         cpuArchitecture: ecs.CpuArchitecture.ARM64,
         operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
       },
+    });
+
+    // ECR repository for CI/CD image pushes (GitHub Actions workflow)
+    const repo = new ecr.Repository(this, 'Repo', {
+      repositoryName: 'issei-api',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      lifecycleRules: [{ maxImageCount: 10, description: 'Keep last 10 images' }],
     });
 
     // Container image built from the repo root (Dockerfile + .dockerignore)
@@ -278,7 +286,7 @@ export class IsseiStack extends cdk.Stack {
         'ecr:BatchGetImage',
         'ecr:GetDownloadUrlForLayer',
       ],
-      resources: [image.repository.repositoryArn],
+      resources: [repo.repositoryArn, image.repository.repositoryArn],
     }));
     deployRole.addToPolicy(new iam.PolicyStatement({
       actions: [
