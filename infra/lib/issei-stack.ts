@@ -154,6 +154,11 @@ export class IsseiStack extends cdk.Stack {
       },
     });
 
+    // The execution role needs pull access to the CI/CD ECR repo (issei-api).
+    // CDK auto-grants pull for the DockerImageAsset staging repo, but GitHub
+    // Actions pushes to the named repo — without this the task can't start.
+    repo.grantPull(taskDef.executionRole!);
+
     // Grant the task role permission to send email via SES (password resets).
     taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
       actions: ['ses:SendEmail'],
