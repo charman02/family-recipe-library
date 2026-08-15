@@ -134,7 +134,7 @@ export class IsseiStack extends cdk.Stack {
           : frontendOrigin,
         // The Vercel frontend must always be allowed; add the custom site when set.
         CORS_ORIGINS: useDomain
-          ? `https://${props.domainName},${frontendOrigin}`
+          ? `https://${props.domainName},https://www.${props.domainName},${frontendOrigin}`
           : frontendOrigin,
         // SES sender address — must be a verified SES identity in us-west-2.
         SENDER_EMAIL: 'noreply@issei.app',
