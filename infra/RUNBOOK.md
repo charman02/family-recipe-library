@@ -4,7 +4,7 @@ Deploys the issei API to AWS ECS Fargate behind an ALB, served over **HTTPS at
 `https://api.issei.app`**, and cuts the live Vercel frontend over to it. This is a
 **keep-it-running** deploy (not the teardown artifact) — cost is ~$36/mo, mostly
 the ALB + public IPs, which bill even at zero traffic. Tear down later with
-`cdk destroy` (Step 6) if the cost isn't worth it; the app falls back to Render.
+`cdk destroy` (Step 6) if the cost isn't worth it.
 
 The stack is domain-ON (`infra/bin/issei.ts` has `domainName: 'issei.app'`,
 `apiSubdomain: 'api'`). To go back to raw-ALB HTTP, comment those two lines out.
@@ -62,7 +62,7 @@ aws route53 list-hosted-zones-by-name --dns-name issei.app \
 
 ## Step 1 — Put the 6 secrets in SSM Parameter Store (SecureString, free tier)
 
-The task definition reads these at `/issei/prod/<NAME>`. Source them from the
+The task definition reads these at `/issei/<NAME>`. Source them from the
 repo-root `.env` so no secret is ever typed or committed. Run from the **repo root**:
 
 ```bash
@@ -70,17 +70,17 @@ set -a; source .env; set +a   # loads DATABASE_URL, JWT_SECRET, CLOUDINARY_*, OP
 
 for NAME in DATABASE_URL JWT_SECRET CLOUDINARY_CLOUD_NAME CLOUDINARY_API_KEY CLOUDINARY_API_SECRET OPENROUTER_API_KEY; do
   aws ssm put-parameter \
-    --name "/issei/prod/$NAME" \
+    --name "/issei/$NAME" \
     --type SecureString \
     --value "${!NAME}" \
     --overwrite \
-    --region "$AWS_REGION" >/dev/null && echo "  ✓ /issei/prod/$NAME"
+    --region "$AWS_REGION" >/dev/null && echo "  ✓ /issei/$NAME"
 done
 ```
 
 Verify they exist (names only, values stay encrypted):
 ```bash
-aws ssm get-parameters-by-path --path /issei/prod --region "$AWS_REGION" \
+aws ssm get-parameters-by-path --path /issei --region "$AWS_REGION" \
   --query 'Parameters[].Name' --output text
 ```
 
@@ -182,22 +182,14 @@ Point the Vercel frontend at `https://api.issei.app` so the real app uses AWS.
    origin). If you see CORS failures, confirm `CORS_ORIGINS` on the task includes
    the exact Vercel origin.
 
-> Both APIs share the same Neon DB and are stateless, so Render and AWS can serve
-> simultaneously during the switch — no data migration, no downtime. Leave Render
-> running until AWS is confirmed healthy; you can suspend it afterward (or keep it
-> as a warm fallback).
-
 **Résumé/GitHub is now truthful in the present tense** — the app is live on AWS.
-If you later tear this down (Step 6), revert `VITE_API_URL` to the Render URL and
-redeploy Vercel FIRST, then destroy — otherwise the live app 500s until you do.
 
 ---
 
 ## Step 6 — Destroy (only when you want to stop the ~$36/mo)
 
-**If the live app is pointed here, revert it first** (Step 5, in reverse): set
-Vercel's `VITE_API_URL` back to the Render URL and redeploy, confirm the app works
-on Render, THEN destroy — so users never hit a dead API.
+**If the live app is pointed here, revert it first** (Step 5, in reverse):
+update `VITE_API_URL` and redeploy, THEN destroy — so users never hit a dead API.
 
 ```bash
 cd infra
@@ -209,8 +201,8 @@ Removes the VPC, ALB, ECS service, log group, IAM roles, OIDC provider. Then:
 # the ECR repo holding the pushed image is a CDK asset repo; images may linger.
 # Optional cleanup if you want zero footprint:
 aws ssm delete-parameters --names \
-  /issei/prod/DATABASE_URL /issei/prod/JWT_SECRET /issei/prod/CLOUDINARY_CLOUD_NAME \
-  /issei/prod/CLOUDINARY_API_KEY /issei/prod/CLOUDINARY_API_SECRET /issei/prod/OPENROUTER_API_KEY \
+  /issei/DATABASE_URL /issei/JWT_SECRET /issei/CLOUDINARY_CLOUD_NAME \
+  /issei/CLOUDINARY_API_KEY /issei/CLOUDINARY_API_SECRET /issei/OPENROUTER_API_KEY \
   --region "$AWS_REGION"
 ```
 The CDK **bootstrap** stack (`CDKToolkit`) is fine to leave — it costs ~nothing and
@@ -263,8 +255,8 @@ Each of these is itself a "Dive Deep" story worth writing down.
 
 - **`cdk deploy`** (this runbook) is what stands up the AWS infra. It's manual —
   nothing here fires automatically.
-- **Merging to `main`** still auto-deploys the frontend to Vercel and (until you
-  suspend it) the backend to Render, exactly as before. The `infra/` code on `main`
+- **Merging to `main`** still auto-deploys the frontend to Vercel and the backend
+  to ECS Fargate via GitHub Actions. The `infra/` code on `main`
   does **not** deploy anything on a push — CloudFormation only changes when you run
   `cdk deploy`.
 - The **GitHub Actions workflow** (`.github/workflows/deploy.yml`) is the *ongoing*
@@ -273,5 +265,5 @@ Each of these is itself a "Dive Deep" story worth writing down.
   `AWS_ACCOUNT_ID` / `MIGRATION_DATABASE_URL` repo secrets set. Wire it up after the
   first successful manual `cdk deploy` if you want push-to-deploy; it's optional for
   the initial launch.
-- The `/health/ready` route in `app/main.py` is harmless on Render (an unused extra
-  route) and load-bearing only behind the ALB target group here.
+- The `/health/ready` route in `app/main.py` is load-bearing behind the ALB target
+  group here.

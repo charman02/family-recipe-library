@@ -3,9 +3,8 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 23 endpoints · 8 tables · 12 migrations · 200 backend tests · 471 frontend
-tests · ~2,200 lines of Python, deployed (Render + Vercel + Neon Postgres). AWS
-ECS/Fargate infrastructure authored as code in `infra/` — see `infra/README.md`.
+**Scale:** 27 endpoints · 9 tables · 12 migrations · 200 backend tests · 471 frontend
+tests · ~2,200 lines of Python, deployed (AWS ECS Fargate + Vercel + Neon Postgres).
 
 ---
 
@@ -31,7 +30,7 @@ downstream of one product decision.
 | Migrations | Alembic | 12 versioned migrations, forward-only in practice |
 | Auth | JWT, stateless, bcrypt | No session store to run; the token carries `sub` = user id |
 | Frontend | React + Vite + Tailwind | — |
-| Hosting | Render (API) · Vercel (web) · Neon (DB) | Push to `main` auto-deploys |
+| Hosting | AWS ECS Fargate (API) · Vercel (web) · Neon (DB) | Push to `main` auto-deploys via GitHub Actions OIDC pipeline |
 
 **Two dialect details worth knowing** (`app/database.py`) — this is the kind of thing a
 data engineer will respect:
@@ -46,10 +45,11 @@ data engineer will respect:
 
 ---
 
-## 3. Data model (8 tables)
+## 3. Data model (9 tables)
 
 ```
 users
+  ├── password_reset_tokens      (user_id FK)
   └── recipes                    (user_id FK, CASCADE)
         ├── ingredient_sections  (recipe_id FK, CASCADE)
         │     └── ingredients    (section_id FK, SET NULL)

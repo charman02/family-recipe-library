@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     cloudinary_api_secret: str = ""
     # Comma-separated allowed frontend origins for CORS. Set in the deploy env
     # (e.g. the Vercel URL) so adding a frontend host needs no code change.
-    # Local dev and the existing Render backend are always allowed.
+    # Local dev is always allowed.
     cors_origins: str = ""
     # OpenRouter, for structuring a spoken/pasted recipe into fields. Optional by
     # design: with no key the parse endpoint reports that the model is unavailable and
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # SES — password-reset emails. sender_email must be a verified SES identity.
     sender_email: str = ""
     # Frontend URL used to build the reset link in the email.
-    app_url: str = "https://issei-delta.vercel.app"
+    app_url: str = "https://issei.app"
 
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
@@ -36,7 +36,6 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         defaults = [
             "http://localhost:5173",
-            "https://family-recipe-library.onrender.com",
         ]
         extra = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
         seen, out = set(), []

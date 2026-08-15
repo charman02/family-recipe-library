@@ -13,7 +13,7 @@ So a recipe here is attributed to a **person** — the dish is the title, the pe
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private → shared → public visibility.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 23 endpoints, 8 data models, 671 automated tests (200 pytest + 471 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 27 endpoints, 9 data models, 671 automated tests (200 pytest + 471 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -32,7 +32,7 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **pytest** - backend tests (200) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (471 in 33 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (471 in 32 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -67,10 +67,14 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | Method | Endpoint | Auth Required | Description |
 |--------|----------|---------------|-------------|
 | GET | /health | No | Liveness check. Returns `{"status": "ok"}`. |
+| GET | /health/ready | No | Readiness probe (DB check). |
 | POST | /auth/signup | No | Creates a new user account. Returns id, email, and created_at. |
 | POST | /auth/login | No | Verifies credentials and returns a JWT access token. |
+| POST | /auth/forgot-password | No | Request password reset email. |
+| POST | /auth/reset-password | No | Set new password with reset token. |
 | GET | /auth/me | Yes | Returns the currently authenticated user. |
 | PATCH | /auth/me | Yes | Edits the account: name, email, and/or password. Email and password changes require the correct current password; a name change doesn't. Email must be unique. Returns the updated user. |
+| DELETE | /auth/me | Yes | Delete account (requires password). |
 | POST | /recipes | Yes | Creates and returns a new recipe. |
 | GET | /recipes | Yes | Returns the current user's recipes. |
 | GET | /recipes/{recipe_id} | Yes | Returns the queried recipe. |
@@ -90,7 +94,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | GET | /recipes/ingredient-suggestions | Yes | The caller's own ingredient vocabulary, for autosuggest. |
 | POST | /recipes/parse | Yes | Structures a spoken/pasted recipe into fields via an LLM (OpenRouter). Saves nothing — returns a draft the client shows for correction. Amounts come back verbatim and are re-typed server-side, never converted. Returns `ai: false` (client falls back to a local parser) when the model is unavailable, so `/add` keeps working with no key. |
 
-*23 application routes as shipped to prod — the table is the whole product surface. (On the `aws-migration` branch there's a 24th, `GET /health/ready`, an ALB readiness probe that runs a DB `SELECT 1`; it's infrastructure, not a product endpoint, so it isn't in this table — see `infra/README.md`.) Counts have changed several times as features were added and removed, so verify rather than trust: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
+*27 application routes as shipped to prod — the table is the whole product surface. Counts have changed several times as features were added and removed, so verify rather than trust: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
 
 **Three visibility tiers — Private → Shared → Public.** A recipe is viewable by a user when: its visibility is `public`, **or** they own it, **or** they hold an accepted handoff (grant) on it. "Shared" is not a stored enum value — `visibility` stays `private | public`; a private recipe with ≥1 accepted grant *is* shared with those people. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `can_view` (`app/services/sharing.py`) is the single read-authorization rule every recipe read funnels through. **Read is not write:** editing and deleting stay owner-only, enforced by a `user_id` filter in `patch_recipe`/`delete_recipe` — a grantee can read and cook a recipe they were handed, never change someone else's record of it.
 
