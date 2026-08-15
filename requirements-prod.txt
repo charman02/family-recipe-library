@@ -40,6 +40,9 @@ alembic==1.18.4
 Mako==1.3.12               # via alembic
 MarkupSafe==3.0.3          # via Mako
 
+# --- AWS SES email (direct: boto3) ---
+boto3                          # (direct) password-reset emails via SES
+
 # --- outbound HTTP: OpenRouter + Cloudinary (direct: httpx, cloudinary) ---
 httpx==0.28.1
 httpcore==1.0.9            # via httpx

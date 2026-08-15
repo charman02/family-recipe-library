@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     openrouter_model: str = ""
     # Sent as HTTP-Referer for attribution on OpenRouter's dashboard. Cosmetic.
     openrouter_referer: str = ""
+    # SES — password-reset emails. sender_email must be a verified SES identity.
+    sender_email: str = ""
+    # Frontend URL used to build the reset link in the email.
+    app_url: str = "https://issei-delta.vercel.app"
 
     model_config = ConfigDict(env_file=".env", extra="ignore")
 

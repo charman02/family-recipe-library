@@ -121,8 +121,8 @@ export default function PlantRecipe() {
           }}
           className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-peach p-4 mb-4"
         >
-          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-cream border-2 border-ink shadow-[0_3px_0_#2E3A24] text-[24px] leading-none rotate-[-6deg]">
-            🖉
+          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-cream border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink rotate-[-6deg]">
+            <Icon name="edit" className="w-6 h-6" />
           </span>
           <span className="min-w-0">
             <span className="font-display font-black text-[18px] text-ink">

@@ -3,6 +3,8 @@ import ProtectedRoute from './components/ProtectedRoute'
 import PublicOnlyRoute from './components/PublicOnlyRoute'
 import BottomNav from './components/BottomNav'
 import Login from './pages/Login'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import Welcome from './pages/Welcome'
 import Home from './pages/Home'
 import Browse from './pages/Browse'
@@ -37,6 +39,8 @@ export default function App() {
         }
       />
       <Route path="/invite/:token" element={<InviteLanding />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       {/* The post-signup welcome. Protected (it's for an account that exists,
           and a signed-out visitor has nothing to be welcomed to) but pointedly
           NOT wrapped in Layout: no bottom nav, because a two-panel intro whose

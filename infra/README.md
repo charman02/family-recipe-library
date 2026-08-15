@@ -17,20 +17,19 @@ click-ops.
 
 ## Why AWS at all — the honest version
 
-**issei does not need this.** At its traffic, the free stack it already runs on
-(Vercel + Render + Neon) serves it fine for ~$0/month. This migration is a
-**deliberate infrastructure exercise**, not a scaling necessity — and naming that
-plainly is the point. The value is demonstrating, end to end, that the API can be
+**issei does not need this at its traffic.** The app ran fine on a free stack
+(Vercel + Render + Neon) at ~$0/month. This migration was a **deliberate
+infrastructure exercise** — demonstrating end to end that the API can be
 containerized, defined as code, deployed to a production-grade orchestrator, and
-shipped by a keyless pipeline — and that I can weigh what that costs against what it
-buys before reaching for it in a real job.
+shipped by a keyless pipeline. It is now the **live production deployment**: the
+Vercel frontend at `issei.app` talks to `api.issei.app` on this Fargate service,
+and the old Render backend is decommissioned.
 
 The cost is real and I'd state it in the same breath: **~$36/month**, of which
 roughly $24 is the Application Load Balancer and its public IPs — billed even at
 zero traffic. For a low-traffic app in a job where money mattered, I'd stay on the
 managed platform (or use a cheaper compute like App Runner / a single container on
-Fly/Render) until traffic justified the ALB. Building it here was the goal; running
-it long-term would need a reason this app doesn't yet have.
+Fly/Render) until traffic justified the ALB.
 
 ---
 
@@ -100,7 +99,7 @@ and go private; here the SG is the right-sized control.
 
 ### 4. Secrets in SSM Parameter Store (SecureString), injected by the task
 Six secrets (DB URL, JWT secret, Cloudinary ×3, OpenRouter key) live in SSM as
-encrypted SecureStrings under `/issei/prod/*`. The task definition references them by
+encrypted SecureStrings under `/issei/*`. The task definition references them by
 ARN, so ECS injects them as environment variables at container start — **they are
 never in the image, the repo, the task-def JSON, or CloudFormation output.** Standard
 tier is free. *Why SSM over Secrets Manager:* Secrets Manager (~$0.40/secret/mo +
@@ -141,8 +140,7 @@ at `api.<domain>`, with an HTTP→HTTPS redirect and a Route53 A-alias to the AL
 **Without it:** the ALB serves the API directly over HTTP on its raw AWS hostname —
 no cert, no Route53, no paid domain — which is enough to prove the deploy works. The
 stack branches on a single `useDomain` boolean, so turning HTTPS on later is a config
-change, not a structural one. (This is why the stack can be a cheap verify-and-teardown
-artifact *or* a real HTTPS deployment from the same code.)
+change, not a structural one. (The same code serves both a throwaway HTTP verification deploy and the real HTTPS production deploy — this is currently running the latter.)
 
 ---
 
@@ -157,12 +155,13 @@ artifact *or* a real HTTPS deployment from the same code.)
 | **Total** | **~$36** |
 
 The ALB + its unavoidable public IPs are ~$24 of that and bill at zero traffic —
-which is exactly why this is an artifact, not the app's permanent home. `cdk destroy`
-takes it all down; re-`cdk deploy` brings it back.
+the trade-off accepted for running a real HTTPS service continuously rather than
+paying per-request. `cdk destroy` would tear it down if traffic ever stopped
+justifying the cost.
 
 ---
 
-## What I'd add before this served real production traffic
+## What I'd still add for this to handle real load
 
 Stated up front, because knowing the gaps is the point of building it:
 
@@ -176,5 +175,8 @@ Stated up front, because knowing the gaps is the point of building it:
 5. **Private subnets + NAT** if a compliance posture ever required no public-IP tasks.
 6. **Secrets Manager with rotation** if the secrets policy demanded it.
 
-None of these are hard to add; each is a deliberate scope cut for a portfolio artifact,
-not an oversight — and that distinction is the thing worth being able to draw.
+7. **Least-privilege IAM for the deploy user** — currently `AdministratorAccess`,
+   scoped down to exactly what CDK/ECS/ECR need.
+
+None of these are hard to add; each is a deliberate scope cut, not an oversight — and
+that distinction is the thing worth being able to draw.

@@ -51,7 +51,7 @@ export class IsseiStack extends cdk.Stack {
     // ─── Security groups ───────────────────────────────────────────────
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
       vpc,
-      description: 'ALB — internet-facing HTTPS',
+      description: 'ALB - internet-facing HTTPS',
       allowAllOutbound: false,
     });
     // :443 for the HTTPS (domain) path; :80 serves traffic directly in the
@@ -61,10 +61,10 @@ export class IsseiStack extends cdk.Stack {
 
     const serviceSg = new ec2.SecurityGroup(this, 'ServiceSg', {
       vpc,
-      description: 'Fargate tasks — ingress from ALB only',
+      description: 'Fargate tasks - ingress from ALB only',
       allowAllOutbound: true, // egress to Neon:5432, Cloudinary/OpenRouter:443, ECR, SSM
     });
-    serviceSg.addIngressRule(albSg, ec2.Port.tcp(8000), 'ALB → container');
+    serviceSg.addIngressRule(albSg, ec2.Port.tcp(8000), 'ALB to container port 8000');
 
     // ─── ECS cluster ───────────────────────────────────────────────────
     const cluster = new ecs.Cluster(this, 'Cluster', {
@@ -92,7 +92,7 @@ export class IsseiStack extends cdk.Stack {
     for (const name of ssmParams) {
       secrets[name] = ecs.Secret.fromSsmParameter(
         ssm.StringParameter.fromSecureStringParameterAttributes(this, `Param-${name}`, {
-          parameterName: `/issei/prod/${name}`,
+          parameterName: `/issei/${name}`,
         }),
       );
     }
@@ -128,6 +128,10 @@ export class IsseiStack extends cdk.Stack {
         CORS_ORIGINS: useDomain
           ? `https://${props.domainName},${frontendOrigin}`
           : frontendOrigin,
+        // SES sender address — must be a verified SES identity in us-west-2.
+        SENDER_EMAIL: 'noreply@issei.app',
+        // Frontend URL used to build the password-reset link in the email.
+        APP_URL: frontendOrigin,
       },
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'ecs' }),
       healthCheck: {
@@ -141,6 +145,12 @@ export class IsseiStack extends cdk.Stack {
         startPeriod: cdk.Duration.seconds(10),
       },
     });
+
+    // Grant the task role permission to send email via SES (password resets).
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail'],
+      resources: ['*'],
+    }));
 
     // ─── ALB ───────────────────────────────────────────────────────────
     const alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {

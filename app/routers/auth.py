@@ -1,12 +1,30 @@
+import logging
+import uuid
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
 from app.models.handoff import Handoff
+from app.models.password_reset import PasswordResetToken
 from app.schemas.user import UserCreate, UserResponse, AccountUpdate
 from app.auth import hash_password, verify_password, create_access_token, get_current_user
+from app.services.email import send_password_reset_email
+
+logger = logging.getLogger(__name__)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -122,3 +140,69 @@ def update_me(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Request a password-reset email.
+
+    Always returns 204 — even when the email is not registered — so the
+    response gives no information about which accounts exist.
+    """
+    user = db.query(User).filter(User.email == body.email).first()
+    if not user:
+        return
+
+    # Invalidate any still-pending tokens for this user so there is at most
+    # one live link at a time (avoids confusion if someone clicks an old one).
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used.is_(False),
+    ).delete()
+
+    token = str(uuid.uuid4())
+    record = PasswordResetToken(
+        user_id=user.id,
+        token=token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        used=False,
+    )
+    db.add(record)
+    db.commit()
+
+    try:
+        send_password_reset_email(user.email, token)
+    except Exception:
+        logger.exception("SES send failed for %s", user.email)
+        # Don't surface the SES error to the client — the response must stay
+        # silent whether or not the email account exists.
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Consume a reset token and update the password."""
+    if len(body.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters.",
+        )
+
+    record = (
+        db.query(PasswordResetToken)
+        .filter(
+            PasswordResetToken.token == body.token,
+            PasswordResetToken.used.is_(False),
+            PasswordResetToken.expires_at > datetime.now(timezone.utc),
+        )
+        .first()
+    )
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid or has expired.",
+        )
+
+    user = db.query(User).filter(User.id == record.user_id).first()
+    user.hashed_password = hash_password(body.new_password)
+    record.used = True
+    db.commit()

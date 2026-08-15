@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
 import { claimInvite } from '../api/sharing'
 import IconField from '../components/IconField'
@@ -31,6 +31,7 @@ function findSignupProblem({ firstName, lastName, email, password, confirmPasswo
 export default function Login() {
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
+  const resetSuccess = searchParams.get('reset') === '1'
   const [tab, setTab] = useState(
     searchParams.get('tab') === 'signup' ? 'signup' : 'login',
   )
@@ -159,6 +160,17 @@ export default function Login() {
         For the dish someone cooked you that you&rsquo;d never had before.
       </p>
 
+      {resetSuccess && (
+        <div className="w-full max-w-sm mb-7 sticker bg-peach px-5 py-4 text-center">
+          <p className="font-display font-black text-[17px] leading-tight text-ink">
+            Password updated.
+          </p>
+          <p className="font-display text-[13.5px] leading-snug text-ink-soft mt-1.5">
+            Sign in with your new password.
+          </p>
+        </div>
+      )}
+
       {inviteToken && (
         /* COLD INVITE RECIPIENT — they arrive here having just read a real
            recipe on /invite/:token, so they already know what the app is. What
@@ -228,17 +240,13 @@ export default function Login() {
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
-            {/* No self-serve reset yet (small trusted launch) — point locked-out
-                users to email. Replace with a real flow post-launch. */}
             <p className="text-center font-display text-[13px] text-ink-soft pt-1">
-              Forgot your password?{' '}
-              <a
-                href="mailto:charlie0309@me.com?subject=issei%20password%20help"
+              <Link
+                to="/forgot-password"
                 className="font-bold text-terra underline underline-offset-2"
               >
-                Email me
-              </a>{' '}
-              and I&rsquo;ll get you back in. 💛
+                Forgot your password?
+              </Link>
             </p>
           </form>
         ) : (
