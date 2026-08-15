@@ -95,7 +95,7 @@ export default function Profile() {
   const [prefs, setPrefs] = useState(loadPrefs)
 
   // Which account row is open (only one at a time), plus the edit form's own state.
-  const [openRow, setOpenRow] = useState(null) // 'name' | 'email' | 'password' | null
+  const [openRow, setOpenRow] = useState(null) // 'name' | 'email' | 'password' | 'delete' | null
   const [firstName, setFirstName] = useState(user.first_name || '')
   const [lastName, setLastName] = useState(user.last_name || '')
   const [newEmail, setNewEmail] = useState(user.email || '')
@@ -125,6 +125,8 @@ export default function Profile() {
     setNewEmail(user.email || '')
     setNewPassword('')
     setCurrentPassword('')
+    setDeletePassword('')
+    setDeleteError('')
     setOpenRow(row)
   }
 
@@ -154,7 +156,6 @@ export default function Profile() {
     }
   }
 
-  const [showDelete, setShowDelete] = useState(false)
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
@@ -370,6 +371,36 @@ export default function Profile() {
             {saving ? 'Saving…' : 'Save password'}
           </button>
         </AccountRow>
+
+        {/* Delete account — same expandable row pattern, gated on password. */}
+        <AccountRow
+          label="Delete account"
+          open={openRow === 'delete'}
+          onToggle={() => toggleRow('delete')}
+        >
+          <p className="font-display text-[13px] text-ink-soft mb-3">
+            This can't be undone. Your recipes, cook events, and all account
+            data will be permanently deleted.
+          </p>
+          <input
+            type="password"
+            aria-label="Confirm password"
+            className="field"
+            placeholder="Enter your password to confirm"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+          />
+          {openRow === 'delete' && deleteError && (
+            <p className="mt-2"><span className="error-pill">{deleteError}</span></p>
+          )}
+          <button
+            onClick={handleDeleteAccount}
+            disabled={deleting}
+            className="btn-primary mt-3 !bg-terra disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete forever'}
+          </button>
+        </AccountRow>
       </div>
 
       {/* Send feedback — now an in-app form (/feedback), replacing the external
@@ -393,59 +424,8 @@ export default function Profile() {
         Log out
       </button>
 
-      {/* Delete account — tucked below log out, behind a confirmation gate. */}
-      <div className="mt-8 mb-4">
-        {!showDelete ? (
-          <button
-            onClick={() => setShowDelete(true)}
-            className="w-full text-center font-display text-[13px] text-ink-soft underline underline-offset-2"
-          >
-            Delete my account
-          </button>
-        ) : (
-          <div className="sticker bg-card px-5 py-4">
-            <p className="font-display font-black text-[15px] text-ink mb-1">
-              This can't be undone.
-            </p>
-            <p className="font-display text-[13px] text-ink-soft mb-3">
-              Your recipes, cook events, and all account data will be permanently deleted.
-            </p>
-            <input
-              type="password"
-              aria-label="Confirm password"
-              className="field mb-2"
-              placeholder="Enter your password to confirm"
-              value={deletePassword}
-              onChange={(e) => setDeletePassword(e.target.value)}
-            />
-            {deleteError && (
-              <p className="mb-2"><span className="error-pill">{deleteError}</span></p>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowDelete(false)
-                  setDeletePassword('')
-                  setDeleteError('')
-                }}
-                className="flex-1 py-2.5 rounded-full bg-cream border-[2.5px] border-ink font-display font-bold text-[13px] text-ink"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteAccount}
-                disabled={deleting}
-                className="flex-1 py-2.5 rounded-full bg-terra border-[2.5px] border-ink font-display font-bold text-[13px] text-cream shadow-[0_3px_0_#2E3A24] transition-transform active:translate-y-[2px] active:shadow-[0_1px_0_#2E3A24] disabled:opacity-50"
-              >
-                {deleting ? 'Deleting...' : 'Delete forever'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* A warm, deliberately-vague "this is alive" note — no dates, no list. */}
-      <p className="text-center font-display italic text-[13.5px] text-ink-soft mt-2 mb-2">
+      <p className="text-center font-display italic text-[13.5px] text-ink-soft mt-6 mb-2">
         More ways to share and connect are on the way. 💛
       </p>
     </div>
