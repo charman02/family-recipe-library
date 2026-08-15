@@ -142,6 +142,26 @@ def update_me(
     return current_user
 
 
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(
+    body: DeleteAccountRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete the signed-in account and all associated data."""
+    if not verify_password(body.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your password isn't right.",
+        )
+    db.delete(current_user)
+    db.commit()
+
+
 @router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
 def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Request a password-reset email.
