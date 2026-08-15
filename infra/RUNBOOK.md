@@ -84,9 +84,9 @@ aws ssm get-parameters-by-path --path /issei --region "$AWS_REGION" \
   --query 'Parameters[].Name' --output text
 ```
 
-> DATABASE_URL should be the Neon **pooler** endpoint with `?sslmode=require` — the
-> same one Render uses. (The GitHub Actions migration path wants the non-pooler
-> endpoint, but that path isn't used for this artifact.)
+> DATABASE_URL should be the Neon **pooler** endpoint with `?sslmode=require`.
+> The GitHub Actions migration step uses the non-pooler (direct) endpoint via
+> the `MIGRATION_DATABASE_URL` repo secret.
 
 ---
 

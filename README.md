@@ -32,7 +32,7 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **pytest** - backend tests (200) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (471 in 32 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (471 in 33 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 

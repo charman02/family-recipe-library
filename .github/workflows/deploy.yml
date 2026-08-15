@@ -9,7 +9,7 @@
 #      with ?sslmode=require), AWS_ACCOUNT_ID.
 #   4. .aws/task-definition.json committed (container name: issei-api, ARM64,
 #      secrets block referencing SSM params).
-#   5. Render auto-deploy is OFF.
+#   5. (Render has been decommissioned — AWS ECS is the sole backend.)
 
 name: Deploy to ECS (prod)
 
