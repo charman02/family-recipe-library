@@ -4,11 +4,10 @@ import client from '../api/client'
 import Icon from '../components/Icon'
 import HandoffInvite from '../components/HandoffInvite'
 import Loader from '../components/Loader'
-import { sourceNameOf } from '../lib/sourceName'
 
 // A dedicated, focused page for passing a recipe on to someone — its own route
 // (/recipes/:id/handoff) rather than a cramped inline form under the plant.
-// Loads the recipe for its name/visibility/source, then renders HandoffInvite;
+// Loads the recipe for its name/visibility, then renders HandoffInvite;
 // sending or skipping returns to the recipe page.
 export default function HandoffPage() {
   const { id } = useParams()
@@ -42,8 +41,6 @@ export default function HandoffPage() {
     return <Loader />
   }
 
-  const source = sourceNameOf(recipe)
-
   return (
     <div className="relative min-h-screen bg-cream">
       <header className="px-6 pt-4 pb-2">
@@ -70,7 +67,6 @@ export default function HandoffPage() {
           recipeId={recipe.id}
           recipeName={recipe.name}
           recipeVisibility={recipe.visibility}
-          sourceName={source}
           onSent={back}
           onSkip={back}
           showHeading={false}

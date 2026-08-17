@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { handoffRecipe } from '../api/sharing'
 import { toUserMessage } from '../api/client'
-import { HANDOFF_STARTERS, defaultStarterKey } from '../lib/handoffStarters'
+import { defaultInviteMessage } from '../lib/inviteMessage'
 
 // Hand this recipe to someone — send them a link that opens it.
 //
@@ -33,7 +33,6 @@ export default function HandoffInvite({
   recipeId,
   recipeName = 'this recipe',
   recipeVisibility = 'private',
-  sourceName = null,
   onSent,
   onSkip,
   // HandoffPage prints its own "Send {recipe}" header + subline, so it suppresses
@@ -41,13 +40,20 @@ export default function HandoffInvite({
   // on one screen. The post-save flow in PlantRecipe has no header, so it keeps it.
   showHeading = true,
 }) {
-  const seedKey = defaultStarterKey(sourceName)
-  const seedNote = seedKey
-    ? HANDOFF_STARTERS.find((s) => s.key === seedKey).note
-    : ''
+  // The dish name for message-building. recipeName defaults to the prose string
+  // "this recipe"; that's fine in a sentence but must not be treated as a real dish
+  // name, so it collapses to empty and the message uses its dish-less fallback.
+  const dishName = recipeName === 'this recipe' ? '' : recipeName
+
+  // The note field defaults to a warm, ready-to-send message in the sender's own
+  // voice ("Here's my Adobo recipe — I wanted you to have it 💛") — the app is about
+  // that handoff, so the sender shouldn't face a blank box. It's fully editable. The
+  // one-tap starter chips were removed: the default already carries the warm "I
+  // wanted you to have it" intent, so a "You'd love this" chip just restated it, and
+  // the second chip is better served by the sender typing their own line.
+  const defaultMessage = defaultInviteMessage({ recipeName: dishName })
   const [email, setEmail] = useState('')
-  const [note, setNote] = useState(seedNote)
-  const [activeStarter, setActiveStarter] = useState(seedKey)
+  const [note, setNote] = useState(defaultMessage)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const [handoff, setHandoff] = useState(null) // set once created → share stage
@@ -56,11 +62,6 @@ export default function HandoffInvite({
   const inviteUrl = handoff?.token
     ? `${window.location.origin}/invite/${handoff.token}`
     : ''
-
-  function applyStarter(starter) {
-    setActiveStarter(starter.key)
-    setNote(starter.note)
-  }
 
   async function send() {
     setError('')
@@ -79,9 +80,11 @@ export default function HandoffInvite({
   }
 
   async function share() {
-    const text = note.trim()
-      ? `${note.trim()}\n\n${inviteUrl}`
-      : `I want you to have this recipe for ${recipeName}: ${inviteUrl}`
+    // The note is pre-seeded with the default message, so it's normally non-empty;
+    // if the sender cleared it, fall back to the same sender+dish default rather
+    // than a bare link.
+    const body = note.trim() || defaultMessage
+    const text = `${body}\n\n${inviteUrl}`
     // Native share sheet where available (mobile); clipboard fallback elsewhere.
     if (navigator.share) {
       try {
@@ -202,30 +205,13 @@ export default function HandoffInvite({
           This won’t put your recipe in Browse — only someone with the link can open it.
         </p>
       )}
-      <div className="flex gap-2 mb-2.5">
-        {HANDOFF_STARTERS.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            onClick={() => applyStarter(s)}
-            aria-pressed={activeStarter === s.key}
-            className={`flex-1 text-[12.5px] font-display font-bold rounded-full px-3 py-2 border-2 border-ink transition-colors ${
-              activeStarter === s.key
-                ? 'bg-terra text-cream'
-                : 'bg-cream text-ink-soft'
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      {/* The note comes pre-filled with the default message; the sender edits or
+          replaces it in their own words. No starter chips — the default already
+          carries the warm intent they'd have picked. */}
       <textarea
         placeholder="A note in your words… (optional)"
         value={note}
-        onChange={(e) => {
-          setNote(e.target.value)
-          setActiveStarter(null)
-        }}
+        onChange={(e) => setNote(e.target.value)}
         rows={2}
         className="field resize-none mb-3"
       />

@@ -13,7 +13,7 @@ So a recipe here is attributed to a **person** — the dish is the title, the pe
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private / public visibility (new recipes default to public so the Browse feed isn't empty; one tap sets a recipe to "only me").
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 27 endpoints, 9 data models, 681 automated tests (202 pytest + 479 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 27 endpoints, 9 data models, 701 automated tests (202 pytest + 499 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -32,7 +32,7 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **pytest** - backend tests (202) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (479 in 34 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (499 in 35 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 

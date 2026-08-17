@@ -20,10 +20,12 @@ describe('HandoffInvite', () => {
       screen.getByPlaceholderText(/their email/i),
       'mom@example.com',
     )
-    await userEvent.type(
-      screen.getByPlaceholderText(/a note in your words/i),
-      'your adobo',
-    )
+    // Clear the seeded default first, then type — the note field is pre-filled with
+    // the default invitation message now (see the "default invitation message"
+    // block), so a raw type() would append to it.
+    const note = screen.getByPlaceholderText(/a note in your words/i)
+    await userEvent.clear(note)
+    await userEvent.type(note, 'your adobo')
     await userEvent.click(screen.getByRole('button', { name: /get a link to send/i }))
     expect(handoffRecipe).toHaveBeenCalledWith(7, {
       to_email: 'mom@example.com',
@@ -37,10 +39,22 @@ describe('HandoffInvite', () => {
   })
 
   it('does not require an email — a link-only handoff works', async () => {
-    render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
+    // No cached user, so the seeded note is the sender-less default; the point of
+    // this test is that a link-only handoff (no email) sends fine.
+    render(
+      <HandoffInvite
+        recipeId={7}
+        recipeName="Adobo"
+        onSent={() => {}}
+        onSkip={() => {}}
+      />,
+    )
     // no email typed at all
     await userEvent.click(screen.getByRole('button', { name: /get a link to send/i }))
-    expect(handoffRecipe).toHaveBeenCalledWith(7, { to_email: null, note: null })
+    expect(handoffRecipe).toHaveBeenCalledWith(7, {
+      to_email: null,
+      note: 'Here’s my Adobo recipe — I wanted you to have it 💛',
+    })
     expect(await screen.findByText(/\/invite\/tok123/)).toBeInTheDocument()
   })
 
@@ -135,27 +149,78 @@ describe('HandoffInvite', () => {
     expect(screen.getByText(/we won’t email them/i)).toBeInTheDocument()
   })
 
-  it('tapping a starter fills the note', async () => {
-    render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
-    await userEvent.click(
-      screen.getByRole('button', { name: /you.d love this/i }),
-    )
-    expect(screen.getByPlaceholderText(/a note in your words/i)).toHaveValue(
-      'You’d love this — I wanted you to have it.',
-    )
-  })
-
-  it('pre-selects no starter — the note is empty and optional by default', () => {
-    // The fill-in starter that auto-armed when passing back to the source was
-    // removed along with the "complete my recipe" framing; nothing auto-fills now.
+  it('offers no starter chips — just the pre-filled, editable default note', () => {
+    // The one-tap starter chips ("You'd love this" / "You asked for it") were
+    // removed: the pre-filled default already carries the warm intent the first
+    // chip did, so the chips were redundant. The note is the single affordance now.
     render(
       <HandoffInvite
         recipeId={7}
-        sourceName="Lola"
+        recipeName="Adobo"
         onSent={() => {}}
         onSkip={() => {}}
       />,
     )
-    expect(screen.getByPlaceholderText(/a note in your words/i)).toHaveValue('')
+    expect(
+      screen.queryByRole('button', { name: /you.d love this/i }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: /you asked for it/i }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: /i made this for you/i }),
+    ).toBeNull()
+  })
+
+  // The invitation is about one person handing a dish to another, so the note
+  // defaults to a warm, ready-to-send message in the SENDER'S OWN VOICE (first
+  // person) naming the dish — the sender never faces a blank box, and it sounds
+  // like them rather than an app notice.
+  describe('default invitation message', () => {
+    it('seeds the note in first person, naming the recipe', () => {
+      render(
+        <HandoffInvite
+          recipeId={7}
+          recipeName="Adobo"
+          onSent={() => {}}
+          onSkip={() => {}}
+        />,
+      )
+      expect(screen.getByPlaceholderText(/a note in your words/i)).toHaveValue(
+        'Here’s my Adobo recipe — I wanted you to have it 💛',
+      )
+    })
+
+    it('does not put the placeholder "this recipe" into the seeded message', () => {
+      // recipeName defaults to the literal string "this recipe" for prose; it must
+      // not leak into the message as if it were a dish name.
+      render(<HandoffInvite recipeId={7} onSent={() => {}} onSkip={() => {}} />)
+      expect(screen.getByPlaceholderText(/a note in your words/i)).toHaveValue(
+        'Here’s my recipe — I wanted you to have it 💛',
+      )
+    })
+
+    it('lets the sender edit the seeded message before sharing', async () => {
+      render(
+        <HandoffInvite
+          recipeId={7}
+          recipeName="Adobo"
+          onSent={() => {}}
+          onSkip={() => {}}
+        />,
+      )
+      const note = screen.getByPlaceholderText(/a note in your words/i)
+      await userEvent.clear(note)
+      await userEvent.type(note, 'made this for you, tita')
+      expect(note).toHaveValue('made this for you, tita')
+      // And the edited note is what gets sent.
+      await userEvent.click(
+        screen.getByRole('button', { name: /get a link to send/i }),
+      )
+      expect(handoffRecipe).toHaveBeenCalledWith(7, {
+        to_email: null,
+        note: 'made this for you, tita',
+      })
+    })
   })
 })

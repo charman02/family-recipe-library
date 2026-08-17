@@ -33,9 +33,6 @@ export default function PlantRecipe() {
   // still shown at save time, so opting out is one tap.
   const [visibility, setVisibility] = useState('public')
   const [saved, setSaved] = useState(null)
-  // The source name captured on the saved recipe, passed to the hand-off so its
-  // copy can address the person it came from. Read back from the form's payload.
-  const [savedSource, setSavedSource] = useState('')
 
   // Step-aware back: doorway exits the flow (→ Home); paste and the form return to it.
   // The form goes back to PASTE when that's where its values came from, so correcting
@@ -85,7 +82,6 @@ export default function PlantRecipe() {
   async function handleQuickSave(dishName) {
     const { data } = await plantRecipe({ name: dishName, visibility })
     setSaved(data)
-    setSavedSource('')
     setStep('celebrate')
   }
 
@@ -94,7 +90,6 @@ export default function PlantRecipe() {
   async function handleFormSubmit(formPayload) {
     const { data } = await plantRecipe({ ...formPayload, visibility })
     setSaved(data)
-    setSavedSource(formPayload.origin?.name || '')
     setStep('celebrate')
   }
 
@@ -243,7 +238,6 @@ export default function PlantRecipe() {
       <HandoffInvite
         recipeId={saved.id}
         recipeName={saved.name}
-        sourceName={savedSource.trim() || null}
         onSent={() => navigate(`/recipes/${saved.id}`)}
         onSkip={() => navigate(`/recipes/${saved.id}`)}
       />
