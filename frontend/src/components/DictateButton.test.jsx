@@ -365,6 +365,66 @@ describe('DictateButton — permission denial and errors', () => {
   })
 })
 
+// onDone is what makes the form fillable field-by-field by voice: when a session
+// ends having captured something, the form moves focus to the next field. The
+// gating matters as much as the firing — a stray tap or a denied mic must NOT
+// jump focus, or the user loses their place (and, on an error, the message that
+// tells them what went wrong).
+describe('DictateButton — onDone advances only on a real capture', () => {
+  it('fires onDone when a session ends after committing text', () => {
+    install()
+    const onDone = vi.fn()
+    render(
+      <DictateButton value="" onChange={() => {}} what="the story" onDone={onDone} />,
+    )
+    fireEvent.click(mic())
+    latest().emit('Brown the chicken.')
+    latest().finish()
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT fire onDone when a session ends with nothing captured', () => {
+    // A stray tap that catches only silence leaves focus exactly where it was.
+    install()
+    const onDone = vi.fn()
+    render(
+      <DictateButton value="" onChange={() => {}} what="the story" onDone={onDone} />,
+    )
+    fireEvent.click(mic())
+    latest().finish()
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('does NOT fire onDone when the session ends in an error', () => {
+    // The error hands the user back to typing; moving focus would bury it.
+    install()
+    const onDone = vi.fn()
+    render(
+      <DictateButton value="" onChange={() => {}} what="the story" onDone={onDone} />,
+    )
+    fireEvent.click(mic())
+    latest().fail('not-allowed')
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('does not fire a stale onDone: a later empty session stays put', () => {
+    // First session captures and advances; a second, empty session must not
+    // advance again off whatever the reset landed on.
+    install()
+    const onDone = vi.fn()
+    render(
+      <DictateButton value="" onChange={() => {}} what="the story" onDone={onDone} />,
+    )
+    fireEvent.click(mic())
+    latest().emit('First.')
+    latest().finish()
+    expect(onDone).toHaveBeenCalledTimes(1)
+    fireEvent.click(mic())
+    latest().finish()
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+})
+
 // THE GUARD. There is no audio anywhere in this product — the browser transcribes
 // and the utterance is discarded — and this repo has shipped copy claiming sound
 // it doesn't have more than once. A mic button is the single most tempting place

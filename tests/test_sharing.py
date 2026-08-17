@@ -1,6 +1,10 @@
 def _payload(name="Adobo", **extra):
+    # This file tests private-recipe authorization (non-grantee 404s, gated
+    # scale/cook), so recipes default to private here. The create default is now
+    # public app-wide; `visibility` in **extra still overrides (it's spread last).
     return {
         "name": name,
+        "visibility": "private",
         "ingredients": [
             {"name": "chicken", "quantity_text": "2 lbs", "quantity_type": "precise", "position": 1}
         ],

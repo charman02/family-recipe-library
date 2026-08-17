@@ -16,7 +16,7 @@ def test_origin_becomes_the_recipe_byline(client, make_user):
     r = client.post("/recipes", json=payload, headers=headers)
     assert r.status_code == 201
     body = r.json()
-    assert body["visibility"] == "private"
+    assert body["visibility"] == "public"  # default (payload sends none)
     # The attribution string IS the feature — it's what renders "from Nonna Lucia"
     # under the dish. It used to also write a ghost_ancestor row to make recipe #1
     # a two-generation tree; nothing read that once lineage went.
@@ -84,8 +84,12 @@ def test_patch_without_origin_leaves_the_byline_untouched(client, make_user):
 
 
 def _make_root(client, headers):
+    # Explicitly private: the create default is now "public", but these tests are
+    # about a private recipe being hidden from non-owners and Browse, so the helper
+    # pins visibility rather than relying on the default.
     payload = {
         "name": "Adobo",
+        "visibility": "private",
         "ingredients": [
             {"name": "butter", "quantity_text": "2 tbsp", "quantity_type": "precise", "position": 1}
         ],

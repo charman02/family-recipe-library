@@ -50,6 +50,14 @@ export default function DictateButton({
   // is its own ITEM (the paste box); the default space is right for prose, where you're
   // dictating one continuous sentence into a story or a step.
   separator = ' ',
+  // Called once, when a session ENDS having committed at least one final result —
+  // i.e. the user actually dictated something and then paused (or tapped stop).
+  // The form uses this to move focus to the next field, so a whole recipe can be
+  // spoken field by field without tapping into each one. Deliberately NOT called
+  // when a session ends empty (a stray tap) or after an error (the error points at
+  // typing, and jumping focus away would bury it). Optional — most callers (the
+  // paste box, a lone field) have no "next" and simply omit it.
+  onDone,
 }) {
   const [listening, setListening] = useState(false)
   // The recognizer's current GUESS. Held here and shown beside the field rather
@@ -57,6 +65,11 @@ export default function DictateButton({
   const [interim, setInterim] = useState('')
   const [problem, setProblem] = useState('')
   const sessionRef = useRef(null)
+  // Whether THIS session has committed any final text yet. Gates onDone so focus
+  // only advances off a field the user actually dictated into. A ref, not state:
+  // it's read inside the recognizer's callbacks (which outlive their render) and
+  // never needs to paint.
+  const didCommitRef = useRef(false)
 
   // The live field value, readable from inside the recognizer's callbacks. The
   // `value` prop is captured per-render and those callbacks outlive the render
@@ -95,6 +108,7 @@ export default function DictateButton({
     // is ephemeral by construction because it lives in local state.
     const next = appendDictated(valueRef.current, text, separator)
     valueRef.current = next
+    didCommitRef.current = true
     onChange(next)
   }
 
@@ -107,6 +121,7 @@ export default function DictateButton({
   function start() {
     setProblem('')
     setInterim('')
+    didCommitRef.current = false
     const session = startDictation({
       onResult: ({ final, interim: guess }) => {
         if (final) commit(final)
@@ -115,16 +130,24 @@ export default function DictateButton({
       onError: (code) => {
         // The button must never be left stuck mid-listen. onend does not always
         // follow onerror across browsers, so clear the state here as well; both
-        // paths are idempotent.
+        // paths are idempotent. No onDone here: an error hands the user back to
+        // typing, and moving focus away would bury the message that says so.
         setProblem(PROBLEMS[code] || PROBLEM_FALLBACK)
         setInterim('')
         setListening(false)
         sessionRef.current = null
+        didCommitRef.current = false
       },
       onEnd: () => {
         setInterim('')
         setListening(false)
         sessionRef.current = null
+        // Advance to the next field only if this session actually captured
+        // something. A stray tap that ends on silence leaves focus where it is.
+        if (didCommitRef.current) {
+          didCommitRef.current = false
+          onDone?.()
+        }
       },
     })
     if (!session) {

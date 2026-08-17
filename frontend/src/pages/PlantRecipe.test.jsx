@@ -104,13 +104,13 @@ function renderFlow() {
 const enterDoor = (name) => userEvent.click(screen.getByRole('button', { name }))
 
 describe('PlantRecipe — two doors', () => {
-  it('offers exactly two ways in: fill it in, or paste', () => {
+  it('offers exactly two ways in: say/paste, or fill it in', () => {
     renderFlow()
     expect(
-      screen.getByRole('button', { name: /fill it in yourself/i }),
+      screen.getByRole('button', { name: /say it or paste it/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /paste the whole thing/i }),
+      screen.getByRole('button', { name: /fill it in yourself/i }),
     ).toBeInTheDocument()
     // The old third door is gone.
     expect(
@@ -190,32 +190,32 @@ describe('PlantRecipe — two doors', () => {
 })
 
 // The create-time visibility choice is the ONLY thing that can ever put a recipe
-// in Browse, so these lock both directions: the safe default, and the opt-in.
+// in Browse, so these lock both directions: the public default, and opting down.
 describe('PlantRecipe visibility', () => {
   async function reachTheForm() {
     renderFlow()
     await enterDoor(/fill it in yourself/i)
   }
 
-  it('renders the choice on the form step with "Only me" preselected', async () => {
+  it('renders the choice on the form step with "Everyone" preselected', async () => {
     await reachTheForm()
     expect(screen.getByText(/who can see this\?/i)).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /only me/i })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /everyone/i })).not.toBeChecked()
-  })
-
-  it('sends visibility private without the user touching the choice', async () => {
-    await reachTheForm()
-    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
-    expect(plantRecipe.mock.calls[0][0].visibility).toBe('private')
-  })
-
-  it('sends visibility public once the user opts in', async () => {
-    await reachTheForm()
-    await userEvent.click(screen.getByRole('radio', { name: /everyone/i }))
     expect(screen.getByRole('radio', { name: /everyone/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /only me/i })).not.toBeChecked()
+  })
+
+  it('sends visibility public without the user touching the choice', async () => {
+    await reachTheForm()
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     expect(plantRecipe.mock.calls[0][0].visibility).toBe('public')
+  })
+
+  it('sends visibility private once the user opts down to "Only me"', async () => {
+    await reachTheForm()
+    await userEvent.click(screen.getByRole('radio', { name: /only me/i }))
+    expect(screen.getByRole('radio', { name: /only me/i })).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+    expect(plantRecipe.mock.calls[0][0].visibility).toBe('private')
   })
 })
 
@@ -235,7 +235,7 @@ describe('PlantRecipe — pasting a whole recipe', () => {
   async function openPaste() {
     renderFlow()
     await userEvent.click(
-      screen.getByRole('button', { name: /paste the whole thing/i }),
+      screen.getByRole('button', { name: /say it or paste it/i }),
     )
   }
 
@@ -245,12 +245,12 @@ describe('PlantRecipe — pasting a whole recipe', () => {
     await userEvent.click(screen.getByRole('button', { name: /sort this out/i }))
   }
 
-  it('offers pasting SECOND, after the fill-it-in door', async () => {
+  it('offers say/paste FIRST, above the fill-it-in door', async () => {
     renderFlow()
-    const shortcut = screen.getByRole('button', { name: /paste the whole thing/i })
+    const sayPaste = screen.getByRole('button', { name: /say it or paste it/i })
     const form = screen.getByRole('button', { name: /fill it in yourself/i })
-    // 4 === Node.DOCUMENT_POSITION_FOLLOWING
-    expect(form.compareDocumentPosition(shortcut) & 4).toBeTruthy()
+    // 4 === Node.DOCUMENT_POSITION_FOLLOWING: the form comes AFTER say/paste now.
+    expect(sayPaste.compareDocumentPosition(form) & 4).toBeTruthy()
   })
 
   it('lands on the form with the recipe already sorted', async () => {
@@ -301,7 +301,7 @@ describe('PlantRecipe — keeping just the name', () => {
     await userEvent.click(screen.getByRole('button', { name: /quick-save/i }))
     expect(plantRecipe).toHaveBeenCalledWith({
       name: 'Congee',
-      visibility: 'private',
+      visibility: 'public',
     })
     // Same celebration reveal as a full save — a name-only recipe is a smaller
     // recipe, not a different kind of thing.
@@ -343,7 +343,7 @@ describe('PlantRecipe — the model reads it first', () => {
   async function speak(text = SPOKEN) {
     renderFlow()
     await userEvent.click(
-      screen.getByRole('button', { name: /paste the whole thing/i }),
+      screen.getByRole('button', { name: /say it or paste it/i }),
     )
     await userEvent.type(screen.getByRole('textbox'), text)
     await userEvent.click(screen.getByRole('button', { name: /sort this out/i }))

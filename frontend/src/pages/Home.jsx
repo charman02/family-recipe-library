@@ -9,13 +9,6 @@ import Wordmark from '../components/Wordmark'
 import { HeroStack } from '../components/HeroStack'
 import { PeopleRow, FinishThese, KitchenGlance } from '../components/KitchenSections'
 
-function getGreeting() {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 18) return 'Good afternoon'
-  return 'Good evening'
-}
-
 // The masthead: the wordmark sticker plus the motto.
 //
 // The motto sits BESIDE the mark rather than under it. Stacked, the pair was 60px of
@@ -94,13 +87,6 @@ export default function Home() {
     return <Loader />
   }
 
-  // The greeting eyebrow as a small saffron sticker — the reference's badge motif.
-  const eyebrow = (
-    <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-saffron border-2 border-ink rounded-full px-3 py-1">
-      {getGreeting()}, {user.first_name || 'friend'}
-    </span>
-  )
-
   // FIRST RUN, HOLDING A RECIPE. Someone handed this person a dish and they
   // signed up to keep it. That recipe is the best possible explanation of the
   // app — it's real, it's theirs, and it's the reason they're here — so it gets
@@ -112,8 +98,7 @@ export default function Home() {
       <div className="min-h-screen bg-cream pb-6">
         <Masthead />
         <div className="mx-4 sticker bg-peach px-5 pt-6 pb-6">
-          {eyebrow}
-          <h2 className="font-display font-medium text-[30px] leading-[1.08] text-ink mt-4 max-w-[16rem]">
+          <h2 className="font-display font-medium text-[30px] leading-[1.08] text-ink max-w-[16rem]">
             Someone passed you a{' '}
             <span className="font-black italic">recipe.</span>
           </h2>
@@ -174,8 +159,7 @@ export default function Home() {
       <div className="min-h-screen bg-cream pb-6">
         <Masthead />
         <div className="mx-4 sticker bg-peach px-6 pt-7 pb-7">
-          {eyebrow}
-          <h2 className="font-display font-medium text-[32px] leading-[1.06] text-ink mt-4 max-w-[16rem]">
+          <h2 className="font-display font-medium text-[32px] leading-[1.06] text-ink max-w-[16rem]">
             Keep one dish the way it&rsquo;s{' '}
             <span className="font-black italic">really made.</span>
           </h2>
@@ -247,8 +231,7 @@ export default function Home() {
             onClick={() => navigate('/my-recipes')}
             className="w-full text-left sticker sticker-press bg-card px-5 pt-5 pb-5"
           >
-            {eyebrow}
-            <p className="font-display font-black text-[24px] text-ink mt-3">
+            <p className="font-display font-black text-[24px] text-ink">
               Your kitchen &rarr;
             </p>
           </button>

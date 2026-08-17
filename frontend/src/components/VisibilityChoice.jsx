@@ -2,10 +2,11 @@
 // form (PlantRecipe passes it as RecipeForm's beforeSubmitSlot). Its edit-time
 // sibling is VisibilityControl, which toggles an already-saved recipe.
 //
-// Why this exists: `visibility` defaults to "private" and nothing in the add
-// flow ever set it, so Browse — and Home's "Passed down lately" — could never
-// have a single recipe in it. Sharing stays intentional, so this is an opt-in
-// choice with private preselected, not a nudge toward public.
+// Why this exists: it's the create-time choice of who sees a recipe. The default
+// is now "public" (see PlantRecipe) so new recipes seed Browse and Home's "Passed
+// down lately" — but the choice is always shown, so opting down to "Only me" is
+// one tap. This component just reflects whichever `value` is passed; the default
+// lives in the parent.
 //
 // Copy avoids the app's own vocabulary ("pass it on", "issei", "public") that
 // round-2 user testing showed people couldn't decode, and instead names the

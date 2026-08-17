@@ -9,11 +9,11 @@ The name is the reason it's built this way: *Issei* (一世) means "first genera
 
 So a recipe here is attributed to a **person** — the dish is the title, the person is the byline ("from Lola") — and their imprecise measurements ("a dash," "three soup spoons," "until it smells right") are preserved verbatim and celebrated as fidelity rather than normalized away. The knowledge that an ingredient list can't hold lives as a note on the individual step it belongs to. The UI is a warm, playful "kitchen": bold color-block stickers, chunky display type, and food-forward illustration, mobile-first.
 
-**Getting a recipe in is meant to feel like telling someone how you make it.** The primary way to add a recipe is to paste (or dictate) the whole thing as one blob — "you need about a kilo of pork belly, a good splash of fish sauce, simmer till it smells right" — and a language model structures it into title, ingredients, and steps, which you then correct before saving. Two guarantees make this safe rather than lossy: **amounts come back verbatim** ("a good splash" stays "a good splash"; the app re-classifies every amount with its own parser, so the model can't quietly normalize "a kilo" into "1000 g"), and **the feature is optional** — with no API key the endpoint reports itself unavailable and the client falls back to a local line-based parser, so recipe capture never depends on a third party being up. Long text fields also support **speak-to-type dictation** via the browser's own speech-to-text: the microphone types characters into the field you can see and edit — **no audio is recorded, stored, or sent anywhere.** There are two doors: this paste-or-dictate blob (the default) and the plain field-by-field form — each lands on the same editable draft before it saves.
+**Getting a recipe in is meant to feel like telling someone how you make it.** The primary way to add a recipe is to paste (or dictate) the whole thing as one blob — "you need about a kilo of pork belly, a good splash of fish sauce, simmer till it smells right" — and a language model structures it into title, ingredients, and steps, which you then correct before saving. Two guarantees make this safe rather than lossy: **amounts come back verbatim** ("a good splash" stays "a good splash"; the app re-classifies every amount with its own parser, so the model can't quietly normalize "a kilo" into "1000 g"), and **the feature is optional** — with no API key the endpoint reports itself unavailable and the client falls back to a local line-based parser, so recipe capture never depends on a third party being up. Every text field on the form also supports **speak-to-type dictation** via the browser's own speech-to-text: the microphone types characters into the field you can see and edit — **no audio is recorded, stored, or sent anywhere** — and when you finish a field the cursor advances to the next one, so a whole recipe can be filled by voice with a tap between fields. There are two doors: this paste-or-dictate blob (the default) and the plain field-by-field form — each lands on the same editable draft before it saves.
 
-Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private → shared → public visibility.
+Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private / public visibility (new recipes default to public so the Browse feed isn't empty; one tap sets a recipe to "only me").
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 27 endpoints, 9 data models, 671 automated tests (200 pytest + 471 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 27 endpoints, 9 data models, 681 automated tests (202 pytest + 479 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -30,9 +30,9 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - backend tests (200) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup + account-edit validation).
+**pytest** - backend tests (202) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (471 in 33 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (479 in 34 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -87,7 +87,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | POST | /recipes/handoffs/{handoff_id}/accept | Yes | Claims a pending invite for the current user (backend-only; the two auto-accept paths cover the in-app cases, so there is no MVP UI for this). |
 | GET | /recipes/invite/{token} | No | Unauthenticated read of a handed-off recipe — the **full** recipe (ingredients, steps, per-step remarks, story, servings, description), no account required. The owner's private `notes` and account ids are the only things withheld. |
 | POST | /recipes/invite/{token}/claim | Yes | Claims an invite by its token, granting the current user access (resolves the mismatched-email case). |
-| GET | /recipes/browse | No | Public discovery feed (root-visibility gated). |
+| GET | /recipes/browse | No | Public discovery feed (visibility-gated on each recipe's own `visibility`). |
 | POST | /upload/recipe-photo | Yes | Uploads a photo to Cloudinary (recipe cover or a step). |
 | POST | /feedback | Yes | Files a feedback note from inside the app. |
 | GET | /feedback | Yes | Returns **only the caller's own** notes. |

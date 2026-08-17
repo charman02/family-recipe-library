@@ -315,6 +315,15 @@ export default function RecipeForm({
     document.querySelectorAll(selector)[index]?.focus()
   }
 
+  // Move focus onto a field by id — the after-dictation advance. When a dictation
+  // session ends (it ends on a pause, continuous=false), the mic reports it via
+  // onDone and we land the cursor on the next field, so a recipe can be filled
+  // field by field by voice with only a mic tap between each. Focus only; no mic
+  // auto-starts (a mic never turns itself on). See DictateButton's onDone.
+  function focusFieldById(id) {
+    document.getElementById(id)?.focus()
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
@@ -512,6 +521,7 @@ export default function RecipeForm({
                 value={name}
                 onChange={setName}
                 what="the dish name"
+                onDone={() => focusFieldById('recipe-source')}
               />
             </div>
             {/* KEEP JUST THE NAME — the escape hatch for the failure testers actually
@@ -543,19 +553,35 @@ export default function RecipeForm({
           {/* Optional attribution, right on the form. Naming someone makes the
               recipe read "from {name}" (a byline in plum) and switches the story
               prompt to ask about them; leaving it blank means the recipe is your
-              own. The paste parser seeds this when the model detects a source. */}
-          <label className="block">
-            <FieldLabel accent="plum">Passed down from (optional)</FieldLabel>
-            <input
-              type="text"
-              placeholder="e.g. Lola Remedios"
-              value={sourceName}
-              onChange={(e) => setSourceName(e.target.value)}
-              className="field"
-            />
-          </label>
+              own. The paste parser seeds this when the model detects a source.
+              Not a <label> wrapper (see the dish name): it owns a mic + status
+              line, so htmlFor keeps the label attached without adopting them. */}
+          <div className="block">
+            <FieldLabel accent="plum">
+              <label htmlFor="recipe-source">Passed down from (optional)</label>
+            </FieldLabel>
+            <div className="relative">
+              <input
+                id="recipe-source"
+                type="text"
+                placeholder="e.g. Lola Remedios"
+                value={sourceName}
+                onChange={(e) => setSourceName(e.target.value)}
+                className="field pr-11"
+              />
+              <DictateButton
+                value={sourceName}
+                onChange={setSourceName}
+                what="who this came from"
+                // Skips Servings (numeric — a recognizer says "four", not "4").
+                onDone={() => focusFieldById('recipe-cuisine')}
+              />
+            </div>
+          </div>
           <div className="flex gap-3">
             <label className="block flex-1">
+              {/* Numeric — no mic: a recognizer returns "four", not "4", and this
+                  input rejects words. It stays a plain, tappable number field. */}
               <FieldLabel>Servings</FieldLabel>
               <input
                 type="number"
@@ -565,27 +591,50 @@ export default function RecipeForm({
                 className="field"
               />
             </label>
-            <label className="block flex-1">
-              <FieldLabel>Cuisine</FieldLabel>
-              <input
-                type="text"
-                placeholder="Filipino"
-                value={cuisine}
-                onChange={(e) => setCuisine(e.target.value)}
-                className="field"
-              />
-            </label>
+            <div className="block flex-1">
+              <FieldLabel>
+                <label htmlFor="recipe-cuisine">Cuisine</label>
+              </FieldLabel>
+              <div className="relative">
+                <input
+                  id="recipe-cuisine"
+                  type="text"
+                  placeholder="Filipino"
+                  value={cuisine}
+                  onChange={(e) => setCuisine(e.target.value)}
+                  className="field pr-11"
+                />
+                <DictateButton
+                  value={cuisine}
+                  onChange={setCuisine}
+                  what="the cuisine"
+                  onDone={() => focusFieldById('recipe-description')}
+                />
+              </div>
+            </div>
           </div>
-          <label className="block">
-            <FieldLabel>Description</FieldLabel>
-            <textarea
-              placeholder="What is this dish?"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="field resize-none"
-            />
-          </label>
+          <div className="block">
+            <FieldLabel>
+              <label htmlFor="recipe-description">Description</label>
+            </FieldLabel>
+            <div className="relative">
+              <textarea
+                id="recipe-description"
+                placeholder="What is this dish?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                className="field resize-none pr-11"
+              />
+              <DictateButton
+                value={description}
+                onChange={setDescription}
+                what="the description"
+                bottomClass="bottom-3.5"
+                onDone={() => focusFieldById('recipe-story')}
+              />
+            </div>
+          </div>
         </div>
 
         {/* The story — optional, and prompted differently depending on whether
@@ -616,6 +665,8 @@ export default function RecipeForm({
               onChange={setStory}
               what="the story"
               bottomClass="bottom-3.5"
+              // Into the ingredients: the first ingredient's name field.
+              onDone={() => focusFieldById('ingredient-name-0')}
             />
           </div>
         </div>
@@ -666,33 +717,58 @@ export default function RecipeForm({
                   }
                 />
               </div>
-              <label className="block">
-                <FieldLabel accent="terra">How much</FieldLabel>
-                <input
-                  type="text"
-                  data-ingredient-qty
-                  // The phone keyboard's action key reads "next" and, on this last
-                  // field of the row, advances to the next ingredient — the same
-                  // thing Enter does, surfaced where a thumb already is. No on-screen
-                  // button needed (that duplicated "+ Add ingredient").
-                  enterKeyHint="next"
-                  placeholder="1/2 cup · a dash · to taste"
-                  value={ing.quantity}
-                  onChange={(e) =>
-                    updateIngredient(idx, 'quantity', e.target.value)
-                  }
-                  onKeyDown={(e) =>
-                    advanceOnEnter(e, {
-                      container: ingredients,
-                      index: idx,
-                      addRow: () =>
-                        setIngredients((prev) => [...prev, emptyIngredient()]),
-                      selector: '[data-ingredient-name]',
-                    })
-                  }
-                  className="field bg-peach/50"
-                />
-              </label>
+              {/* Not a <label> wrapper (see the dish name): this field owns a mic
+                  and its status line, which a label around both would fold into
+                  the input's accessible name. htmlFor keeps the label attached. */}
+              <div className="block">
+                <FieldLabel accent="terra">
+                  <label htmlFor={`ingredient-qty-${idx}`}>How much</label>
+                </FieldLabel>
+                <div className="relative">
+                  <input
+                    id={`ingredient-qty-${idx}`}
+                    type="text"
+                    data-ingredient-qty
+                    // The phone keyboard's action key reads "next" and, on this last
+                    // field of the row, advances to the next ingredient — the same
+                    // thing Enter does, surfaced where a thumb already is. No on-screen
+                    // button needed (that duplicated "+ Add ingredient").
+                    enterKeyHint="next"
+                    placeholder="1/2 cup · a dash · to taste"
+                    value={ing.quantity}
+                    onChange={(e) =>
+                      updateIngredient(idx, 'quantity', e.target.value)
+                    }
+                    onKeyDown={(e) =>
+                      advanceOnEnter(e, {
+                        container: ingredients,
+                        index: idx,
+                        addRow: () =>
+                          setIngredients((prev) => [...prev, emptyIngredient()]),
+                        selector: '[data-ingredient-name]',
+                      })
+                    }
+                    className="field bg-peach/50 pr-11"
+                  />
+                  <DictateButton
+                    value={ing.quantity}
+                    onChange={(v) => updateIngredient(idx, 'quantity', v)}
+                    what={`the amount for ingredient ${idx + 1}`}
+                    // Same move Enter makes on this field: open the next
+                    // ingredient's name, adding a row if this is the last one — so
+                    // a whole ingredient list can be spoken name/amount/name/amount.
+                    onDone={() =>
+                      openNextRow({
+                        container: ingredients,
+                        index: idx,
+                        addRow: () =>
+                          setIngredients((prev) => [...prev, emptyIngredient()]),
+                        selector: '[data-ingredient-name]',
+                      })
+                    }
+                  />
+                </div>
+              </div>
               {/* Units appear only over a bare number, so the strip is answering
                   a question the user has visibly just asked. */}
               {shouldOfferUnits(ing.quantity) && (
@@ -786,6 +862,9 @@ export default function RecipeForm({
                     onChange={(v) => updateStep(idx, 'content', v)}
                     what={`step ${idx + 1}`}
                     bottomClass="bottom-3.5"
+                    // Into this step's own note next — the optional remark that
+                    // belongs with it — rather than skipping straight to step 2.
+                    onDone={() => focusFieldById(`step-note-${step.uid}`)}
                   />
                 </div>
               </div>
@@ -808,6 +887,17 @@ export default function RecipeForm({
                     value={step.voice_note || ''}
                     onChange={(v) => updateStep(idx, 'voice_note', v)}
                     what={`the note on step ${idx + 1}`}
+                    // Finishing a note moves to the NEXT step's instruction, adding
+                    // a step row if this is the last one — so the steps chain the
+                    // same way ingredients do: instruction, note, next instruction.
+                    onDone={() =>
+                      openNextRow({
+                        container: steps,
+                        index: idx,
+                        addRow: () => setSteps((prev) => [...prev, emptyStep()]),
+                        selector: '[data-step-content]',
+                      })
+                    }
                   />
                 </div>
               </div>

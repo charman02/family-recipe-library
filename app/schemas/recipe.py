@@ -148,7 +148,10 @@ class RecipeCreate(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     language: str = "en"
-    visibility: Literal["private", "public"] = "private"
+    # Public by default — a new recipe seeds the Browse feed unless the author
+    # opts down to private. (The DB column server_default stays "private" as a
+    # safety net for rows inserted outside the app; the API always sends this.)
+    visibility: Literal["private", "public"] = "public"
     ingredient_sections: list[IngredientSectionCreate] = []
     ingredients: list[IngredientCreate] = []
     steps: list[StepCreate] = []

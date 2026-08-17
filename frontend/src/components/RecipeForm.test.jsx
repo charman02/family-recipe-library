@@ -899,11 +899,21 @@ describe('RecipeForm dictation', () => {
     delete window.SpeechRecognition
   })
 
-  it('offers a mic on the dish name, the story, and both step fields', () => {
+  it('offers a mic on every text field: the dish, the story, and each step field', () => {
     supported()
     render(<RecipeForm mode="add" onSubmit={() => {}} />)
     expect(
       screen.getByRole('button', { name: 'Dictate the dish name' }),
+    ).toBeInTheDocument()
+    // The detail fields gained mics too — every text field can be spoken now.
+    expect(
+      screen.getByRole('button', { name: 'Dictate who this came from' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Dictate the cuisine' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Dictate the description' }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Dictate the story' }),
@@ -915,20 +925,24 @@ describe('RecipeForm dictation', () => {
     ).toHaveLength(3)
   })
 
-  it('offers NO mic on the ingredient name or amount', () => {
-    // Short fields. They already have autosuggest and unit chips, and are faster
-    // to tap than to speak — a mic on each would add six controls to a section
-    // testers already found too heavy.
+  it('offers a mic on the ingredient name and amount in every row', () => {
+    // Every text field can be spoken, ingredient rows included: the name and the
+    // amount each carry a mic alongside their autosuggest / unit-chip helpers.
     supported()
     render(<RecipeForm mode="add" onSubmit={() => {}} />)
     const rows = document.querySelectorAll('[data-ingredient-row]')
     expect(rows).toHaveLength(3)
-    for (const row of rows) {
-      // aria-pressed is the mic's own signature; asserting on the DOM subtree
-      // pins that no mic is *inside* an ingredient row, which a name-based query
-      // across the whole form could not.
-      expect(row.querySelectorAll('button[aria-pressed]')).toHaveLength(0)
+    for (let i = 0; i < rows.length; i++) {
+      // aria-pressed is the mic's own signature; two per row = one for the name,
+      // one for the amount, scoped to this row's subtree.
+      expect(rows[i].querySelectorAll('button[aria-pressed]')).toHaveLength(2)
     }
+    expect(
+      screen.getAllByRole('button', { name: /^Dictate ingredient \d+$/ }),
+    ).toHaveLength(3)
+    expect(
+      screen.getAllByRole('button', { name: /^Dictate the amount for ingredient \d+$/ }),
+    ).toHaveLength(3)
   })
 
   it('renders no mic at all in a browser without support', () => {
@@ -966,6 +980,92 @@ describe('RecipeForm dictation', () => {
     render(<RecipeForm mode="add" onSubmit={onSubmit} />)
     fireEvent.click(screen.getByRole('button', { name: 'Dictate the story' }))
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('advances focus field to field as each dictation finishes', () => {
+    // The point of the whole feature: speak a field, pause, and the cursor is
+    // already on the next one — a recipe fillable with a mic tap between fields
+    // and no tapping into them. A driveable recognizer replaces the no-op fake.
+    class Driveable {
+      static instances = []
+      constructor() {
+        Driveable.instances.push(this)
+      }
+      start() {}
+      stop() {}
+      abort() {}
+      emit(final) {
+        act(() =>
+          this.onresult({
+            resultIndex: 0,
+            results: [Object.assign([{ transcript: final }], { isFinal: true })],
+          }),
+        )
+      }
+      finish() {
+        act(() => this.onend())
+      }
+    }
+    window.SpeechRecognition = Driveable
+    const latest = () => Driveable.instances[Driveable.instances.length - 1]
+    const speakInto = (field) => {
+      fireEvent.click(field)
+      latest().emit('spoken')
+      latest().finish()
+    }
+
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+
+    // Dish name → source.
+    speakInto(screen.getByRole('button', { name: 'Dictate the dish name' }))
+    expect(screen.getByLabelText('Passed down from (optional)')).toHaveFocus()
+
+    // Source → cuisine (Servings, being numeric, is skipped in the voice chain).
+    speakInto(screen.getByRole('button', { name: 'Dictate who this came from' }))
+    expect(screen.getByLabelText('Cuisine')).toHaveFocus()
+
+    // Cuisine → description → story.
+    speakInto(screen.getByRole('button', { name: 'Dictate the cuisine' }))
+    expect(screen.getByLabelText('Description')).toHaveFocus()
+    speakInto(screen.getByRole('button', { name: 'Dictate the description' }))
+    // The self-authored story prompt (no source named at this point... but we did
+    // dictate "spoken" into source, so the inherited prompt is showing).
+    expect(screen.getByLabelText(/story \(optional\)/i)).toHaveFocus()
+
+    // Story → the first ingredient's name.
+    speakInto(screen.getByRole('button', { name: 'Dictate the story' }))
+    expect(screen.getAllByLabelText('Ingredient')[0]).toHaveFocus()
+
+    // Ingredient name → its amount.
+    speakInto(screen.getByRole('button', { name: 'Dictate ingredient 1' }))
+    expect(
+      screen.getAllByPlaceholderText(/1\/2 cup · a dash · to taste/i)[0],
+    ).toHaveFocus()
+  })
+
+  it('a stray mic tap that captures nothing does not move the cursor', () => {
+    // The gate, at the form level: focus must not lurch to the next field when a
+    // session ends empty. Start on the dish name and confirm it stays there.
+    class Driveable {
+      static instances = []
+      constructor() {
+        Driveable.instances.push(this)
+      }
+      start() {}
+      stop() {}
+      abort() {}
+      finish() {
+        act(() => this.onend())
+      }
+    }
+    window.SpeechRecognition = Driveable
+    const latest = () => Driveable.instances[Driveable.instances.length - 1]
+
+    render(<RecipeForm mode="add" onSubmit={() => {}} />)
+    const nameMic = screen.getByRole('button', { name: 'Dictate the dish name' })
+    fireEvent.click(nameMic)
+    latest().finish()
+    expect(screen.getByLabelText('Passed down from (optional)')).not.toHaveFocus()
   })
 
   it('claims no recording anywhere on the form, in either mic state', () => {

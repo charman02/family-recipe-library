@@ -15,11 +15,18 @@ def _payload(name="Adobo", **extra):
 
 
 def _handoff(client, owner_headers, email="mom@example.com", **extra):
+    # These tests turn on grant-based access to a PRIVATE recipe: the claim/grant
+    # assertions are `can_view(...) is True`, and can_view short-circuits True for a
+    # public recipe BEFORE it checks the handoff — so a public recipe here would make
+    # those assertions pass no matter what the grant logic does. The create default is
+    # now public app-wide, so pin private explicitly (matching the other sharing test
+    # files). `visibility` in **extra still overrides — it's spread last in _payload.
     root = client.post(
         "/recipes",
         json=_payload(
             story="Lola made this every Sunday.",
             origin={"name": "Lola Remedios", "place": "Cebu"},
+            visibility="private",
             **extra,
         ),
         headers=owner_headers,

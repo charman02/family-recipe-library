@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react'
 import { matchIngredients } from '../lib/commonIngredients'
+import DictateButton from './DictateButton'
 
 // The ingredient-name input plus its autosuggest strip.
 //
@@ -93,36 +94,49 @@ export default function IngredientNameField({
 
   return (
     <>
-      <input
-        id={id}
-        type="text"
-        data-ingredient-name
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value)
-          // Deliberately does NOT clear `dismissed`: Escape has to survive the
-          // next keystroke or it's worthless to the person it's for — someone
-          // typing an ingredient no list knows, who wants the row to go quiet
-          // while they finish. Leaving and re-entering the field reopens it.
-          setActive(-1)
-        }}
-        onFocus={() => {
-          setFocused(true)
-          setDismissed(false)
-        }}
-        onBlur={() => {
-          setFocused(false)
-          setActive(-1)
-        }}
-        onKeyDown={handleKeyDown}
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-activedescendant={activeId}
-        className={className}
-      />
+      {/* `relative` + `pr-11` on the input: the mic sits in the field's
+          bottom-right corner and the reserved padding keeps a long name from
+          running under it — the same pairing every dictatable field uses. */}
+      <div className="relative">
+        <input
+          id={id}
+          type="text"
+          data-ingredient-name
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value)
+            // Deliberately does NOT clear `dismissed`: Escape has to survive the
+            // next keystroke or it's worthless to the person it's for — someone
+            // typing an ingredient no list knows, who wants the row to go quiet
+            // while they finish. Leaving and re-entering the field reopens it.
+            setActive(-1)
+          }}
+          onFocus={() => {
+            setFocused(true)
+            setDismissed(false)
+          }}
+          onBlur={() => {
+            setFocused(false)
+            setActive(-1)
+          }}
+          onKeyDown={handleKeyDown}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeId}
+          className={`${className} pr-11`}
+        />
+        <DictateButton
+          value={value}
+          onChange={onChange}
+          what={`ingredient ${index + 1}`}
+          // Finishing dictation lands on the amount — the same place Enter and a
+          // tapped suggestion go, so speaking the name flows straight into it.
+          onDone={onAdvance}
+        />
+      </div>
       {open && (
         <div
           id={listId}

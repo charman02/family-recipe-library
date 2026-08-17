@@ -27,9 +27,11 @@ export default function PlantRecipe() {
   const [seeded, setSeeded] = useState(null)
   // The raw pasted text, kept so back-from-the-form returns to it intact.
   const [pastedText, setPastedText] = useState('')
-  // Private-by-default, matching the column default: sharing is a deliberate act,
-  // never something the flow does on the user's behalf.
-  const [visibility, setVisibility] = useState('private')
+  // Public-by-default: a new recipe shows up in Browse (and everyone's "Passed
+  // down lately") unless the author opts it down to "Only me" in VisibilityChoice.
+  // The default was flipped from private to seed the public feed; the choice is
+  // still shown at save time, so opting out is one tap.
+  const [visibility, setVisibility] = useState('public')
   const [saved, setSaved] = useState(null)
   // The source name captured on the saved recipe, passed to the hand-off so its
   // copy can address the person it came from. Read back from the form's payload.
@@ -113,15 +115,37 @@ export default function PlantRecipe() {
           Two ways in — whichever suits what you&rsquo;ve got.
         </p>
 
-        {/* Door 1 — the form. The everyday way: fill it in field by field. */}
+        {/* Door 1 — SAY IT / PASTE IT, the app's signature way in and now the top,
+            visually-primary card. You don't have to be tidy: say it however it comes
+            out (or paste your notes) and it's organized into a recipe for you. See
+            PasteRecipe. Peach + a mic glyph so speaking reads as the headline action. */}
+        <button
+          onClick={() => setStep('paste')}
+          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-peach p-4 mb-4"
+        >
+          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-cream border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink rotate-[-6deg]">
+            <Icon name="mic" className="w-6 h-6" />
+          </span>
+          <span className="min-w-0">
+            <span className="font-display font-black text-[18px] text-ink">
+              Say it or paste it
+            </span>
+            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
+              Messy is fine — tell it how you make it and we&rsquo;ll sort it into a recipe.
+            </span>
+          </span>
+        </button>
+
+        {/* Door 2 — the plain form, for filling it in field by field. Demoted below
+            the say/paste door but still a full card, not a link. */}
         <button
           onClick={() => {
             setSeeded(null)
             setStep('form')
           }}
-          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-peach p-4 mb-4"
+          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-card p-4"
         >
-          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-cream border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink rotate-[-6deg]">
+          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-[14px] bg-sage border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink rotate-[6deg]">
             <Icon name="edit" className="w-6 h-6" />
           </span>
           <span className="min-w-0">
@@ -130,26 +154,6 @@ export default function PlantRecipe() {
             </span>
             <span className="block font-display text-[13px] text-ink-soft mt-0.5">
               One field at a time. Only the name is required.
-            </span>
-          </span>
-        </button>
-
-        {/* Door 2 — paste. For a recipe you already have as text, or would rather
-            just say out loud. A parser structures it; the form is where you check
-            it. See PasteRecipe for why it can't be the only door. */}
-        <button
-          onClick={() => setStep('paste')}
-          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-card p-4"
-        >
-          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-[14px] bg-sage border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink rotate-[6deg]">
-            <Icon name="list" className="w-6 h-6" />
-          </span>
-          <span className="min-w-0">
-            <span className="font-display font-black text-[18px] text-ink">
-              Paste the whole thing
-            </span>
-            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
-              From your notes, or just say it out loud.
             </span>
           </span>
         </button>
