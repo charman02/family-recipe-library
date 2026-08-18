@@ -7,6 +7,7 @@ import MarkerTitle from '../components/MarkerTitle'
 import FilterSelect from '../components/FilterSelect'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
+import { matchesCuisine } from '../lib/cuisineMatch'
 
 const CUISINES = [
   'Japanese',
@@ -54,9 +55,7 @@ const SECTION_COLORS = ['bg-saffron', 'bg-sage', 'bg-brick', 'bg-peach']
 function buildSections(recipes) {
   const sections = CUISINES.map((cuisine) => ({
     title: cuisine,
-    recipes: recipes.filter(
-      (r) => (r.cuisine || '').toLowerCase() === cuisine.toLowerCase(),
-    ),
+    recipes: recipes.filter((r) => matchesCuisine(r.cuisine, cuisine)),
   }))
 
   sections.push({
@@ -108,14 +107,13 @@ export default function Browse() {
   const filteredRecipes = recipes.filter((r) => {
     const matchesSearch =
       !searchQuery || r.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCuisine =
-      !cuisine || (r.cuisine || '').toLowerCase() === cuisine.toLowerCase()
+    const cuisineOk = matchesCuisine(r.cuisine, cuisine)
     const matchesDiet =
       !diet || (r.diet || '').toLowerCase().includes(diet.toLowerCase())
     const matchesReadyIn =
       maxPrep === 0 ||
       (r.prep_time_minutes != null && r.prep_time_minutes <= maxPrep)
-    return matchesSearch && matchesCuisine && matchesDiet && matchesReadyIn
+    return matchesSearch && cuisineOk && matchesDiet && matchesReadyIn
   })
 
   // Searching OR any dropdown active → flat results (no section rows). Only the
