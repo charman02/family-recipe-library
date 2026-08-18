@@ -201,7 +201,7 @@ export default function RecipeBody({ recipe, context = 'owner', scalable = false
         (byline ||
           recipe.cuisine ||
           recipe.servings ||
-          recipe.prep_time_minutes ||
+          recipe.prep_time_minutes > 0 ||
           recipe.diet) && (
         <div className="flex items-center justify-center gap-[9px] flex-wrap mt-3 mb-1">
           {byline && (
@@ -286,10 +286,10 @@ export default function RecipeBody({ recipe, context = 'owner', scalable = false
             </span>
           )}
           {(byline || recipe.cuisine || recipe.servings) &&
-            recipe.prep_time_minutes && (
+            recipe.prep_time_minutes > 0 && (
               <span className="w-px h-[13px] bg-line inline-block" />
             )}
-          {recipe.prep_time_minutes && (
+          {recipe.prep_time_minutes > 0 && (
             <span className="inline-flex items-center gap-1.5 font-display font-bold text-[11.5px] tracking-[0.5px] uppercase text-ink-soft">
               {/* clock */}
               <svg

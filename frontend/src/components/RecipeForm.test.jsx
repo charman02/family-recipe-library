@@ -1211,4 +1211,32 @@ describe('RecipeForm attribution is not silently dropped', () => {
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect('origin' in onSubmit.mock.calls[0][0]).toBe(false)
   })
+
+  it('carries diet and prep_time through an edit round-trip untouched', async () => {
+    // Regression: the form ALWAYS sends prep_time_minutes + diet, so an edit that
+    // doesn't see the saved values back would null them (silent data loss). Seeded
+    // from initialValues, a scalar-only edit must resend them unchanged. (EditRecipe
+    // is responsible for seeding them from the fetched recipe — see its initialValues.)
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(
+      <RecipeForm
+        mode="edit"
+        initialValues={{
+          name: 'Adobo',
+          prep_time_minutes: 45,
+          diet: 'Vegetarian',
+        }}
+        onSubmit={onSubmit}
+      />,
+    )
+    // Edit something unrelated, then save.
+    fireEvent.change(screen.getByLabelText('Dish name'), {
+      target: { value: 'Chicken Adobo' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const payload = onSubmit.mock.calls[0][0]
+    expect(payload.prep_time_minutes).toBe(45)
+    expect(payload.diet).toBe('Vegetarian')
+  })
 })

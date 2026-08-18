@@ -60,6 +60,13 @@ export default function EditRecipe() {
           sourceName: sourceNameOf(recipe) || '',
           sourceParts: originPartsOf(recipe),
           servings: recipe.servings,
+          // Seed prep_time + diet too, for the same reason as every other scalar
+          // here: the form now ALWAYS sends them, so a value not seeded back would
+          // be sent as null and silently erased on any edit (RecipeForm.jsx builds
+          // prep_time_minutes/diet unconditionally). Add new scalar columns here at
+          // the same time you add them to the form's payload.
+          prep_time_minutes: recipe.prep_time_minutes,
+          diet: recipe.diet,
           cuisine: recipe.cuisine,
           description: recipe.description,
           story: recipe.story,
