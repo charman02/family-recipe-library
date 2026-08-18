@@ -140,6 +140,33 @@ export default function Home() {
             Keep a recipe →
           </button>
         </div>
+
+        {/* Public recipes from the community, LAST and only if any exist. This
+            branch used to return without ever rendering them, so a user who'd been
+            handed a recipe but hadn't authored their own saw only their handoff —
+            the public feed was fetched but never shown until they saved something
+            of their own. Same section the fully-populated Home shows, placed after
+            the user's own content just as it is there. */}
+        {community.filter((r) => r.user_id !== user.id).length > 0 && (
+          <section className="px-5 mt-8">
+            <SectionTitle color="bg-peach" onClick={() => navigate('/browse')}>
+              Passed down lately
+            </SectionTitle>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+              {community
+                .filter((r) => r.user_id !== user.id)
+                .slice(0, 4)
+                .map((recipe) => (
+                  <RecipeCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    variant="grid"
+                    onClick={() => navigate(`/recipes/${recipe.id}`)}
+                  />
+                ))}
+            </div>
+          </section>
+        )}
       </div>
     )
   }

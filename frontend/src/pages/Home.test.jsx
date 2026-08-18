@@ -158,6 +158,18 @@ describe('Home — first run, holding a handed-down recipe', () => {
     )
     expect(await screen.findByText('recipe page')).toBeInTheDocument()
   })
+
+  it('still shows public recipes, even before the user authors their own', async () => {
+    // The bug: this branch returned after "Passed to you" without ever rendering
+    // the public feed, so a user handed a recipe (but with none of their own) saw
+    // only their handoff while public recipes sat in Browse.
+    mockApi({ mine: [], shared: [HANDED], browse: [PUBLIC_OTHER] })
+    renderHome()
+    expect(
+      await screen.findByText('A stranger’s congee'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/passed down lately/i)).toBeInTheDocument()
+  })
 })
 
 describe('Home — returning user', () => {
