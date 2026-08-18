@@ -84,10 +84,10 @@ export default function Friends() {
         color="bg-periwinkle"
         className="font-display font-black text-[32px] text-ink leading-none"
       >
-        Your people<span className="text-terra">.</span>
+        Friends<span className="text-terra">.</span>
       </MarkerTitle>
       <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-6">
-        The people you cook with.
+        The people you share recipes with.
       </p>
 
       {error && (
@@ -144,7 +144,7 @@ export default function Friends() {
       {/* People to add — seeded from the handoff graph. */}
       {suggestions.length > 0 && (
         <section className="mb-7">
-          <h2 className="section-label mb-2.5">People you’ve cooked with</h2>
+          <h2 className="section-label mb-2.5">People you’ve shared recipes with</h2>
           <div className="space-y-2.5">
             {suggestions.map((s) => (
               <div

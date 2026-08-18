@@ -403,14 +403,17 @@ export default function Profile() {
         </AccountRow>
       </div>
 
-      {/* Your people — the friend graph (social feed Phase 0). Entry point lives
-          on "You" since it's about your relationships, not a recipe surface. */}
+      {/* Friends — HIDDEN until Phase 1. The friend graph works and ships (routes
+          /friends + /u/:userId are live, tested, and reachable by URL), but a
+          friend list with no feed reads as a social feature with no payoff, so the
+          entry point stays out of the UI until the feed (which becomes Home) gives
+          friendship a point. Restore this button when Phase 1 lands.
       <button
         onClick={() => navigate('/friends')}
         className="w-full mt-6 inline-flex items-center justify-center gap-2 py-3 rounded-full bg-periwinkle border-[2.5px] border-ink text-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
       >
-        🧑‍🍳 Your people
-      </button>
+        🧑‍🍳 Friends
+      </button> */}
 
       {/* Send feedback — now an in-app form (/feedback), replacing the external
           hosted form this used to open in a new tab. VITE_FEEDBACK_URL is gone
