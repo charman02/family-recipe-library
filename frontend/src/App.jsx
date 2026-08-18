@@ -14,6 +14,8 @@ import PlantRecipe from './pages/PlantRecipe'
 import EditRecipe from './pages/EditRecipe'
 import HandoffPage from './pages/HandoffPage'
 import SharedWithMe from './pages/SharedWithMe'
+import Friends from './pages/Friends'
+import UserProfile from './pages/UserProfile'
 import Profile from './pages/Profile'
 import Feedback from './pages/Feedback'
 import InviteLanding from './pages/InviteLanding'
@@ -121,6 +123,26 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <SharedWithMe />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/friends"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Friends />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/u/:userId"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <UserProfile />
             </Layout>
           </ProtectedRoute>
         }

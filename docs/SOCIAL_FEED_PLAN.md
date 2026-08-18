@@ -1,0 +1,250 @@
+# Implementation plan: the social presence feed (issei #62)
+
+> Phased build plan derived from `SOCIAL_FEED_DESIGN.md` (design + locked decisions).
+> **Nothing here is built.** Each phase is independently shippable, gets its own
+> ship-review + docs gate, and is a "stop and ask" item (new feature + data model +
+> positioning) per the autonomy policy in `TESTING.md`. Approve phase-by-phase.
+
+## Guiding constraints (carried from the design)
+
+- **Symmetric friends** (both accept). **Friends-only feed** (no public/global feed).
+- **Extension, not replacement** — handoffs, recipes, invite/OG, Cloudinary all reused.
+- **Web-first**; native iOS is a later amplifier, not a prerequisite.
+- **No like button** — the recipe-request is the only "reaction."
+- **Reuse the handoff grant machinery** for the request→fulfill loop.
+- Every new endpoint pins auth + scope (TESTING.md invariants 1–3); every new
+  surface respects POSITIONING (invariants 5–6). New models → migration replays on
+  SQLite (invariant + `test_migrations.py`).
+
+## Conventions the code must match (from the current repo)
+
+- Models: SQLAlchemy 2.0 `Mapped[...] / mapped_column`, `server_default` for enums,
+  FKs with explicit `ondelete`, `created_at` via `func.now()` (see `models/handoff.py`).
+- **Register every new model in `alembic/env.py`** (the `from app.models.x import Y  # noqa`
+  block) or autogenerate misses it.
+- Migrations: hand-written `upgrade`/`downgrade`, `revision`/`down_revision` chained,
+  additive; must replay on SQLite.
+- Routers: literal paths declared BEFORE `/{id}` catch-alls; `get_current_user`
+  dependency for auth; Pydantic request/response schemas separate from ORM.
+- `can_view` in `services/sharing.py` stays the single read-authorization rule.
+- Frontend: pages in `src/pages`, components in `src/components`, API calls through
+  `src/api/*`; bottom-nav is a floating sticker pill; every new text field/surface
+  is POSITIONING-clean. Add tests for new pages (don't extend the coverage gaps).
+
+---
+
+## Phase 0 — the friend graph + minimal profiles  *(prereq; no feed without it)*
+
+**Goal:** two users can become friends, and you can view a friend's profile. Delivers
+nothing social-feeling on its own, but everything else needs it. Ship it quietly.
+
+### Backend
+- **Model `Friendship`** (`models/friendship.py`): `id`, `requester_id` FK users,
+  `addressee_id` FK users (both `ondelete=CASCADE`), `state` (`pending | accepted`,
+  server_default `pending`), `created_at`. Unique constraint on the unordered pair
+  (enforce one row per pair regardless of direction — store a normalized
+  `(low_id, high_id)` pair, or a unique index on `(requester_id, addressee_id)` plus
+  an app-level check for the reverse). **Register in `alembic/env.py`.**
+- **Migration** `create friendships` (additive; replays on SQLite).
+- **Service `services/friends.py`**: `are_friends(a_id, b_id, db) -> bool` (accepted
+  in either direction) — the single friendship predicate, reused by Phase 1's feed
+  and the Phase-later visibility change. Keep it the one rule, like `can_view`.
+- **Endpoints** (new `routers/friends.py`, or fold into a `social` router):
+  - `POST /friends/request` `{to_user_id}` → create/accept-idempotent pending request.
+  - `POST /friends/{id}/accept` → both-accepted; only the addressee may accept.
+  - `DELETE /friends/{id}` → unfriend / decline / cancel (either party).
+  - `GET /friends` → accepted friends list.
+  - `GET /friends/requests` → incoming pending.
+  - `GET /friends/suggestions` → **seeded from the handoff graph** (people you've
+    handed a recipe to or received one from) minus existing friends/requests. This is
+    the cold-start mitigation; it's why Phase 0 is worth shipping before the feed.
+- **Scope/authorization tests** (TESTING.md #1–3 style): can't accept someone else's
+  request; can't friend yourself; idempotent re-request; unfriend is mutual;
+  suggestions never include non-handoff strangers or already-friends.
+
+### Frontend
+- **`api/friends.js`** — the calls above.
+- **`pages/Profile`** already exists as "You" (account). Add a **read-only profile
+  view** for *another* user: `pages/UserProfile.jsx` at `/u/:userId` — their name,
+  avatar placeholder (avatars are backlog #33, fold in here if cheap), and their
+  **public + friends-visible recipes** (respects the not-yet-built visibility rule —
+  until Phase "visibility" lands, show public only). A "Add friend / Requested /
+  Friends ✓" button reflecting state.
+- **`pages/Friends.jsx`** (or a section of "You"): friends list, incoming requests,
+  and suggestions ("People you've cooked for"). Entry from the "You" tab.
+- Tests for both pages (new pages — no coverage gap).
+
+**Phase 0 ships:** you can find people you've exchanged recipes with, friend them, and
+see their profile. No feed yet.
+
+---
+
+## Phase 1 — posts + the friends feed (the MVP)
+
+**Goal:** post a photo + dish name; see a reverse-chron feed of friends' posts. This
+alone delivers the "see what your friends are making / stay connected from afar" value.
+**Ship and learn before building the request loop.**
+
+### Backend
+- **Model `Post`** (`models/post.py`): `id`, `user_id` FK, `photo_url` (Cloudinary,
+  required), `dish_name` (required), `description` (optional), **`recipe_id`
+  nullable FK** (`ondelete=SET NULL` — a post can outlive/precede its recipe),
+  `created_at`. Register in `env.py`. Migration additive.
+- **Endpoints** (`routers/posts.py`):
+  - `POST /posts` `{photo_url, dish_name, description?, recipe_id?}` — create. Photo
+    via the **existing `/upload/recipe-photo` pipeline** (reused, no new upload code).
+  - `GET /posts/feed` — posts by the caller's **accepted friends** (uses
+    `services/friends.are_friends`), reverse-chron, paginated (cursor or
+    `?before=<created_at>`; cap page size). **Scope test:** a non-friend's post never
+    appears; your own optionally included (decide: BeReal shows yours too — recommend
+    include-own so the feed isn't empty for an active poster with few friends).
+  - `GET /posts/{id}` — single post (author or a friend of author only).
+  - `DELETE /posts/{id}` — author-only (read-is-not-write, invariant 2).
+  - `GET /users/{id}/posts` — a user's posts, for the profile grid (friend-or-public gated).
+- **Post→recipe seeding** is a *frontend* concern (Phase 2 closes the loop); in Phase 1
+  a post just optionally references an existing `recipe_id`.
+
+### Frontend
+- **`api/posts.js`**.
+- **New bottom-nav tab** — the feed becomes a first-class surface (design says its own
+  tab). Current nav: Home · Browse · Add · Kitchen · You. Options to resolve at build:
+  add a 6th ("Feed"), or repurpose. **Flag for decision** — 6 tabs is tight on mobile.
+- **`pages/Feed.jsx`** — reverse-chron cards: photo, dish name, "from {friend}",
+  description, timestamp. Empty state = the cold-start prompt ("Friend the people
+  you've cooked for" → Phase 0 suggestions). NO like button.
+- **`components/PostComposer`** (or a `/post` route) — photo (reuse `photoUpload` +
+  the sticker photo target from RecipeForm), dish name, optional description. Dead
+  simple, one screen. Optionally "attach an existing recipe."
+- **`PostCard.jsx`** — the feed/profile card. Tapping opens the post; if it has a
+  `recipe_id`, a link through to the recipe.
+- Profile grid (Phase 0's UserProfile) now shows the user's posts too.
+- Tests: Feed (friends-only rendering, empty state), composer (submit shape), PostCard.
+
+**Phase 1 ships:** the presence feed. Post a meal, see friends' meals. Validate the
+core bet here.
+
+---
+
+## Phase 2 — recipe requests → the fulfill loop + notification center
+
+**Goal:** the demand engine. Request a recipe on a post; the poster is nudged; adding
+the recipe auto-delivers it to everyone who asked. Requires a notification center
+(issei has none).
+
+### Backend
+- **Model `RecipeRequest`** (`models/recipe_request.py`): `id`, `post_id` FK
+  (`ondelete=CASCADE`), `requester_id` FK, `state` (`pending | fulfilled`), `created_at`.
+  **Unique `(post_id, requester_id)`** — idempotent per user (mirrors handoff-grant
+  idempotency). Register + migration.
+- **Model `Notification`** (`models/notification.py`): `id`, `user_id` FK (recipient),
+  `type` (`recipe_request | request_fulfilled | comment | friend_request | friend_accept`),
+  `actor_id` FK (who caused it), `post_id?` / `recipe_id?` / `friendship?` refs,
+  `read_at` nullable, `created_at`. Generic enough to serve Phases 2–3. Register +
+  migration.
+- **Service `services/notifications.py`**: `notify(user_id, type, ...)` — the one
+  place notifications are created, so every producer routes through it.
+- **Endpoints:**
+  - `POST /posts/{id}/request` — idempotent; creates a `RecipeRequest` and a
+    `recipe_request` notification to the post's author. Guard: friends-only, not your
+    own post.
+  - `DELETE /posts/{id}/request` — retract.
+  - `GET /posts/{id}` now returns **request count + whether you've requested** (like
+    `shared_with_count` on recipes — count only, or names if the design wants "N
+    friends want this": show count to all, names to the author).
+  - **The fulfill loop:** when a recipe is created/edited with a link to a post that
+    has pending requests — OR a dedicated `POST /posts/{id}/fulfill {recipe_id}` —
+    for each pending `RecipeRequest`, mint a **handoff grant** (reuse
+    `handoff_recipe`'s grant creation: `Handoff(recipe_id, from_user_id=author,
+    to_user_id=requester, state='accepted')`), mark the request `fulfilled`, and
+    `notify(requester, 'request_fulfilled', ...)`. **This is the design's "a fulfilled
+    request is a handoff to everyone who asked" — literally reuse the grant path so
+    `can_view` already lets them read it.** Idempotent (don't double-grant).
+  - `GET /notifications` — the caller's, newest first, paginated.
+  - `POST /notifications/read` (or `/{id}/read`) — mark read; unread-count endpoint or
+    include in `/notifications`.
+- **Scope tests:** can't request your own post; can't request as a non-friend; fulfill
+  grants exactly the requesters (not all friends) and is idempotent; a requester can
+  now `can_view` the recipe; notifications are per-recipient only (invariant 1/3).
+
+### Frontend
+- **`api/notifications.js`**, extend `api/posts.js` with request/fulfill.
+- **PostCard**: a **"Request recipe" button** (the primary action — replaces where a
+  like would be). Shows "Requested ✓" / "N friends want this" (count to all; the
+  author sees it as a prompt).
+- **Post→recipe conversion**: from a post you own with requests, a "Add the recipe"
+  CTA opens the existing add flow **pre-seeded** (dish name → name, description →
+  description, photo → cover — the locked auto-seed), and on save runs fulfill. This
+  is the low-friction demand→recipe path that is the whole point.
+- **`components/NotificationCenter`** — a bell in the header or a "You"-tab section;
+  unread badge; list of notifications with deep links (request → your post; fulfilled →
+  the recipe). In-app only (no push — that's the native phase).
+- Tests: request button states, the seeded add flow, notification list + read state.
+
+**Phase 2 ships:** the motivation engine. Requests turn "why log this?" into "6 friends
+are waiting," and fulfilling hands it to them automatically.
+
+---
+
+## Phase 3 — comments + polish
+
+- **Model `Comment`** (`post_id` FK CASCADE, `user_id`, `body`, `created_at`).
+  Friends-only create; author-or-commenter delete. `notify(post_author, 'comment')`.
+- Endpoints: `POST /posts/{id}/comments`, `GET /posts/{id}/comments`, `DELETE`.
+- Frontend: comment thread on the post view; count on PostCard; notification wired.
+- Polish: notification center empty/read states, feed pagination UX, profile completeness.
+- (Comments are cheap + high-connection-value; could merge into Phase 2 if desired.)
+
+---
+
+## The visibility change (`private | friends | public`) — lands WITH Phase 0/1
+
+Sequenced here because "friends" visibility is meaningless before the friend graph.
+Do it as its own reviewed step once Phase 0's `are_friends` exists (it can ride in
+Phase 1, or immediately after Phase 0):
+- `Recipe.visibility` accepts `friends`; **migration** sets the column default and
+  the app default flips `public → friends` (partially reverses the recent
+  public-by-default call — intended; see design Tension 1).
+- **`can_view` gains a branch:** viewable if public OR owner OR accepted grant OR
+  **(`visibility == 'friends'` AND `are_friends(viewer, owner)`)**. This is the one
+  rule; test every branch.
+- `effective_visibility` / `/browse` gating: **Browse shows only `public`** (a
+  friends-default recipe must not leak to the public feed) — a scope test pins this.
+- `VisibilityChoice` (create) + the Edit form control (backlog #61) become **3-way**.
+  Backlog #61 is absorbed here — build the edit control as 3-tier, not 2-tier.
+- Update the visibility tests (`test_visibility.py`, `test_sharing.py`) for the new
+  tier; update TESTING.md invariant 1 to name the friends branch.
+
+## POSITIONING rework (do it as part of Phase 1, before the feed ships publicly)
+
+`POSITIONING.md` currently disclaims being a social feed. Rework it deliberately (not
+a quiet edit): *the honest handoff, now with a reason to stay* — presence + connection,
+demand-driven, **no likes, symmetric friends, no virality, friends-only**. This is a
+**"stop and ask" doc change** — draft it and get explicit sign-off before it lands,
+since it redefines what the app is. The docs-auditor's POSITIONING scan must stay green
+against the new text.
+
+## Backlog items this absorbs / closes
+
+- **#8 profiles** → Phase 0. **#32 relational/close-the-loop** → the feed IS this;
+  the fulfill loop closes it. **#33 avatars** → fold into Phase 0/1 profiles.
+  **#61 edit-form visibility** → becomes the 3-tier control in the visibility step.
+
+## Open decisions to settle at build time (not blockers now)
+
+1. **Bottom nav** — RESOLVED (2026-08-18): the feed **becomes the Home page** (`/`),
+   not a 6th tab. The current Home (hero deck + "passed down lately" + your kitchen)
+   is folded into/replaced by the friends feed; "your kitchen" already has its own
+   tab. Revisit where the current Home's first-run/empty-handed pitch goes.
+2. **Own posts in your own feed?** (Rec: yes — avoids an empty feed for active posters.)
+3. **Request count visibility**: count to everyone, requester names to the author only? (Rec: yes.)
+4. **Fulfill trigger**: automatic when a recipe links a requested post, or an explicit
+   "share with the N who asked" confirmation? (Rec: explicit confirm — sending to
+   people is outward-facing; the user should see who it goes to.)
+5. **Notification retention/pagination** shape.
+6. **Avatars now or later** (#33) — cheap to include in Phase 0 profiles.
+
+## Rough sequence
+
+Phase 0 → (visibility change) → Phase 1 + POSITIONING rework → Phase 2 → Phase 3.
+Each is its own approval-gated ship. Phase 1 is the first point real users feel it;
+Phase 2 is the highest-payoff, highest-effort build.

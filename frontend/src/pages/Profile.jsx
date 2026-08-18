@@ -403,6 +403,15 @@ export default function Profile() {
         </AccountRow>
       </div>
 
+      {/* Your people — the friend graph (social feed Phase 0). Entry point lives
+          on "You" since it's about your relationships, not a recipe surface. */}
+      <button
+        onClick={() => navigate('/friends')}
+        className="w-full mt-6 inline-flex items-center justify-center gap-2 py-3 rounded-full bg-periwinkle border-[2.5px] border-ink text-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
+      >
+        🧑‍🍳 Your people
+      </button>
+
       {/* Send feedback — now an in-app form (/feedback), replacing the external
           hosted form this used to open in a new tab. VITE_FEEDBACK_URL is gone
           rather than kept as a fallback: two routes to the same thing would split
@@ -412,7 +421,7 @@ export default function Profile() {
           always shown, because unlike an external link it can't point at nothing. */}
       <button
         onClick={() => navigate('/feedback', { state: { from: '/profile' } })}
-        className="w-full mt-6 inline-flex items-center justify-center gap-2 py-3 rounded-full bg-saffron border-[2.5px] border-ink text-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
+        className="w-full mt-3 inline-flex items-center justify-center gap-2 py-3 rounded-full bg-saffron border-[2.5px] border-ink text-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
       >
         💬 Send feedback
       </button>
