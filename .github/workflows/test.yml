@@ -1,0 +1,55 @@
+# The PR test gate. Runs the backend (pytest) and frontend (vitest) suites on every
+# pull request. The SAME two jobs also run inside deploy.yml on a push to main, where
+# the deploy job `needs:` them — so a red suite blocks prod automatically (see
+# deploy.yml), and this file covers the pre-merge PR case. Kept PR-only (not push) so
+# a main push doesn't double-run them here and in deploy.yml.
+#
+# See TESTING.md for the invariants these suites are required to keep passing.
+
+name: Tests
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run pytest
+        env:
+          # In-memory SQLite: the suite's own fixtures build their DB per test
+          # (tests/fixtures.py), and the two /health/ready + smoke tests hit this
+          # engine — reachable here, unlike a dev machine pointed at Neon. Never
+          # point CI at a real database; the suite must be hermetic.
+          DATABASE_URL: 'sqlite://'
+          JWT_SECRET: 'ci-only-not-a-real-secret'
+        run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run vitest
+        run: npm test
+      - name: Production build
+        # A build that fails to compile is a broken deploy even if tests pass —
+        # catch syntax/import errors here, matching the local pre-ship check.
+        run: npm run build
