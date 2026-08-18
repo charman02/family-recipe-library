@@ -74,8 +74,8 @@ database (Postgres / SQLite)
 | `auth.py` | Password hashing (bcrypt), JWT creation/decoding, and `get_current_user` — the dependency that protects endpoints by requiring a valid token. |
 | `models/` | **ORM models** — Python classes mapping to database tables. Nine, one file per table: `user`, `recipe` (carries `origin_attribution` — the byline — and `visibility`), `ingredient`, `ingredient_section`, `step` (carries `voice_note`, a plain `Text` column holding the typed note for that step — **not audio**, see below), `cook_event` (carries `note` — a cook's variation), `handoff` (carries `token` — a capability secret for the invite link), `feedback` (an in-app feedback note), `password_reset` (time-limited token for the forgot-password flow). |
 | `schemas/` | **Pydantic models** — define the JSON shape of requests and responses, separately from the DB models. Keeps internal fields (like password hashes) from leaking to the API. |
-| `routers/` | **Endpoint definitions**, grouped by domain: `auth` (signup/login/me, plus `PATCH /auth/me` to edit name/email/password, `DELETE /auth/me` to delete account, `POST /auth/forgot-password` and `POST /auth/reset-password` for the email-based password-reset flow — signup also auto-accepts pending recipe invites addressed to the new user's email), `recipes` (CRUD + scaling + browse + cook + handoff, plus sharing: `/recipes/shared` and `/recipes/handoffs/{id}/accept`, plus the invite flow: `GET /recipes/invite/{token}` — unauthenticated *full* read of a handed-off recipe; `POST /recipes/invite/{token}/claim` — authenticated grant claim by token), `upload` (Cloudinary photos), `feedback` (in-app feedback notes, self-scoped). `recipes` also carries `POST /recipes/parse`, which structures a spoken/pasted recipe into fields via an LLM and saves nothing. `main.py` also serves an unauthenticated `GET /health`. **27 routes total** across **4 routers** — count them with `grep -rn "^@router\.\|^@app\." app/`; the full table is in `README.md`. |
-| `services/` | **Business logic**, decoupled from HTTP. `scaling.py` (the precise/imprecise/unmeasured quantity math), `folk_units.py` (the folk/body/vessel unit vocabulary — see below), `growth.py` (`soul_count`, `growth_stage`, `growth_vitality` — still computed and returned on `RecipeResponse`, but **no UI displays them** since the garden was removed), `sharing.py` (`can_view`, the single read-authorization rule — public **or** owner **or** an accepted grant on that recipe — plus `effective_visibility`, now just the recipe's own visibility since there is no tree to inherit from). `quantity.py` (server-side classification of a written amount into precise/imprecise/unmeasured, sharing the `folk_units` vocabulary so the model's output is graded by the app, not by the model). `recipe_ai.py` (the OpenRouter call behind `POST /recipes/parse` — a strict-schema extraction that preserves imprecise amounts verbatim and falls back to a local parser when unavailable). `email.py` (sends password-reset emails via AWS SES). |
+| `routers/` | **Endpoint definitions**, grouped by domain: `auth` (signup/login/me, plus `PATCH /auth/me` to edit name/email/password, `DELETE /auth/me` to delete account, `POST /auth/forgot-password` and `POST /auth/reset-password` for the email-based password-reset flow — signup also auto-accepts pending recipe invites addressed to the new user's email), `recipes` (CRUD + scaling + browse + cook + handoff, plus sharing: `/recipes/shared` and `/recipes/handoffs/{id}/accept`, plus the invite flow: `GET /recipes/invite/{token}` — unauthenticated *full* read of a handed-off recipe; `POST /recipes/invite/{token}/claim` — authenticated grant claim by token), `upload` (Cloudinary photos), `feedback` (in-app feedback notes, self-scoped). `recipes` also carries `POST /recipes/parse`, which structures a spoken/pasted recipe into fields via an LLM and saves nothing, and `GET /recipes/invite/{token}/preview`, which serves crawler-only OpenGraph HTML so a shared invite link unfurls as the actual recipe (see `services/invite_og.py`). `main.py` also serves an unauthenticated `GET /health`. **28 routes total** across **4 routers** — count them with `grep -rn "^@router\.\|^@app\." app/`; the full table is in `README.md`. |
+| `services/` | **Business logic**, decoupled from HTTP. `scaling.py` (the precise/imprecise/unmeasured quantity math), `folk_units.py` (the folk/body/vessel unit vocabulary — see below), `growth.py` (`soul_count`, `growth_stage`, `growth_vitality` — still computed and returned on `RecipeResponse`, but **no UI displays them** since the garden was removed), `sharing.py` (`can_view`, the single read-authorization rule — public **or** owner **or** an accepted grant on that recipe — plus `effective_visibility`, now just the recipe's own visibility since there is no tree to inherit from). `quantity.py` (server-side classification of a written amount into precise/imprecise/unmeasured, sharing the `folk_units` vocabulary so the model's output is graded by the app, not by the model). `recipe_ai.py` (the OpenRouter call behind `POST /recipes/parse` — a strict-schema extraction that preserves imprecise amounts verbatim and falls back to a local parser when unavailable). `email.py` (sends password-reset emails via AWS SES). `invite_og.py` (pure builders for the invite link-preview OpenGraph card served by `GET /recipes/invite/{token}/preview` — HTML-escaped, POSITIONING-guarded, unit-tested without HTTP). |
 
 **Folk units, and why scaling has three cases rather than two.** `folk_units.py`
 holds the vocabulary of units that name a *vessel* or a *gesture* instead of a
@@ -143,15 +143,13 @@ frontend/
 │                           (carries the SITE-WIDE OpenGraph/Twitter meta +
 │                            favicon — the generic fallback card for any link;
 │                            og.png is regenerated by scripts/generate-og.mjs)
-├── api/
-│   └── invite/[token].js   Vercel serverless function: serves CRAWLERS a
-│                           per-invite link-preview card (the real recipe's name,
-│                            byline, sender, cover photo) by fetching the public
-│                            InvitePreview and injecting recipe-specific OG tags.
-│                            Routed only for bot user-agents (see vercel.json);
-│                            humans fall through to the SPA. Logic in lib/inviteOg.js.
 ├── vercel.json             build + rewrites, incl. the crawler-only /invite/:token
-│                           → api/invite route rule (before the SPA catch-all)
+│                           rule: bot user-agents are proxied to the BACKEND
+│                           (GET /recipes/invite/:token/preview) for a per-invite
+│                           card; humans fall through to the SPA catch-all. (The
+│                           per-invite OG HTML is built server-side in
+│                           app/services/invite_og.py — Vercel wasn't reliably
+│                           deploying an earlier serverless-function version.)
 ├── package.json            dependencies + npm scripts (dev, build)
 ├── vite.config.js          build tool config
 ├── tailwind.config.js      design tokens: colors, fonts, max-width
@@ -255,8 +253,7 @@ factored into small reusable components. The core `.sticker` / `.field` /
 | File | What it does |
 |---|---|
 | `measures.js` | `isImprecise` / `impreciseLabel` — flags imprecise/unmeasured ingredient amounts so the recipe page tags them "their way" (celebrated as fidelity, never normalized). |
-| `inviteMessage.js` | `defaultInviteMessage({ recipeName })` — the warm, first-person default the handoff note is pre-filled with ("Here's my {dish} recipe — I wanted you to have it 💛"). First person on purpose: it's shared from the sender's own texting app, so it reads like them, not an app notice. Replaced the one-tap "note starter" chips (`handoffStarters.js`), which just restated this. |
-| `inviteOg.js` | Pure builders (`buildInviteMeta`, `renderInviteOgDocument`, `escapeHtml`) for the invite link-preview card — so a shared `/invite/:token` link unfurls showing the actual recipe (name, "from {byline}", who sent it, its cover photo) instead of the generic site card. Consumed by the Vercel function `api/invite/[token].js`; kept as a pure, unit-tested module so the string/escaping logic is testable without Vercel. Carries a POSITIONING guard (no audio terms) and HTML-escapes user-supplied names. |
+| `inviteMessage.js` | `defaultInviteMessage({ recipeName })` — the warm, first-person default the handoff note is pre-filled with ("Here's my {dish} recipe — I wanted you to have it 💛"). First person on purpose: it's shared from the sender's own texting app, so it reads like them, not an app notice. Replaced the one-tap "note starter" chips (`handoffStarters.js`), which just restated this. (The invite link-preview OG card is built server-side now — see `app/services/invite_og.py` — not in `lib/`.) |
 | `sourceName.js` | `sourceNameOf(recipe)` — extracts the recorded source's name from `origin_attribution` (leading segment before `·`). Used for recipe bylines (RecipeCard, EditRecipe, PasteRecipe). |
 | `originPayload.js` | Builds the origin request payload sent to the backend (`buildOriginPayload`). Was `lineagePayload.js`. |
 | `prefs.js` | The client-side preferences bag — one `issei_prefs` localStorage object (`PREFS_KEY`, `loadPrefs`, `setPref`) holding display toggles and the Welcome seen-flag. Deliberately one bag, not a second onboarding-only key, so "clear site data" resets every client-side preference together and two keys can't disagree about what a fresh user is. |
@@ -331,7 +328,7 @@ React app                FastAPI app          Postgres (Neon)
 - **Two servers must be running to use the app locally**: `uvicorn app.main:app
   --reload` (backend) and `npm run dev` in `frontend/` (frontend).
 - **Verifying changes:** backend has `pytest` (**202 tests** across `tests/`);
-  frontend has Vitest + React Testing Library (**499 tests in 35 files**) — run
+  frontend has Vitest + React Testing Library (**483 tests in 34 files**) — run
   `npm test` (`vitest run`) in `frontend/`. `npm run build` still catches
   syntax/import errors. These counts move; re-run both suites rather than
   quoting a number from a doc.

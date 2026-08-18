@@ -1,8 +1,11 @@
 import secrets
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session, selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.auth import get_current_user
 from app.models.user import User
@@ -31,6 +34,7 @@ from app.services.scaling import scale_ingredient
 from app.services.sharing import effective_visibility, can_view
 from app.services.growth import soul_count, growth_stage, growth_vitality
 from app.services.recipe_ai import RecipeAIUnavailable, extract_recipe
+from app.services.invite_og import build_invite_meta, render_invite_og_document
 
 from datetime import datetime, timezone
 
@@ -462,6 +466,83 @@ def preview_invite(token: str, db: Session = Depends(get_db)):
         ],
         ingredients=[IngredientResponse.model_validate(i) for i in recipe.ingredients],
         steps=[StepResponse.model_validate(s) for s in recipe.steps],
+    )
+
+
+def _invite_from_name(recipe) -> str | None:
+    """The name of the person who passed the recipe on (its owner) — for the byline
+    'Charlie passed you…'. Shared by the JSON preview and the OG card."""
+    if recipe.user is None:
+        return None
+    return " ".join(p for p in [recipe.user.first_name, recipe.user.last_name] if p) or None
+
+
+@dataclass
+class _InviteCard:
+    """Just the fields the OG card needs — passed to build_invite_meta so it never
+    touches an ORM object's lazy relationships or private columns."""
+
+    name: str
+    origin_attribution: str | None
+    from_name: str | None
+    description: str | None
+    cover_photo_url: str | None
+
+
+@router.get("/invite/{token}/preview", response_class=HTMLResponse)
+def preview_invite_card(token: str, db: Session = Depends(get_db)):
+    """Link-preview (Open Graph) HTML for a shared /invite/{token} link.
+
+    Crawlers (iMessage, WhatsApp, Slack, …) don't run the SPA's JS, so the recipe's
+    OG tags have to be in the raw HTML. Vercel routes ONLY crawler user-agents on
+    /invite/:token here (frontend/vercel.json); humans stay on the SPA. This returns
+    the actual recipe's card (name, 'from {byline}', sender, cover photo) instead of
+    the generic site card, then meta-refreshes any human who lands here to the real
+    /invite/{token} page.
+
+    A crawler must NEVER get a 5xx (that yields no preview at all), so a missing
+    token or any load failure degrades to a generic-but-honest card, never an error.
+    """
+    site_origin = settings.app_url.rstrip("/")
+    recipe = None
+    reached = True
+    try:
+        h = db.query(Handoff).filter(Handoff.token == token).first()
+        if h is not None:
+            recipe = (
+                db.query(Recipe)
+                .filter(Recipe.id == h.recipe_id, Recipe.deleted_at == None)
+                .options(selectinload(Recipe.user))
+                .first()
+            )
+        # h is None, or the recipe was deleted → recipe stays None with reached=True
+        # → the builder shows the honest "expired or moved" card.
+    except Exception:
+        # A DB blip: we could NOT confirm the token is gone, so this is distinct from
+        # a 404. reached=False makes the builder show a neutral 'open on issei' card
+        # rather than falsely calling a live link expired.
+        reached = False
+
+    from_name = _invite_from_name(recipe) if recipe is not None else None
+    # Hand the builder a lightweight object carrying just the card fields, so it
+    # never touches lazy relationships or private columns.
+    card_recipe = None
+    if recipe is not None:
+        card_recipe = _InviteCard(
+            name=recipe.name,
+            origin_attribution=recipe.origin_attribution,
+            from_name=from_name,
+            description=recipe.description,
+            cover_photo_url=recipe.cover_photo_url,
+        )
+    meta = build_invite_meta(
+        card_recipe, site_origin=site_origin, token=token, reached=reached
+    )
+    html = render_invite_og_document(meta)
+    # Short edge/CDN cache: previews are re-fetched on every share and change rarely.
+    return HTMLResponse(
+        content=html,
+        headers={"Cache-Control": "public, max-age=300, stale-while-revalidate=86400"},
     )
 
 

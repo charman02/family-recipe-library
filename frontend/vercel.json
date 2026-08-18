@@ -13,7 +13,7 @@
           "value": ".*(facebookexternalhit|Facebot|Twitterbot|Slackbot|WhatsApp|LinkedInBot|TelegramBot|Discordbot|Pinterest|redditbot|Google-InspectionTool|SkypeUriPreview|vkShare|W3C_Validator|Iframely|embedly|bitlybot|Bufferbot|flipboard|nuzzel|Mastodon|Applebot).*"
         }
       ],
-      "destination": "/api/invite/:token"
+      "destination": "https://api.issei.app/recipes/invite/:token/preview"
     },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

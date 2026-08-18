@@ -5,7 +5,7 @@
 // recipe…"), not an app notification that names them in the third person. The
 // sender's name is therefore NOT in the text — their phone already carries it. (The
 // link-preview CARD is separate and stays third person — that's the app narrating a
-// caption, "Charlie passed you…"; see lib/inviteOg.js.)
+// caption, "Charlie passed you…"; built server-side in app/services/invite_og.py.)
 //
 // It seeds the note field (editable — the sender can rewrite it or clear it) and is
 // also the fallback body when the native share sheet fires with no note typed.
