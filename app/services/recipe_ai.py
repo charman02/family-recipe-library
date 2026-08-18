@@ -189,10 +189,11 @@ async def extract_recipe(text: str, *, timeout: float = 25.0) -> dict[str, Any]:
         # Deterministic extraction. Creativity here would mean inventing ingredients.
         "temperature": 0,
         # NO REASONING. Measured, not assumed: with thinking on, DeepSeek V4 Flash took
-        # 72.9s for one recipe; off, the same call took 5.9s for the same output. Hybrid
-        # models think by default, and there is nothing here to think ABOUT — the task is
-        # copying spans out of a sentence into a fixed schema. It also costs money:
-        # reasoning tokens bill as output.
+        # 72.9s for one recipe; off, the same call took 2.7s for the same output — roughly
+        # 27x. (Single samples, and inference latency varies per call, so treat the ratio as
+        # an order of magnitude rather than a constant.) Hybrid models think by default, and
+        # there is nothing here to think ABOUT — the task is copying spans out of a sentence
+        # into a fixed schema. It also costs money: reasoning tokens bill as output.
         #
         # Ignored by models without a reasoning mode, so this is safe for every model.
         "reasoning": {"enabled": False},
