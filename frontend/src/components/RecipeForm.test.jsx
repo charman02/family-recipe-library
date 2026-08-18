@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import client from '../api/client'
 import RecipeForm from './RecipeForm'
 
@@ -416,7 +416,9 @@ describe('RecipeForm ingredient autosuggest', () => {
     // findAllByRole would assert against the pre-fetch strip and pass by luck.
     await screen.findByRole('option', { name: 'sopropo' })
     // Their kitchen predicts their next ingredient better than any list we ship.
-    expect(screen.getAllByRole('option')[0]).toHaveTextContent('sopropo')
+    // Scope to the suggestion listbox — the Diet <select> also has <option>s.
+    const strip = screen.getByRole('listbox')
+    expect(within(strip).getAllByRole('option')[0]).toHaveTextContent('sopropo')
   })
 
   it('tapping a suggestion fills the name and lands on the amount', async () => {
@@ -446,9 +448,11 @@ describe('RecipeForm ingredient autosuggest', () => {
     await screen.findByRole('option', { name: 'gochugaru' })
     // "gochu" matches more than one thing, so assert against the FIRST option
     // rather than a hardcoded word — otherwise this test pins list order.
-    const first = screen.getAllByRole('option')[0].textContent
+    // Scope to the suggestion listbox — the Diet <select> also has <option>s.
+    const strip = screen.getByRole('listbox')
+    const first = within(strip).getAllByRole('option')[0].textContent
     fireEvent.keyDown(input, { key: 'ArrowDown' })
-    expect(screen.getAllByRole('option')[0]).toHaveAttribute(
+    expect(within(strip).getAllByRole('option')[0]).toHaveAttribute(
       'aria-selected',
       'true',
     )
@@ -462,11 +466,17 @@ describe('RecipeForm ingredient autosuggest', () => {
     type(input, 'gochu')
     await screen.findByRole('option', { name: 'gochugaru' })
     fireEvent.keyDown(input, { key: 'Escape' })
-    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    // Query the suggestion strip by its listbox role, not 'option' — the Diet
+    // <select> also renders <option>s (role option), so a bare option query would
+    // find those even when the ingredient strip is closed.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     // Someone whose ingredient isn't in any list dismissed it for a reason;
     // reopening on the next letter makes Escape worthless.
     fireEvent.change(input, { target: { value: 'gochuj' } })
-    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    // Query the suggestion strip by its listbox role, not 'option' — the Diet
+    // <select> also renders <option>s (role option), so a bare option query would
+    // find those even when the ingredient strip is closed.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
   it('never blocks a free-text name no list has heard of', async () => {
@@ -476,7 +486,10 @@ describe('RecipeForm ingredient autosuggest', () => {
       target: { value: 'Pinakbet' },
     })
     type(names()[0], 'kadyos')
-    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    // Query the suggestion strip by its listbox role, not 'option' — the Diet
+    // <select> also renders <option>s (role option), so a bare option query would
+    // find those even when the ingredient strip is closed.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0].ingredients[0].name).toBe('kadyos')
@@ -488,7 +501,10 @@ describe('RecipeForm ingredient autosuggest', () => {
     type(input, 'gochu')
     await screen.findByRole('option', { name: 'gochugaru' })
     fireEvent.change(input, { target: { value: 'gochugaru' } })
-    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    // Query the suggestion strip by its listbox role, not 'option' — the Diet
+    // <select> also renders <option>s (role option), so a bare option query would
+    // find those even when the ingredient strip is closed.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
   it('keeps Enter → amount working when nothing is highlighted', () => {

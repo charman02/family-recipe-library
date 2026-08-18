@@ -9,15 +9,7 @@ import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
 import { matchesCuisine } from '../lib/cuisineMatch'
 import { CUISINES } from '../lib/cuisines'
-
-const DIETS = [
-  'Vegetarian',
-  'Vegan',
-  'Gluten-Free',
-  'Dairy-Free',
-  'Halal',
-  'Kosher',
-]
+import { DIETS } from '../lib/diets'
 
 // "Ready In" buckets — max prep time in minutes (0 = any).
 const READY_IN = [

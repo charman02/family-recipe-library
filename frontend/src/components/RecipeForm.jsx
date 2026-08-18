@@ -7,6 +7,7 @@ import FieldLabel from './FieldLabel'
 import IngredientNameField from './IngredientNameField'
 import SuggestField from './SuggestField'
 import { CUISINES } from '../lib/cuisines'
+import { DIETS } from '../lib/diets'
 import AmountUnitChips from './AmountUnitChips'
 import DictateButton from './DictateButton'
 import { parseQuantity } from '../utils/quantity'
@@ -109,7 +110,13 @@ export default function RecipeForm({
   const [servings, setServings] = useState(
     initialValues.servings != null ? String(initialValues.servings) : '',
   )
+  const [prepTime, setPrepTime] = useState(
+    initialValues.prep_time_minutes != null
+      ? String(initialValues.prep_time_minutes)
+      : '',
+  )
   const [cuisine, setCuisine] = useState(initialValues.cuisine || '')
+  const [diet, setDiet] = useState(initialValues.diet || '')
   const [description, setDescription] = useState(
     initialValues.description || '',
   )
@@ -204,6 +211,8 @@ export default function RecipeForm({
         story.trim() ||
         servings.trim() ||
         cuisine.trim() ||
+        diet.trim() ||
+        prepTime.trim() ||
         coverPhotoUrl,
     ) ||
     ingredients.some((i) => i.name.trim() || i.quantity.trim()) ||
@@ -351,7 +360,9 @@ export default function RecipeForm({
       name,
       cover_photo_url: coverPhotoUrl || null,
       servings: servings ? parseInt(servings) : null,
+      prep_time_minutes: prepTime ? parseInt(prepTime) : null,
       cuisine: cuisine || null,
+      diet: diet || null,
       description: description || null,
       story: story || null,
       ingredients: ingredients
@@ -592,10 +603,10 @@ export default function RecipeForm({
               onDone={() => focusFieldById('recipe-cuisine')}
             />
           </div>
+          {/* Two numeric fields side by side. No mic on either: a recognizer
+              returns "four"/"thirty", not "4"/"30", and these inputs reject words. */}
           <div className="flex gap-3">
             <label className="block flex-1">
-              {/* Numeric — no mic: a recognizer returns "four", not "4", and this
-                  input rejects words. It stays a plain, tappable number field. */}
               <FieldLabel>Servings</FieldLabel>
               <input
                 type="number"
@@ -605,6 +616,19 @@ export default function RecipeForm({
                 className="field"
               />
             </label>
+            <label className="block flex-1">
+              <FieldLabel>Ready in (min)</FieldLabel>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="30"
+                value={prepTime}
+                onChange={(e) => setPrepTime(e.target.value)}
+                className="field"
+              />
+            </label>
+          </div>
+          <div className="flex gap-3">
             <div className="block flex-1">
               <FieldLabel>
                 <label htmlFor="recipe-cuisine">Cuisine</label>
@@ -622,6 +646,24 @@ export default function RecipeForm({
                 onDone={() => focusFieldById('recipe-description')}
               />
             </div>
+            <label className="block flex-1">
+              {/* Single-select from the shared DIETS list (matches the single-string
+                  column + the Browse Diet filter). Blank = unset. */}
+              <FieldLabel>Diet</FieldLabel>
+              <select
+                value={diet}
+                onChange={(e) => setDiet(e.target.value)}
+                className="field"
+                aria-label="Diet"
+              >
+                <option value="">Any</option>
+                {DIETS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="block">
             <FieldLabel>

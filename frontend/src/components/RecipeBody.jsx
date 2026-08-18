@@ -197,7 +197,12 @@ export default function RecipeBody({ recipe, context = 'owner', scalable = false
       {/* Byline + cuisine + servings — whose recipe this is, what kind, how many
           it serves. Fraunces throughout (plum heart for the person, fork+knife
           for cuisine, bowl for servings). Hidden in cooking mode. */}
-      {!cooking && (byline || recipe.cuisine || recipe.servings) && (
+      {!cooking &&
+        (byline ||
+          recipe.cuisine ||
+          recipe.servings ||
+          recipe.prep_time_minutes ||
+          recipe.diet) && (
         <div className="flex items-center justify-center gap-[9px] flex-wrap mt-3 mb-1">
           {byline && (
             <span className="inline-flex items-center gap-[5px] text-[13px] tracking-[0.2px]">
@@ -278,6 +283,61 @@ export default function RecipeBody({ recipe, context = 'owner', scalable = false
                 />
               </svg>
               Serves {recipe.servings}
+            </span>
+          )}
+          {(byline || recipe.cuisine || recipe.servings) &&
+            recipe.prep_time_minutes && (
+              <span className="w-px h-[13px] bg-line inline-block" />
+            )}
+          {recipe.prep_time_minutes && (
+            <span className="inline-flex items-center gap-1.5 font-display font-bold text-[11.5px] tracking-[0.5px] uppercase text-ink-soft">
+              {/* clock */}
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className="w-3.5 h-3.5 opacity-90"
+              >
+                <circle cx="12" cy="12" r="8" stroke="#4A5540" strokeWidth="1.7" />
+                <path
+                  d="M12 8v4l2.5 1.5"
+                  stroke="#4A5540"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {recipe.prep_time_minutes} min
+            </span>
+          )}
+          {(byline ||
+            recipe.cuisine ||
+            recipe.servings ||
+            recipe.prep_time_minutes) &&
+            recipe.diet && <span className="w-px h-[13px] bg-line inline-block" />}
+          {recipe.diet && (
+            <span className="inline-flex items-center gap-1.5 font-display font-bold text-[11.5px] tracking-[0.5px] uppercase text-ink-soft">
+              {/* leaf */}
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className="w-3.5 h-3.5 opacity-90"
+              >
+                <path
+                  d="M5 19c0-8 6-13 14-13 0 8-6 13-14 13Z"
+                  stroke="#4A5540"
+                  strokeWidth="1.7"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M5 19c3-4 6-6 10-8"
+                  stroke="#4A5540"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+              {recipe.diet}
             </span>
           )}
         </div>
