@@ -8,21 +8,7 @@ import FilterSelect from '../components/FilterSelect'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
 import { matchesCuisine } from '../lib/cuisineMatch'
-
-const CUISINES = [
-  'Japanese',
-  'Korean',
-  'Chinese',
-  'Filipino',
-  'Vietnamese',
-  'Thai',
-  'Indian',
-  'Middle Eastern',
-  'Mexican',
-  'Italian',
-  'West African',
-  'Caribbean',
-]
+import { CUISINES } from '../lib/cuisines'
 
 const DIETS = [
   'Vegetarian',

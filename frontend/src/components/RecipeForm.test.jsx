@@ -392,9 +392,12 @@ describe('RecipeForm ingredient autosuggest', () => {
     // persistent visible label has to still name it, and it must announce as a
     // combobox so a screen-reader user is told the list exists at all.
     render(<RecipeForm mode="add" onSubmit={() => {}} />)
-    expect(screen.getAllByLabelText('Ingredient')).toHaveLength(3)
-    const boxes = screen.getAllByRole('combobox')
+    // Scope to the ingredient name fields by their label: the source and cuisine
+    // fields are also comboboxes now (SuggestField), so a bare combobox count would
+    // include them. Three ingredient rows → three "Ingredient" comboboxes.
+    const boxes = screen.getAllByLabelText('Ingredient')
     expect(boxes).toHaveLength(3)
+    boxes.forEach((b) => expect(b).toHaveAttribute('role', 'combobox'))
     expect(boxes[0]).toHaveAttribute('aria-expanded', 'false')
   })
 

@@ -5,6 +5,8 @@ import Icon from './Icon'
 import MarkerTitle from './MarkerTitle'
 import FieldLabel from './FieldLabel'
 import IngredientNameField from './IngredientNameField'
+import SuggestField from './SuggestField'
+import { CUISINES } from '../lib/cuisines'
 import AmountUnitChips from './AmountUnitChips'
 import DictateButton from './DictateButton'
 import { parseQuantity } from '../utils/quantity'
@@ -152,12 +154,28 @@ export default function RecipeForm({
   // user should ever see — the common list alone is a working feature, and the
   // one thing a suggestion must never do is get in the way of typing.
   const [suggestions, setSuggestions] = useState(() => mergeSuggestions([]))
+  // Autosuggest pools for the two free-text detail fields. Cuisine seeds from the
+  // shared static CUISINES list so a brand-new account still gets suggestions on
+  // the first keystroke; the user's own past cuisines merge in front. Source has
+  // no static list — it's people's names — so it's only ever the user's own past
+  // sources. Both fetched from /recipes/field-suggestions; a failed/slow fetch is
+  // never surfaced (the static cuisine list alone still works).
+  const [cuisinePool, setCuisinePool] = useState(() => mergeSuggestions([], CUISINES))
+  const [sourcePool, setSourcePool] = useState([])
   useEffect(() => {
     let live = true
     client
       .get('/recipes/ingredient-suggestions')
       .then(({ data }) => {
         if (live) setSuggestions(mergeSuggestions(data?.names || []))
+      })
+      .catch(() => {})
+    client
+      .get('/recipes/field-suggestions')
+      .then(({ data }) => {
+        if (!live) return
+        setCuisinePool(mergeSuggestions(data?.cuisines || [], CUISINES))
+        setSourcePool(mergeSuggestions(data?.sources || [], []))
       })
       .catch(() => {})
     return () => {
@@ -560,23 +578,19 @@ export default function RecipeForm({
             <FieldLabel accent="plum">
               <label htmlFor="recipe-source">Passed down from (optional)</label>
             </FieldLabel>
-            <div className="relative">
-              <input
-                id="recipe-source"
-                type="text"
-                placeholder="e.g. Lola Remedios"
-                value={sourceName}
-                onChange={(e) => setSourceName(e.target.value)}
-                className="field pr-11"
-              />
-              <DictateButton
-                value={sourceName}
-                onChange={setSourceName}
-                what="who this came from"
-                // Skips Servings (numeric — a recognizer says "four", not "4").
-                onDone={() => focusFieldById('recipe-cuisine')}
-              />
-            </div>
+            {/* Suggests the people this user has credited before (their own past
+                sources only — no static list of names). Skips Servings on dictation
+                (numeric — a recognizer says "four", not "4"). */}
+            <SuggestField
+              id="recipe-source"
+              value={sourceName}
+              onChange={setSourceName}
+              suggestions={sourcePool}
+              placeholder="e.g. Lola Remedios"
+              label="who this came from"
+              listLabel="People you've credited before"
+              onDone={() => focusFieldById('recipe-cuisine')}
+            />
           </div>
           <div className="flex gap-3">
             <label className="block flex-1">
@@ -595,22 +609,18 @@ export default function RecipeForm({
               <FieldLabel>
                 <label htmlFor="recipe-cuisine">Cuisine</label>
               </FieldLabel>
-              <div className="relative">
-                <input
-                  id="recipe-cuisine"
-                  type="text"
-                  placeholder="Filipino"
-                  value={cuisine}
-                  onChange={(e) => setCuisine(e.target.value)}
-                  className="field pr-11"
-                />
-                <DictateButton
-                  value={cuisine}
-                  onChange={setCuisine}
-                  what="the cuisine"
-                  onDone={() => focusFieldById('recipe-description')}
-                />
-              </div>
+              {/* Static CUISINES list + the user's own past cuisines (see cuisinePool).
+                  Free text still allowed; the Browse filter tolerates minor drift. */}
+              <SuggestField
+                id="recipe-cuisine"
+                value={cuisine}
+                onChange={setCuisine}
+                suggestions={cuisinePool}
+                placeholder="Filipino"
+                label="the cuisine"
+                listLabel="Cuisines"
+                onDone={() => focusFieldById('recipe-description')}
+              />
             </div>
           </div>
           <div className="block">

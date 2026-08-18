@@ -115,6 +115,16 @@ class IngredientSuggestions(BaseModel):
     names: list[str] = []
 
 
+class FieldSuggestions(BaseModel):
+    # The signed-in user's OWN past values for two recipe-form fields, most-used
+    # first: who they've credited before ("Passed down from") and the cuisines
+    # they've tagged. Same scoping/security as IngredientSuggestions — only words
+    # this user typed themselves. The frontend merges the static CUISINES list in
+    # front of the cuisines here; sources have no static list (they're people).
+    sources: list[str] = []
+    cuisines: list[str] = []
+
+
 # IngredientSection schemas
 
 

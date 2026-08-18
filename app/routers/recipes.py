@@ -22,6 +22,7 @@ from app.schemas.recipe import (
     IngredientResponse,
     IngredientSectionResponse,
     IngredientSuggestions,
+    FieldSuggestions,
     ParseTextIn,
     ParsedRecipe,
     StepResponse,
@@ -395,6 +396,52 @@ def ingredient_suggestions(
     # Bounded: past a few hundred the tail is never reached by a prefix match, and
     # the whole list is downloaded once on a phone.
     return IngredientSuggestions(names=names[:300])
+
+
+def _rank_by_use(raw_values, limit=200):
+    """Dedupe free-text values case-insensitively, most-used first, keeping the
+    user's own most-common spelling of each. Shared by the autosuggest endpoints:
+    picking a representative spelling for a case-insensitive group is fiddly enough
+    that doing it once in Python beats a dialect-specific SQL trick per field."""
+    counts: dict[str, int] = {}
+    spellings: dict[str, dict[str, int]] = {}
+    for raw in raw_values:
+        value = (raw or "").strip()
+        if not value:
+            continue
+        key = value.casefold()
+        counts[key] = counts.get(key, 0) + 1
+        spellings.setdefault(key, {})
+        spellings[key][value] = spellings[key].get(value, 0) + 1
+    ordered = sorted(counts, key=lambda k: (-counts[k], k))
+    return [max(spellings[k].items(), key=lambda kv: (kv[1], kv[0]))[0] for k in ordered][:limit]
+
+
+@router.get("/field-suggestions", response_model=FieldSuggestions)
+def field_suggestions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The signed-in user's OWN past values for the form's "Passed down from" and
+    "Cuisine" fields, most-used first.
+
+    Declared BEFORE get_recipe so the literal path wins (same reason as
+    /ingredient-suggestions, /shared, /browse). SAME SCOPE = SAME SECURITY: every
+    row is filtered to Recipe.user_id == current_user.id and non-deleted, so a
+    suggestion can only be a word THIS user typed. Not widened to public or
+    handed-off recipes even though they're readable — a source/cuisine that appears
+    because someone else used it would leak their kitchen into this user's
+    autocomplete. `origin_attribution` is the stored byline; its leading segment
+    (before " · place/year") is the person's name the "Passed down from" field holds.
+    """
+    rows = (
+        db.query(Recipe.origin_attribution, Recipe.cuisine)
+        .filter(Recipe.user_id == current_user.id, Recipe.deleted_at == None)
+        .all()
+    )
+    sources = _rank_by_use((r[0].split(" · ")[0] if r[0] else None) for r in rows)
+    cuisines = _rank_by_use(r[1] for r in rows)
+    return FieldSuggestions(sources=sources, cuisines=cuisines)
 
 
 @router.post("/handoffs/{handoff_id}/accept", response_model=HandoffResponse)
