@@ -65,7 +65,7 @@ Brown the chicken skin-side down
 Add the soy and vinegar
 Simmer until the sauce coats a spoon`
 
-export default function PasteRecipe({ onParsed, onBack, initialText = '' }) {
+export default function PasteRecipe({ onParsed, onBack, onTypeItIn, initialText = '' }) {
   // Seeded from the parent so going back from the form returns the SAME text.
   const [text, setText] = useState(initialText)
   const [tooThin, setTooThin] = useState(false)
@@ -331,6 +331,18 @@ export default function PasteRecipe({ onParsed, onBack, initialText = '' }) {
           Nothing is saved until you say so
         </span>
       </button>
+
+      {/* The quiet escape hatch: someone with nothing to paste (or who'd rather not
+          dictate) goes straight to a blank form. Kept at the bottom so it doesn't
+          compete with the primary say/paste act above. */}
+      {onTypeItIn && (
+        <button
+          onClick={onTypeItIn}
+          className="block w-full text-center font-display font-bold text-[14px] text-terra mt-5 py-2"
+        >
+          Rather type it in? &rarr;
+        </button>
+      )}
     </div>
   )
 }

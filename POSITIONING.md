@@ -223,11 +223,14 @@ resurrect the tree language this section bans.
 
 ### Never claim the unbuilt social layer
 
-As of Phase 1a there is a friends-only feed and posts, and nothing more of the social
-plan. There is **no "everyone" feed, no public/private profile setting, no posts in
-Browse, and no recipe-request action.** All are planned (see `docs/SOCIAL_FEED_PLAN.md`)
-and none has shipped. Write them as direction, never as present features — and check the
-code before describing any social capability, because this is the area moving fastest.
+There is a friends-only feed and posts (Phase 1a), plus the public/private profile
+setting (Phase 1b, #68 — a profile is public or private, and a recipe or post can be set
+to public, friends-only, or private). Beyond that, nothing of the social plan has shipped. The feed is still **friends-only**: there is **no "everyone"
+feed** (that toggle is #70), **no posts in Browse** (#71), and **no recipe-request
+action** (Phase 2). All three are planned (see `docs/SOCIAL_FEED_PLAN.md`) and none has
+shipped — write them as direction, never as present features, and don't imply the
+everyone-feed exists. Check the code before describing any social capability, because
+this is the area moving fastest.
 
 ### Never claim a recipient can edit, add to, or contribute to a recipe they were sent
 
@@ -277,7 +280,7 @@ git history now.
 ### Don't inflate the numbers — measure them
 
 As measured on this branch (see `README.md` for the method): **41 routes**, **11 models**,
-**261 backend tests**, **474 frontend tests in 39 files**. Endpoint and test counts have
+**284 backend tests**, **482 frontend tests in 39 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

@@ -103,24 +103,25 @@ function renderFlow() {
 
 const enterDoor = (name) => userEvent.click(screen.getByRole('button', { name }))
 
-describe('PlantRecipe — two doors', () => {
-  it('offers exactly two ways in: say/paste, or fill it in', () => {
+describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', () => {
+  it('opens directly on the say/paste screen (no transitional doorway)', () => {
     renderFlow()
+    // The say/paste screen IS the entry now — no intermediate "Say it or paste it"
+    // card to click through first.
+    expect(screen.getByRole('heading', { name: /add it your way/i })).toBeInTheDocument()
+    // The blank-form escape hatch is a quiet link at the bottom of this screen, not a
+    // co-equal card and not a separate doorway.
     expect(
-      screen.getByRole('button', { name: /say it or paste it/i }),
+      screen.getByRole('button', { name: /rather type it in/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /fill it in yourself/i }),
-    ).toBeInTheDocument()
-    // The old third door is gone.
-    expect(
-      screen.queryByRole('button', { name: /one thing at a time/i }),
+      screen.queryByRole('button', { name: /fill it in yourself/i }),
     ).toBeNull()
   })
 
   it('the form door lands straight on the form', async () => {
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     expect(
       screen.getByRole('button', { name: /submit-form/i }),
     ).toBeInTheDocument()
@@ -130,7 +131,7 @@ describe('PlantRecipe — two doors', () => {
     // The doorway no longer forks on "inherited vs your own"; the form carries a
     // single optional "Passed down from" field.
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     expect(
       screen.getByLabelText(/passed down from/i),
     ).toBeInTheDocument()
@@ -138,7 +139,7 @@ describe('PlantRecipe — two doors', () => {
 
   it('sends the origin when a source name is filled in', async () => {
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     await userEvent.type(screen.getByLabelText(/passed down from/i), 'Lola')
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     expect(plantRecipe.mock.calls[0][0].origin.name).toBe('Lola')
@@ -148,7 +149,7 @@ describe('PlantRecipe — two doors', () => {
 
   it('sends no origin when the source name is left blank', async () => {
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     expect(plantRecipe.mock.calls[0][0].origin ?? null).toBeNull()
   })
@@ -157,7 +158,7 @@ describe('PlantRecipe — two doors', () => {
     // The celebration's reveal is the terminal saved screen now (checkmark + card
     // + share); the old text-only "Congee is saved." screen was replaced by it.
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     expect(screen.getByText(/a splash of vinegar/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
 
@@ -168,7 +169,7 @@ describe('PlantRecipe — two doors', () => {
 
   it('share from the celebration goes to the hand-off step', async () => {
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     await userEvent.click(
       await screen.findByRole('button', { name: /celebrate-share/i }),
@@ -179,12 +180,14 @@ describe('PlantRecipe — two doors', () => {
     ).toBeInTheDocument()
   })
 
-  it('back from the form returns to the doorway, not out of the flow', async () => {
+  it('back from the type-it-in form returns to the say/paste screen, not out of the flow', async () => {
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    // Back on the say/paste screen (its heading + the type-it-in link are present).
+    expect(screen.getByRole('heading', { name: /add it your way/i })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /fill it in yourself/i }),
+      screen.getByRole('button', { name: /rather type it in/i }),
     ).toBeInTheDocument()
   })
 })
@@ -194,18 +197,28 @@ describe('PlantRecipe — two doors', () => {
 describe('PlantRecipe visibility', () => {
   async function reachTheForm() {
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
   }
 
-  it('renders the choice on the form step with "Everyone" preselected', async () => {
+  it('preselects "Friends only" for a private-profile author (the default)', async () => {
+    // No issei_user in storage → profile treated as private → default "friends".
     await reachTheForm()
     expect(screen.getByText(/who can see this\?/i)).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /everyone/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /friends only/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /everyone/i })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: /only me/i })).not.toBeChecked()
   })
 
-  it('sends visibility public without the user touching the choice', async () => {
+  it('sends visibility friends without the user touching the choice', async () => {
     await reachTheForm()
+    await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
+    expect(plantRecipe.mock.calls[0][0].visibility).toBe('friends')
+  })
+
+  it('sends visibility public once the user opts up to "Everyone"', async () => {
+    await reachTheForm()
+    await userEvent.click(screen.getByRole('radio', { name: /everyone/i }))
+    expect(screen.getByRole('radio', { name: /everyone/i })).toBeChecked()
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     expect(plantRecipe.mock.calls[0][0].visibility).toBe('public')
   })
@@ -233,10 +246,8 @@ describe('PlantRecipe — pasting a whole recipe', () => {
   ].join('\n')
 
   async function openPaste() {
+    // The say/paste screen is the entry point now — no card to click first.
     renderFlow()
-    await userEvent.click(
-      screen.getByRole('button', { name: /say it or paste it/i }),
-    )
   }
 
   async function paste(text) {
@@ -245,12 +256,13 @@ describe('PlantRecipe — pasting a whole recipe', () => {
     await userEvent.click(screen.getByRole('button', { name: /sort this out/i }))
   }
 
-  it('offers say/paste FIRST, above the fill-it-in door', async () => {
+  it('opens on say/paste, with the type-it-in link below it', async () => {
     renderFlow()
-    const sayPaste = screen.getByRole('button', { name: /say it or paste it/i })
-    const form = screen.getByRole('button', { name: /fill it in yourself/i })
-    // 4 === Node.DOCUMENT_POSITION_FOLLOWING: the form comes AFTER say/paste now.
-    expect(sayPaste.compareDocumentPosition(form) & 4).toBeTruthy()
+    const heading = screen.getByRole('heading', { name: /add it your way/i })
+    const form = screen.getByRole('button', { name: /rather type it in/i })
+    // 4 === Node.DOCUMENT_POSITION_FOLLOWING: the type-it-in link comes AFTER the
+    // say/paste screen's heading.
+    expect(heading.compareDocumentPosition(form) & 4).toBeTruthy()
   })
 
   it('lands on the form with the recipe already sorted', async () => {
@@ -297,11 +309,11 @@ describe('PlantRecipe — pasting a whole recipe', () => {
 describe('PlantRecipe — keeping just the name', () => {
   it('saves with the dish name alone, then celebrates', async () => {
     renderFlow()
-    await enterDoor(/fill it in yourself/i)
+    await enterDoor(/rather type it in/i)
     await userEvent.click(screen.getByRole('button', { name: /quick-save/i }))
     expect(plantRecipe).toHaveBeenCalledWith({
       name: 'Congee',
-      visibility: 'public',
+      visibility: 'friends',
     })
     // Same celebration reveal as a full save — a name-only recipe is a smaller
     // recipe, not a different kind of thing.
@@ -341,10 +353,8 @@ describe('PlantRecipe — the model reads it first', () => {
   }
 
   async function speak(text = SPOKEN) {
+    // The say/paste screen is the entry point now — no card to click first.
     renderFlow()
-    await userEvent.click(
-      screen.getByRole('button', { name: /say it or paste it/i }),
-    )
     await userEvent.type(screen.getByRole('textbox'), text)
     await userEvent.click(screen.getByRole('button', { name: /sort this out/i }))
   }

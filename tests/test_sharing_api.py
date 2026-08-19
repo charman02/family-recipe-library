@@ -16,7 +16,7 @@ def test_origin_becomes_the_recipe_byline(client, make_user):
     r = client.post("/recipes", json=payload, headers=headers)
     assert r.status_code == 201
     body = r.json()
-    assert body["visibility"] == "public"  # default (payload sends none)
+    assert body["visibility"] == "friends"  # default (payload sends none)
     # The attribution string IS the feature — it's what renders "from Nonna Lucia"
     # under the dish. It used to also write a ghost_ancestor row to make recipe #1
     # a two-generation tree; nothing read that once lineage went.

@@ -16,6 +16,14 @@ export default function PostComposer() {
   const [photoUrl, setPhotoUrl] = useState('')
   const [dishName, setDishName] = useState('')
   const [description, setDescription] = useState('')
+  // Concrete visibility (#68). Auto-select mirrors the author's profile — "Everyone" on
+  // a public profile, "Friends only" on a private one — but the value is stored literally.
+  const profileVisibility =
+    JSON.parse(localStorage.getItem('issei_user') || '{}').profile_visibility ||
+    'private'
+  const [visibility, setVisibility] = useState(
+    profileVisibility === 'public' ? 'public' : 'friends',
+  )
   const [uploading, setUploading] = useState(false)
   const [photoError, setPhotoError] = useState('')
   const [error, setError] = useState('')
@@ -49,6 +57,7 @@ export default function PostComposer() {
         photo_url: photoUrl,
         dish_name: dishName.trim(),
         description: description.trim() || null,
+        visibility,
       })
       // Land on the feed, where the new post now sits at the top.
       navigate('/', { state: { justPosted: data.id } })
@@ -144,11 +153,14 @@ export default function PostComposer() {
 
       <div className="block">
         <FieldLabel>
-          <label htmlFor="post-note">Say a little more (optional)</label>
+          <label htmlFor="post-note">Description (optional)</label>
         </FieldLabel>
+        {/* Framed as a dish description, not a note-to-friends, so the same text carries
+            over verbatim if this meal later becomes a recipe (recipe form's own field is
+            "Description"). */}
         <textarea
           id="post-note"
-          placeholder="Made too much, come over…"
+          placeholder="A little about it — what's in it, how it tastes"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
@@ -156,6 +168,36 @@ export default function PostComposer() {
           className="field resize-none"
         />
       </div>
+
+      {/* Who sees it — three concrete choices (#68), each stored literally. Auto-selected
+          from the author's profile, but any is pickable. Compact pill row — a post is a
+          light act, not a form. */}
+      <fieldset className="mt-5">
+        <legend className="section-label mb-2">Who can see this?</legend>
+        <div className="flex gap-2" role="radiogroup" aria-label="Who can see this post">
+          {[
+            { value: 'friends', label: 'Friends' },
+            { value: 'public', label: 'Everyone' },
+            { value: 'private', label: 'Only me' },
+          ].map((opt) => {
+            const selected = visibility === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setVisibility(opt.value)}
+                className={`flex-1 rounded-full border-2 border-ink px-3 py-2 font-display font-bold text-[13px] transition-transform active:translate-y-[1px] ${
+                  selected ? 'bg-peach text-ink' : 'bg-card text-ink-soft'
+                }`}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </fieldset>
 
       {error && (
         <p className="mt-4">

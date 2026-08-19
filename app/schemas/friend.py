@@ -40,15 +40,19 @@ class FriendSuggestion(BaseModel):
 
 
 class ProfileResponse(BaseModel):
-    """Another user's public-facing profile: their name and the recipes of theirs
-    the caller may see (public for now; the friends tier arrives with the
-    visibility change). `friend_state` tells the UI which button to show."""
+    """Another user's public-facing profile: their name and a count of the recipes and
+    posts of theirs the caller may see (per the profile-visibility model — public if
+    the target's profile is public, friends-visible if the caller is a friend, plus any
+    force-public items). `friend_state` tells the UI which button to show."""
 
     user_id: int
     first_name: str
     last_name: str
+    # The target's profile visibility, so the UI can label a private profile.
+    profile_visibility: str = "private"
     # None = no relationship; else the friendship state, plus whether the caller
     # is the one who'd need to accept a pending request.
     friend_state: Optional[Literal["pending", "accepted"]] = None
     friend_can_accept: bool = False
     recipe_count: int = 0
+    post_count: int = 0

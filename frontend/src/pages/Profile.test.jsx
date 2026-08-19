@@ -80,6 +80,73 @@ describe('Profile settings copy', () => {
   })
 })
 
+describe('Profile visibility toggle (profile-visibility model)', () => {
+  it('reflects a private profile and names the friends-only consequence', () => {
+    renderProfile() // seeded user has no profile_visibility → treated as private
+    const toggle = screen.getByRole('switch', { name: /public profile/i })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByText(/only your friends see your recipes and posts/i)).toBeInTheDocument()
+  })
+
+  it('reflects a public profile when the cached user is public', () => {
+    localStorage.setItem(
+      'issei_user',
+      JSON.stringify({ id: 1, first_name: 'Yoko', last_name: 'M', email: 'y@e.com', profile_visibility: 'public' }),
+    )
+    renderProfile()
+    expect(screen.getByRole('switch', { name: /public profile/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  it('turning the profile ON opens the choice dialog instead of flipping immediately', async () => {
+    renderProfile()
+    await userEvent.click(screen.getByRole('switch', { name: /public profile/i }))
+    // No PATCH yet — the user must first choose what happens to "Only me" items.
+    expect(client.patch).not.toHaveBeenCalled()
+    expect(screen.getByText(/make your profile public\?/i)).toBeInTheDocument()
+  })
+
+  it('"Leave my existing ones as they are" flips the profile only', async () => {
+    client.patch.mockResolvedValueOnce({ data: { profile_visibility: 'public' } })
+    renderProfile()
+    await userEvent.click(screen.getByRole('switch', { name: /public profile/i }))
+    await userEvent.click(screen.getByRole('button', { name: /leave my existing ones/i }))
+    expect(client.patch).toHaveBeenCalledWith('/auth/me', { profile_visibility: 'public' })
+    expect(JSON.parse(localStorage.getItem('issei_user')).profile_visibility).toBe('public')
+  })
+
+  it('"Make everything public" sweeps all items to public alongside the flip', async () => {
+    client.patch.mockResolvedValueOnce({ data: { profile_visibility: 'public' } })
+    renderProfile()
+    await userEvent.click(screen.getByRole('switch', { name: /public profile/i }))
+    await userEvent.click(screen.getByRole('button', { name: /make everything public/i }))
+    expect(client.patch).toHaveBeenCalledWith('/auth/me', {
+      profile_visibility: 'public',
+      apply_visibility_to_all: 'public',
+    })
+  })
+
+  it('turning the profile OFF opens a confirm with a "make everything friends-only" sweep', async () => {
+    localStorage.setItem(
+      'issei_user',
+      JSON.stringify({ id: 1, first_name: 'Yoko', last_name: 'M', email: 'y@e.com', profile_visibility: 'public' }),
+    )
+    client.patch.mockResolvedValueOnce({ data: { profile_visibility: 'private' } })
+    renderProfile()
+    await userEvent.click(screen.getByRole('switch', { name: /public profile/i }))
+    // Both directions confirm (a sweep is offered each way); no immediate PATCH.
+    expect(client.patch).not.toHaveBeenCalled()
+    expect(screen.getByText(/make your profile private\?/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /make everything friends-only/i }))
+    expect(client.patch).toHaveBeenCalledWith('/auth/me', {
+      profile_visibility: 'private',
+      apply_visibility_to_all: 'friends',
+    })
+  })
+})
+
 describe('Profile feedback entry point', () => {
   it('opens the in-app form rather than leaving for an external one', async () => {
     // The launch shipped an <a> to a Google Form. Leaving the app is where most

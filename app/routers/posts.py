@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.auth import get_current_user
@@ -8,6 +8,7 @@ from app.models.recipe import Recipe
 from app.models.post import Post
 from app.schemas.post import PostCreate, PostResponse
 from app.services.friends import are_friends, friend_ids
+from app.services.sharing import can_view, can_view_post
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -32,48 +33,31 @@ def _to_response(post: Post, author: User, viewable_recipe_ids: set) -> PostResp
         dish_name=post.dish_name,
         description=post.description,
         recipe_id=recipe_id,
+        visibility=post.visibility,
         created_at=post.created_at,
     )
 
 
-def _authors_by_id(user_ids, db):
-    if not user_ids:
-        return {}
-    rows = db.query(User).filter(User.id.in_(set(user_ids))).all()
-    return {u.id: u for u in rows}
-
-
 def _viewable_recipe_ids(posts, viewer: User, db: Session) -> set:
-    """The subset of the posts' linked recipe_ids that `viewer` may actually read —
-    the same rule as services.sharing.can_view (owner OR public OR holds an accepted
-    handoff), minus soft-deleted recipes. Two batched queries regardless of page
-    size, so the feed stays a fixed number of round-trips. Callers pass the result
-    to _to_response, which nulls any recipe_id not in the set."""
-    from app.models.handoff import Handoff
+    """The subset of the posts' linked recipe_ids that `viewer` may actually read, by
+    the single recipe rule (services.sharing.can_view: owner OR the visibility rule
+    allows the viewer OR an accepted handoff), minus soft-deleted recipes. Callers pass
+    the result to _to_response, which nulls any recipe_id not in the set so a
+    "See the recipe" link is only shown when it would resolve.
 
+    Loads the Recipe rows with their owner (for can_view's profile check) in one query;
+    can_view's handoff lookup is per-recipe, but a feed page links few distinct recipes
+    so this stays cheap."""
     recipe_ids = {p.recipe_id for p in posts if p.recipe_id is not None}
     if not recipe_ids:
         return set()
     recipes = (
-        db.query(Recipe.id, Recipe.user_id, Recipe.visibility)
+        db.query(Recipe)
+        .options(selectinload(Recipe.user))
         .filter(Recipe.id.in_(recipe_ids), Recipe.deleted_at.is_(None))
         .all()
     )
-    granted = {
-        row.recipe_id
-        for row in db.query(Handoff.recipe_id)
-        .filter(
-            Handoff.recipe_id.in_(recipe_ids),
-            Handoff.to_user_id == viewer.id,
-            Handoff.state == "accepted",
-        )
-        .all()
-    }
-    return {
-        r.id
-        for r in recipes
-        if r.user_id == viewer.id or r.visibility == "public" or r.id in granted
-    }
+    return {r.id for r in recipes if can_view(r, viewer, db)}
 
 
 @router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
@@ -107,6 +91,7 @@ def create_post(
         dish_name=body.dish_name.strip(),
         description=(body.description or "").strip() or None,
         recipe_id=recipe_id,
+        visibility=body.visibility,
     )
     db.add(post)
     db.commit()
@@ -140,19 +125,29 @@ def feed(
     none of that — it can't skip or duplicate, on SQLite or Postgres.
 
     Own posts are included so an active poster with few friends still sees a feed
-    rather than a blank screen (BeReal shows yours too)."""
-    author_ids = friend_ids(current_user.id, db) + [current_user.id]
-    q = db.query(Post).filter(Post.user_id.in_(author_ids))
+    rather than a blank screen (BeReal shows yours too).
+
+    A friend's PRIVATE post is excluded even here: the scope is friends, but a private
+    post is theirs alone (can_view_post). friends/public posts show normally. (The
+    friends/everyone toggle that widens scope to public strangers is a later step; this
+    feed is friends-only.)"""
+    friends = set(friend_ids(current_user.id, db))
+    q = db.query(Post).options(selectinload(Post.user)).filter(
+        Post.user_id.in_(friends | {current_user.id})
+    )
     if before_id is not None:
         q = q.filter(Post.id < before_id)
     posts = q.order_by(Post.id.desc()).limit(FEED_PAGE).all()
-    authors = _authors_by_id([p.user_id for p in posts], db)
-    viewable = _viewable_recipe_ids(posts, current_user, db)
-    return [
-        _to_response(p, authors[p.user_id], viewable)
+    # Every author here is the caller or an accepted friend (that's the query scope), so
+    # the viewer↔author friendship is known — pass it to can_view_post so a "friends"
+    # post isn't re-queried per row. This still drops a friend's PRIVATE post.
+    posts = [
+        p
         for p in posts
-        if p.user_id in authors
+        if can_view_post(p, current_user, db, is_friend=p.user_id in friends)
     ]
+    viewable = _viewable_recipe_ids(posts, current_user, db)
+    return [_to_response(p, p.user, viewable) for p in posts]
 
 
 @router.get("/{post_id}", response_model=PostResponse)
@@ -161,21 +156,23 @@ def get_post(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """A single post — visible to its author or a friend of its author. A stranger
-    gets 404 (don't confirm the post exists to someone not entitled to see it)."""
-    post = db.query(Post).filter(Post.id == post_id).first()
-    if post is None:
-        raise HTTPException(status_code=404, detail="Post not found")
-    if post.user_id != current_user.id and not are_friends(
-        current_user.id, post.user_id, db
-    ):
-        raise HTTPException(status_code=404, detail="Post not found")
-    author = db.query(User).filter(User.id == post.user_id).first()
-    if author is None:
+    """A single post — visible per the one post rule (can_view_post): the author, a
+    friend on an inherit/private-profile post, or ANYONE on a force-public post (that's
+    how a private-profile user surfaces one meal). A viewer who fails the rule gets 404,
+    not 403 — don't confirm the post exists to someone not entitled to see it."""
+    post = (
+        db.query(Post)
+        .options(selectinload(Post.user))
+        .filter(Post.id == post_id)
+        .first()
+    )
+    if post is None or post.user is None:
         # The FK cascade means a surviving post always has an author; guard anyway.
         raise HTTPException(status_code=404, detail="Post not found")
+    if not can_view_post(post, current_user, db):
+        raise HTTPException(status_code=404, detail="Post not found")
     viewable = _viewable_recipe_ids([post], current_user, db)
-    return _to_response(post, author, viewable)
+    return _to_response(post, post.user, viewable)
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -200,21 +197,26 @@ def user_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """A user's posts, for their profile grid. Visible if it's your own profile or
-    you're a friend; otherwise empty (a non-friend sees no posts, not a 404 — the
-    profile itself is public, its posts are not)."""
-    if user_id != current_user.id and not are_friends(current_user.id, user_id, db):
-        return []
+    """A user's posts, for their profile grid, filtered by the one post rule
+    (can_view_post): your own → all; a friend → their friends + public posts (never a
+    private one); a non-friend → only the user's public posts (a private-profile user's
+    public meals still show on their profile). A non-friend on a fully-private profile
+    just sees an empty grid — not a 404, since the profile itself is reachable."""
+    author = db.query(User).filter(User.id == user_id).first()
+    if author is None:
+        raise HTTPException(status_code=404, detail="User not found")
     posts = (
         db.query(Post)
+        .options(selectinload(Post.user))
         .filter(Post.user_id == user_id)
         # id DESC == reverse-chron here too (see feed()); one consistent ordering key.
         .order_by(Post.id.desc())
         .limit(FEED_PAGE)
         .all()
     )
-    author = db.query(User).filter(User.id == user_id).first()
-    if author is None:
-        raise HTTPException(status_code=404, detail="User not found")
+    # The viewer↔profile-owner friendship is invariant across every post — resolve it
+    # once (or trivially for one's own profile) rather than per row.
+    is_friend = user_id == current_user.id or are_friends(current_user.id, user_id, db)
+    posts = [p for p in posts if can_view_post(p, current_user, db, is_friend=is_friend)]
     viewable = _viewable_recipe_ids(posts, current_user, db)
-    return [_to_response(p, author, viewable) for p in posts]
+    return [_to_response(p, p.user, viewable) for p in posts]

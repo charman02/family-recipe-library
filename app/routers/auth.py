@@ -80,6 +80,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
+            # Include profile_visibility so the cached issei_user (the ONLY client
+            # hydration point — there's no /auth/me refetch) stays honest. Without it,
+            # a re-login would drop the field and the UI would default to "private",
+            # telling a public-profile user their kitchen is friends-only when it isn't.
+            "profile_visibility": user.profile_visibility,
         },
     }
 
@@ -136,6 +141,31 @@ def update_me(
         current_user.first_name = update.first_name
     if update.last_name is not None:
         current_user.last_name = update.last_name
+    if update.profile_visibility is not None:
+        # Low-risk like a name edit (exposes only the user's own content), so no
+        # current_password gate. Item visibility is concrete, so this flip alone changes
+        # NOTHING already stored — it only sets the default the create form auto-selects
+        # next time. To rescope existing items, the caller sends apply_visibility_to_all.
+        current_user.profile_visibility = update.profile_visibility
+
+    if update.apply_visibility_to_all is not None:
+        # Bulk sweep, chosen in the confirm dialog: set EVERY recipe and post to one
+        # concrete value ("public" when opening the profile, "friends" when closing it).
+        # Because item visibility is concrete (no live-follow), a profile flip alone
+        # changes nothing existing — this sweep is the only way to bulk-rescope what's
+        # already there, and it's always an explicit, confirmed choice. Applied after
+        # profile_visibility so it's one request. Bulk UPDATEs (not per-row), O(1)
+        # queries regardless of item count.
+        from app.models.recipe import Recipe
+        from app.models.post import Post
+
+        target = update.apply_visibility_to_all
+        db.query(Recipe).filter(Recipe.user_id == current_user.id).update(
+            {Recipe.visibility: target}, synchronize_session=False
+        )
+        db.query(Post).filter(Post.user_id == current_user.id).update(
+            {Post.visibility: target}, synchronize_session=False
+        )
 
     db.commit()
     db.refresh(current_user)

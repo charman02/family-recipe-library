@@ -9,13 +9,14 @@ def _payload(name="Adobo", **extra):
     }
 
 
-def test_create_defaults_public(client, make_user):
-    # Default flipped to public so new recipes seed the Browse feed; the author
-    # can opt down to "Only me" in the create-time visibility choice.
+def test_create_defaults_friends(client, make_user):
+    # New recipes default to "friends" when the schema is given no visibility — the safe
+    # concrete fallback. (The add form auto-selects "public" or "friends" from the
+    # author's profile and always sends a value; this is the API-level default.)
     _, headers = make_user()
     r = client.post("/recipes", json=_payload(), headers=headers)
     assert r.status_code == 201
-    assert r.json()["visibility"] == "public"
+    assert r.json()["visibility"] == "friends"
 
 
 def test_create_private_when_requested(client, make_user):
@@ -76,19 +77,25 @@ def test_private_root_hidden_from_non_owner_and_browse(client, make_user):
     assert all(r["id"] != root["id"] for r in client.get("/recipes/browse").json())
 
 
-def test_browse_membership_is_decided_by_the_create_payload(client, make_user):
-    # The add-recipe flow's lever on Browse is the `visibility` it POSTs. Pin it
-    # end-to-end in both directions: a recipe left at the (now public) default
-    # appears in Browse, and one explicitly opted down to private does not. The
-    # default is now public specifically so the feed isn't empty for everyone.
+def test_browse_shows_only_public_recipes(client, make_user):
+    # Browse shows exactly the concretely-public recipes — visibility is per-recipe, so
+    # a "friends" or "private" recipe never appears, regardless of the owner's profile.
     _, owner = make_user()
-    default = client.post("/recipes", json=_payload("Sinigang"), headers=owner)
+    public = client.post("/recipes", json=_payload("Adobo", visibility="public"), headers=owner)
+    friends = client.post("/recipes", json=_payload("Sinigang", visibility="friends"), headers=owner)
     private = client.post("/recipes", json=_payload("Kare-kare", visibility="private"), headers=owner)
-    assert default.status_code == 201 and private.status_code == 201
-    assert default.json()["visibility"] == "public"
+    assert public.status_code == 201 and friends.status_code == 201 and private.status_code == 201
 
     ids = {r["id"] for r in client.get("/recipes/browse").json()}
-    assert default.json()["id"] in ids
+    assert public.json()["id"] in ids
+    assert friends.json()["id"] not in ids
     assert private.json()["id"] not in ids
+
+    # The owner's profile setting does not change Browse membership — the recipe value is
+    # what counts. Flip the profile public: the friends recipe still stays out.
+    client.patch("/auth/me", json={"profile_visibility": "public"}, headers=owner)
+    ids2 = {r["id"] for r in client.get("/recipes/browse").json()}
+    assert public.json()["id"] in ids2
+    assert friends.json()["id"] not in ids2
 
 

@@ -33,7 +33,16 @@ class Recipe(Base):
     # This is the byline, and it's all that remains of the removed lineage model:
     # attribution is a fact about one recipe, not an edge in a tree.
     origin_attribution: Mapped[Optional[str]] = mapped_column(nullable=True)
-    # "private" | "public" — a recipe's own, since there is no root to inherit from
+    # "public" | "friends" | "private" — CONCRETE, per-recipe: who (besides the owner
+    # and any accepted handoff grantee) can read this recipe.
+    #   public  → anyone (and eligible for Browse).
+    #   friends → the owner's accepted friends only.
+    #   private → only the owner + grantees.
+    # This is the literal stored value, NOT a pointer to the profile — a label like
+    # "Friends only" means friends only, permanently. The owner's profile_visibility only
+    # picks the create-form default and drives the bulk sweep (see services/sharing.py).
+    # server_default stays "private" as the DB-level safety net for any insert that
+    # bypasses the schema. (Pre-#68 rows were "private"|"public"; both map unchanged.)
     visibility: Mapped[str] = mapped_column(server_default="private")
     prompt_key: Mapped[Optional[str]] = mapped_column(nullable=True)
     prompt_answer: Mapped[Optional[str]] = mapped_column(nullable=True)

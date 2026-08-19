@@ -3,7 +3,7 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 41 endpoints · 11 tables · 15 migrations · 261 backend tests · 474 frontend
+**Scale:** 41 endpoints · 11 tables · 16 migrations · 284 backend tests · 482 frontend
 tests · ~2,200 lines of Python, deployed (AWS ECS Fargate + Vercel + Neon Postgres).
 
 ---
@@ -27,7 +27,7 @@ downstream of one product decision.
 | API | FastAPI | Pydantic gives request/response validation at the boundary for free; async for the LLM call |
 | ORM | SQLAlchemy 2.0 (`Mapped[]` typed style) | Types are checkable; the models double as documentation |
 | DB | Postgres (Neon) in prod, SQLite locally | Same ORM either way; `database.py` branches on the URL |
-| Migrations | Alembic | 15 versioned migrations, forward-only in practice |
+| Migrations | Alembic | 16 versioned migrations, forward-only in practice |
 | Auth | JWT, stateless, bcrypt | No session store to run; the token carries `sub` = user id |
 | Frontend | React + Vite + Tailwind | — |
 | Hosting | AWS ECS Fargate (API) · Vercel (web) · Neon (DB) | Push to `main` auto-deploys via GitHub Actions OIDC pipeline |
@@ -151,10 +151,14 @@ interviewer realizes the project has a real idea in it.
 `app/services/sharing.py::can_view(recipe, user, db)`:
 
 ```
-public  OR  owner  OR  holds an accepted handoff for this recipe
+owner  OR  public  OR  (friends AND viewer is an accepted friend)  OR  holds an accepted handoff for this recipe
 ```
 
-Every read funnels through it: `get_recipe`, `/scale`, `/cook`, `/handoff`.
+`visibility` is a concrete per-recipe value (`public | friends | private`); the friends
+branch resolves against `are_friends(viewer, owner)`. The handoff grant is orthogonal —
+it's checked last and lets a grantee read the one recipe handed to them whatever the
+visibility says. Every read funnels through this: `get_recipe`, `/scale`, `/cook`,
+`/handoff`.
 
 **The distinction to state precisely: read is not write.** `can_view` answers *read*
 only. Editing and deleting are owner-only, enforced separately by a `user_id` filter in

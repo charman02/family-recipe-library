@@ -53,7 +53,7 @@ describe('PostComposer', () => {
     renderComposer()
     pickPhoto()
     await userEvent.type(screen.getByLabelText(/what is it\?/i), 'Sunday adobo')
-    await userEvent.type(screen.getByLabelText(/say a little more/i), 'come over')
+    await userEvent.type(screen.getByLabelText(/description/i), 'come over')
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /share it/i })).not.toBeDisabled(),
     )
@@ -62,8 +62,21 @@ describe('PostComposer', () => {
       photo_url: 'https://img.test/meal.jpg',
       dish_name: 'Sunday adobo',
       description: 'come over',
+      visibility: 'friends',
     })
     expect(await screen.findByText('feed')).toBeInTheDocument()
+  })
+
+  it('lets the author force a post public before sharing', async () => {
+    renderComposer()
+    pickPhoto()
+    await userEvent.type(screen.getByLabelText(/what is it\?/i), 'Adobo')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /share it/i })).not.toBeDisabled(),
+    )
+    await userEvent.click(screen.getByRole('radio', { name: /everyone/i }))
+    await userEvent.click(screen.getByRole('button', { name: /share it/i }))
+    expect(createPost.mock.calls[0][0].visibility).toBe('public')
   })
 
   it('claims no recipe — it is a light meal post (no ingredients/steps fields)', () => {

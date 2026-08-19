@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, StringConstraints
 from datetime import datetime
 
@@ -34,6 +34,10 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: int
+    # "public" | "private" — whose recipes/posts a stranger can see. Read-safe to
+    # expose (unlike the name rules, no stored row can violate it: the column is NOT
+    # NULL with a server_default, so every user has a concrete value).
+    profile_visibility: str = "private"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -53,3 +57,15 @@ class AccountUpdate(BaseModel):
     new_password: Optional[str] = Field(default=None, min_length=8, max_length=72)
     # Verified in the router before an email or password change is allowed.
     current_password: Optional[str] = None
+    # Who can see this user's recipes/posts. Low-risk like a name edit — it exposes
+    # only the user's own content, so it needs no current_password (unlike email /
+    # password, which are login identity).
+    profile_visibility: Optional[Literal["public", "private"]] = None
+    # Optional bulk sweep, sent alongside a profile_visibility change: set EVERY one of
+    # the user's recipes and posts to this concrete value in one action. Used by the
+    # confirm dialog — "make everything public" sends "public" when opening the profile;
+    # "make everything friends-only" sends "friends" when closing it. Applied AFTER
+    # profile_visibility in the router. Because values are concrete (no live-follow), a
+    # profile flip alone changes NOTHING existing — this sweep is the only way to
+    # bulk-rescope what's already there, and it's always an explicit, confirmed choice.
+    apply_visibility_to_all: Optional[Literal["public", "friends", "private"]] = None

@@ -160,6 +160,42 @@ export default function Profile() {
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
 
+  // Profile visibility (public/private) — the visibility model (#68). Its own busy flag
+  // so a mid-flight toggle disables just this control. On success we refresh the cached
+  // issei_user so the create default ("Everyone" vs "Friends only") stays correct
+  // everywhere without a reload.
+  const [savingVisibility, setSavingVisibility] = useState(false)
+  // Flipping the profile is asked, not silent — because item visibility is CONCRETE, a
+  // flip alone changes nothing existing, so we offer a bulk sweep in the same step.
+  // `pending` is the direction being confirmed: 'public' or 'private' (null = no dialog).
+  const [pendingFlip, setPendingFlip] = useState(null)
+  const isPublicProfile = user.profile_visibility === 'public'
+
+  // Apply the profile flip, optionally sweeping every existing item to `applyToAll`
+  // ("public" or "friends"). Omit applyToAll to leave existing items untouched.
+  async function applyProfileVisibility(makePublic, applyToAll = null) {
+    setSavingVisibility(true)
+    try {
+      const body = { profile_visibility: makePublic ? 'public' : 'private' }
+      if (applyToAll) body.apply_visibility_to_all = applyToAll
+      const { data } = await client.patch('/auth/me', body)
+      const next = { ...user, profile_visibility: data.profile_visibility }
+      setUser(next)
+      localStorage.setItem('issei_user', JSON.stringify(next))
+      setPendingFlip(null)
+    } finally {
+      setSavingVisibility(false)
+    }
+  }
+
+  // The toggle handler: either direction opens its confirm dialog, since a sweep of
+  // existing items is offered both ways (make-everything-public / make-everything-
+  // friends-only). Neither direction changes existing items on its own.
+  function onToggleProfile(makePublic) {
+    if (savingVisibility) return
+    setPendingFlip(makePublic ? 'public' : 'private')
+  }
+
   function handleLogout() {
     localStorage.removeItem('issei_token')
     localStorage.removeItem('issei_user')
@@ -215,6 +251,85 @@ export default function Profile() {
           {user.email || 'Unknown'}
         </p>
       </div>
+
+      {/* PROFILE VISIBILITY — the profile-visibility model (#68). Its own card above
+          Settings because it decides who sees everything you make, not just a display
+          preference. The hint names the consequence for each state; a per-recipe or
+          per-post override still wins over this default. */}
+      <h2 className="font-display font-black text-[19px] text-ink mt-7 mb-2">
+        Who can see your kitchen
+      </h2>
+      <div className="sticker bg-card px-5 py-2">
+        <Toggle
+          label="Public profile"
+          hint={
+            isPublicProfile
+              ? 'Anyone can see your recipes and posts. Turn off to keep them to friends.'
+              : 'Only your friends see your recipes and posts. You can still make a single recipe or post public.'
+          }
+          on={isPublicProfile}
+          onChange={onToggleProfile}
+        />
+      </div>
+
+      {/* Confirm dialog for either flip. Because item visibility is concrete, changing
+          the profile alone leaves existing recipes/posts as they are — so we ask what
+          to do with them: keep them, or sweep everything to match the new profile. Copy
+          differs by direction (public vs private). */}
+      {pendingFlip && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-ink/40 px-4"
+          onClick={() => !savingVisibility && setPendingFlip(null)}
+        >
+          <div
+            className="sticker bg-card w-full max-w-sm p-5 mb-4 sm:mb-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display font-black text-[20px] text-ink leading-tight">
+              {pendingFlip === 'public'
+                ? 'Make your profile public?'
+                : 'Make your profile private?'}
+            </h3>
+            <p className="font-display text-[14px] text-ink-soft leading-snug mt-2">
+              {pendingFlip === 'public'
+                ? 'New recipes and posts will default to Everyone. What about the ones you’ve already made?'
+                : 'New recipes and posts will default to Friends only. What about the ones you’ve already made?'}
+            </p>
+            <div className="flex flex-col gap-2.5 mt-5">
+              {/* Primary = the sweep that matches the new profile. */}
+              <button
+                onClick={() =>
+                  applyProfileVisibility(
+                    pendingFlip === 'public',
+                    pendingFlip === 'public' ? 'public' : 'friends',
+                  )
+                }
+                disabled={savingVisibility}
+                className="rounded-full bg-terra text-cream border-[2.5px] border-ink px-5 py-2.5 font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform disabled:opacity-50"
+              >
+                {pendingFlip === 'public'
+                  ? 'Make everything public'
+                  : 'Make everything friends-only'}
+              </button>
+              {/* Secondary = flip the profile only, leave existing items as they are. */}
+              <button
+                onClick={() => applyProfileVisibility(pendingFlip === 'public')}
+                disabled={savingVisibility}
+                className="rounded-full bg-cream text-ink border-[2.5px] border-ink px-5 py-2.5 font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform disabled:opacity-50"
+              >
+                Leave my existing ones as they are
+              </button>
+              <button
+                onClick={() => setPendingFlip(null)}
+                disabled={savingVisibility}
+                className="font-display font-bold text-[13px] text-ink-soft py-1 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SETTINGS. */}
       <h2 className="font-display font-black text-[19px] text-ink mt-7 mb-2">

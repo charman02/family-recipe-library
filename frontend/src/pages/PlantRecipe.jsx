@@ -5,7 +5,6 @@ import PasteRecipe from '../components/PasteRecipe'
 import HandoffInvite from '../components/HandoffInvite'
 import SaveCelebration from '../components/SaveCelebration'
 import BackButton from '../components/BackButton'
-import Icon from '../components/Icon'
 import VisibilityChoice from '../components/VisibilityChoice'
 import { plantRecipe } from '../api/sharing'
 
@@ -21,28 +20,42 @@ import { plantRecipe } from '../api/sharing'
 // was broken. See PasteRecipe + lib/parseRecipeText.
 export default function PlantRecipe() {
   const navigate = useNavigate()
-  const [step, setStep] = useState('doorway') // doorway|paste|form|celebrate|saved|handoff
+  // No doorway step any more: /add already chose "Keep a recipe", so we land straight
+  // on the say/paste screen (the one signature way in). The old blank-form door lives
+  // on as a "Rather type it in?" link at the bottom of that screen.
+  const [step, setStep] = useState('paste') // paste|form|celebrate|saved|handoff
   // What a paste produced, mapped into RecipeForm's initialValues shape. Held here
   // rather than passed through navigation so a back-and-forth doesn't lose it.
   const [seeded, setSeeded] = useState(null)
   // The raw pasted text, kept so back-from-the-form returns to it intact.
   const [pastedText, setPastedText] = useState('')
-  // Public-by-default: a new recipe shows up in Browse (and everyone's "Passed
-  // down lately") unless the author opts it down to "Only me" in VisibilityChoice.
-  // The default was flipped from private to seed the public feed; the choice is
-  // still shown at save time, so opting out is one tap.
-  const [visibility, setVisibility] = useState('public')
+  // Concrete visibility (#68). The default the form auto-selects mirrors the author's
+  // profile — "Everyone" on a public profile, "Friends only" on a private one — but the
+  // chosen value is stored literally, not as a live pointer to the profile. The user can
+  // pick any of the three in VisibilityChoice, always shown at save time.
+  const profileVisibility =
+    JSON.parse(localStorage.getItem('issei_user') || '{}').profile_visibility ||
+    'private'
+  const [visibility, setVisibility] = useState(
+    profileVisibility === 'public' ? 'public' : 'friends',
+  )
   const [saved, setSaved] = useState(null)
 
-  // Step-aware back: doorway exits the flow (→ Home); paste and the form return to it.
-  // The form goes back to PASTE when that's where its values came from, so correcting
-  // the source text is possible without losing the parse.
+  // Step-aware back. The say/paste screen is now the entry point, so its back exits to
+  // the /add chooser. The form goes back to PASTE when a parse seeded it (so correcting
+  // the source text is possible without losing the parse); a blank form reached via
+  // "Rather type it in?" goes back to the paste screen too.
   function goBack() {
-    if (step === 'form') setStep(seeded ? 'paste' : 'doorway')
-    else if (step === 'paste') setStep('doorway')
-    // From the doorway, back goes to the Add chooser (this flow is now reached via
-    // /add → "Keep a recipe"), not to the feed.
+    if (step === 'form') setStep('paste')
     else navigate('/add')
+  }
+
+  // "Rather type it in?" — the demoted blank-form door, offered at the bottom of the
+  // say/paste screen for someone with nothing to paste (the paste word-gate would
+  // otherwise strand them).
+  function typeItIn() {
+    setSeeded(null)
+    setStep('form')
   }
 
   // A parse lands on the ordinary form, pre-filled. Nothing is saved here — either
@@ -95,75 +108,13 @@ export default function PlantRecipe() {
     setStep('celebrate')
   }
 
-  if (step === 'doorway') {
-    return (
-      <div className="min-h-screen bg-cream px-[18px] pt-5">
-        <div className="mb-4">
-          <BackButton to="/add" label="Back" />
-        </div>
-        {/* eyebrow stamp — a small rotated "new recipe" badge for character */}
-        <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-saffron border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24]">
-          ✦ New recipe
-        </span>
-        <h1 className="font-display font-black text-[30px] text-ink leading-tight mt-4">
-          Add a recipe
-        </h1>
-        <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-6">
-          Two ways in — whichever suits what you&rsquo;ve got.
-        </p>
-
-        {/* Door 1 — SAY IT / PASTE IT, the app's signature way in and now the top,
-            visually-primary card. You don't have to be tidy: say it however it comes
-            out (or paste your notes) and it's organized into a recipe for you. See
-            PasteRecipe. Peach + a mic glyph so speaking reads as the headline action. */}
-        <button
-          onClick={() => setStep('paste')}
-          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-peach p-4 mb-4"
-        >
-          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-full bg-cream border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink rotate-[-6deg]">
-            <Icon name="mic" className="w-6 h-6" />
-          </span>
-          <span className="min-w-0">
-            <span className="font-display font-black text-[18px] text-ink">
-              Say it or paste it
-            </span>
-            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
-              Messy is fine — tell it how you make it and we&rsquo;ll sort it into a recipe.
-            </span>
-          </span>
-        </button>
-
-        {/* Door 2 — the plain form, for filling it in field by field. Demoted below
-            the say/paste door but still a full card, not a link. */}
-        <button
-          onClick={() => {
-            setSeeded(null)
-            setStep('form')
-          }}
-          className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-card p-4"
-        >
-          <span className="flex-none flex items-center justify-center w-12 h-12 rounded-[14px] bg-sage border-2 border-ink shadow-[0_3px_0_#2E3A24] text-ink rotate-[6deg]">
-            <Icon name="edit" className="w-6 h-6" />
-          </span>
-          <span className="min-w-0">
-            <span className="font-display font-black text-[18px] text-ink">
-              Fill it in yourself
-            </span>
-            <span className="block font-display text-[13px] text-ink-soft mt-0.5">
-              One field at a time. Only the name is required.
-            </span>
-          </span>
-        </button>
-      </div>
-    )
-  }
-
   if (step === 'paste') {
     return (
       <PasteRecipe
         initialText={pastedText}
         onParsed={handleParsed}
         onBack={goBack}
+        onTypeItIn={typeItIn}
       />
     )
   }

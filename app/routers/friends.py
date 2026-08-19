@@ -7,6 +7,7 @@ from app.database import get_db
 from app.auth import get_current_user
 from app.models.user import User
 from app.models.recipe import Recipe
+from app.models.post import Post
 from app.models.handoff import Handoff
 from app.models.friendship import Friendship
 from app.schemas.friend import (
@@ -16,6 +17,7 @@ from app.schemas.friend import (
     ProfileResponse,
 )
 from app.services.friends import existing_friendship
+from app.services.sharing import can_view, can_view_post
 
 router = APIRouter(prefix="/friends", tags=["friends"])
 
@@ -263,12 +265,14 @@ def user_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """A read-only profile of another user: name, friendship status from the
-    caller's side, and a count of their recipes the caller may see.
+    """A read-only profile of another user: name, profile visibility, friendship
+    status from the caller's side, and a count of their recipes + posts the caller may
+    see under the profile-visibility model.
 
-    Until the friends-visibility tier lands, "may see" = public recipes only (plus
-    all of them if it's your own profile). The count deliberately does not leak
-    private recipes' existence to a non-owner."""
+    "May see" = exactly what can_view / can_view_post allow: everything if it's your own
+    profile or the target's profile is public; friends-visible items if you're friends;
+    plus any item the target force-marked public. The counts deliberately never leak the
+    existence of items the caller can't open."""
     target = db.query(User).filter(User.id == user_id).first()
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -281,19 +285,52 @@ def user_profile(
             friend_state = f.state
             friend_can_accept = f.state == "pending" and f.addressee_id == current_user.id
 
-    # Visible recipe count. Own profile → all non-deleted; otherwise public only.
-    q = db.query(Recipe).filter(
-        Recipe.user_id == user_id, Recipe.deleted_at.is_(None)
+    # Visible recipe + post counts, decided by the single read rules (not a bespoke
+    # query filter — one source of truth for "can see"). Two optimizations for a
+    # profile that may hold many items, without forking the rule:
+    #   - attach the already-loaded target as each item's `user` so the profile check
+    #     reads profile_visibility with no per-item query;
+    #   - the viewer↔target friendship is invariant across every item, so resolve it
+    #     ONCE and pass it in (is_friend) instead of letting each can_view* re-query.
+    is_friend = friend_state == "accepted"
+    recipes = (
+        db.query(Recipe)
+        .filter(Recipe.user_id == user_id, Recipe.deleted_at.is_(None))
+        .all()
     )
-    if user_id != current_user.id:
-        q = q.filter(Recipe.visibility == "public")
-    recipe_count = q.count()
+    for r in recipes:
+        r.user = target
+    # The viewer's accepted grants among THIS owner's recipes, in one query, so the
+    # per-recipe handoff branch of can_view doesn't fire a lookup each. (A grant is
+    # per-recipe, so this is a set-membership test, not a single boolean.)
+    granted_ids = set()
+    if recipes:
+        granted_ids = {
+            row.recipe_id
+            for row in db.query(Handoff.recipe_id).filter(
+                Handoff.recipe_id.in_([r.id for r in recipes]),
+                Handoff.to_user_id == current_user.id,
+                Handoff.state == "accepted",
+            )
+        }
+    recipe_count = sum(
+        1
+        for r in recipes
+        if can_view(r, current_user, db, is_friend, is_grantee=r.id in granted_ids)
+    )
+
+    posts = db.query(Post).filter(Post.user_id == user_id).all()
+    for p in posts:
+        p.user = target
+    post_count = sum(1 for p in posts if can_view_post(p, current_user, db, is_friend))
 
     return ProfileResponse(
         user_id=user_id,
         first_name=target.first_name,
         last_name=target.last_name,
+        profile_visibility=target.profile_visibility,
         friend_state=friend_state,
         friend_can_accept=friend_can_accept,
         recipe_count=recipe_count,
+        post_count=post_count,
     )

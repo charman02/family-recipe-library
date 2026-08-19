@@ -1,94 +1,97 @@
 import { useState } from 'react'
 import { setVisibility } from '../api/sharing'
 
-// The owner-only visibility control on the recipe page: a status pill plus a
-// publish / un-publish toggle.
+// The owner-only visibility control on the recipe page. THREE concrete states (#68):
+// Everyone / Friends only / Only me — each stored literally. This is the edit-time
+// sibling of VisibilityChoice (the create-time choice); the two carry the same titles
+// so a recipe isn't described two ways in two places.
 //
-// It used to have two more branches — a read-only "inherited from the original"
-// state, and a confirm dialog warning that publishing would also publish the
-// versions built on top of this one. Both existed because recipes were trees. They
-// aren't, so the branches were unreachable and read `parent_recipe_id` /
-// `child_count`, which RecipeResponse no longer returns.
-//
-// Copy is deliberately kept in step with VisibilityChoice, the create-time
-// sibling: the two states carry its exact titles ("Only me" / "Everyone"), so the
-// same recipe doesn't get described two ways in two places. The action says where
-// the recipe lands instead of "Make public". The 🔒/🌐 emoji are gone — a padlock
-// is a security promise ("private" here means "not listed in Browse", not
-// encrypted), and the sticker pill already carries the visual weight.
-//
-// Two italic lines used to sit under the pill (what the current setting means,
-// and what reverting does). Stacked above the handoff and delete copy, they made
-// the bottom of the recipe page read as prose surrounding the buttons rather than
-// as controls, so the reversibility line is gone and ONE line survives: the
-// sentence naming what "Everyone" exposes. That one is not decoration — it is the
-// only place in the app a user learns that public means "listed in Browse", and
-// round-2 testers were specifically anxious about exactly that. It's set in small
-// plain sans rather than the italic display face so it reads as the setting's
-// definition, not as another paragraph.
+// It replaced a two-branch publish/un-publish toggle. Copy names the CONSEQUENCE (who
+// ends up seeing it) rather than the app's jargon. No emoji padlock — "private" here
+// means "not listed publicly", not encrypted, and a lock overstates it.
 export default function VisibilityControl({ recipe, onChange }) {
-  const [visibility, setVis] = useState(recipe.visibility || 'private')
+  const [visibility, setVis] = useState(recipe.visibility || 'friends')
   const [busy, setBusy] = useState(false)
 
-  const isPublic = visibility === 'public'
-  const label = isPublic ? 'Everyone' : 'Only me'
+  const OPTIONS = [
+    {
+      value: 'public',
+      title: 'Everyone',
+      detail: 'It shows up in Browse, where anyone can find it and cook it.',
+    },
+    {
+      value: 'friends',
+      title: 'Friends only',
+      detail: 'Only the people you’re friends with on issei can see it.',
+    },
+    {
+      value: 'private',
+      title: 'Only me',
+      detail: 'It stays in your kitchen. You can still send it to someone directly.',
+    },
+  ]
 
-  async function apply(next) {
+  async function pick(next) {
+    if (next === visibility || busy) return
     setBusy(true)
+    // Optimistic: reflect the choice immediately, roll back if the PATCH fails.
+    const prev = visibility
+    setVis(next)
     try {
       const { data } = await setVisibility(recipe.id, next)
       setVis(data.visibility)
       onChange?.(data.visibility)
+    } catch {
+      setVis(prev)
     } finally {
       setBusy(false)
     }
   }
 
-  // No confirm step: the dialog this replaced existed only to warn that
-  // publishing a recipe would also publish the versions built on top of it. There
-  // are no versions — recipes aren't trees any more — so it could never open, and
-  // it read `recipe.child_count`, which RecipeResponse no longer returns.
-  function onToggle() {
-    apply(isPublic ? 'private' : 'public')
-  }
-
   return (
     <div className="flex flex-col gap-2">
-      {/* The question first, then the answer as a pill — the same framing as the
-          create-time choice, so this reads as "the setting you picked" rather
-          than an unexplained status badge. */}
       <p className="section-label">Who can see this</p>
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="inline-block font-display font-bold text-[12px] text-ink bg-cream border-2 border-ink rounded-full px-3 py-1">
-          {label}
-        </span>
-        {!isPublic && (recipe.shared_with_count || 0) > 0 && (
-          <span className="font-display text-[12px] text-ink-soft">
-            Shared with {recipe.shared_with_count}{' '}
-            {recipe.shared_with_count === 1 ? 'person' : 'people'}
-          </span>
-        )}
-        <button
-          onClick={onToggle}
-          disabled={busy}
-          className="font-display font-bold text-[12.5px] text-terra disabled:opacity-50"
-        >
-          {isPublic ? 'Change to only me' : 'Change to everyone'}
-        </button>
+      <div className="space-y-2" role="radiogroup" aria-label="Who can see this recipe">
+        {OPTIONS.map((opt) => {
+          const selected = visibility === opt.value
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={busy}
+              onClick={() => pick(opt.value)}
+              className={`flex w-full items-start gap-3 text-left sticker-sm p-3 disabled:opacity-60 ${
+                selected ? 'bg-peach' : 'bg-card'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className="flex-none flex items-center justify-center w-[19px] h-[19px] mt-0.5 rounded-full border-2 border-ink bg-cream"
+              >
+                {selected && (
+                  <span className="block w-[9px] h-[9px] rounded-full bg-terra" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block font-display font-black text-[15px] text-ink leading-none">
+                  {opt.title}
+                </span>
+                <span className="block font-display text-[12.5px] text-ink-soft mt-1">
+                  {opt.detail}
+                </span>
+              </span>
+            </button>
+          )
+        })}
       </div>
-
-      {/* The ONE line that survives the cut, because "Everyone" is the only label
-          here a user can't decode from the word itself — it means "listed in a
-          public directory", which is the thing testers were anxious about. The
-          private state's old counterpart ("It stays in your kitchen…") was cut
-          instead: "Only me" already says it. Plain small sans, not the italic
-          display face, so it reads as a definition of the setting rather than
-          another paragraph of page prose. */}
-      <p className="font-sans text-[11.5px] leading-snug text-ink-soft">
-        {isPublic
-          ? 'It shows up in Browse, where anyone can find it and cook it.'
-          : 'Everyone means it shows up in Browse, for anyone to find and cook.'}
-      </p>
+      {(recipe.shared_with_count || 0) > 0 && (
+        <p className="font-display text-[12px] text-ink-soft">
+          Shared with {recipe.shared_with_count}{' '}
+          {recipe.shared_with_count === 1 ? 'person' : 'people'}
+        </p>
+      )}
     </div>
   )
 }

@@ -158,10 +158,13 @@ class RecipeCreate(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     language: str = "en"
-    # Public by default — a new recipe seeds the Browse feed unless the author
-    # opts down to private. (The DB column server_default stays "private" as a
-    # safety net for rows inserted outside the app; the API always sends this.)
-    visibility: Literal["private", "public"] = "public"
+    # Concrete: "public" (anyone/Browse) | "friends" (accepted friends only) | "private"
+    # (only me + grantees). The create form auto-selects the default from the author's
+    # profile — "public" on a public profile, "friends" on a private one — but the value
+    # is stored literally, so a label like "Friends only" never silently widens later.
+    # Schema default "friends" is the safe fallback if the client omits it. (The DB
+    # column server_default stays "private" for rows inserted outside the app.)
+    visibility: Literal["public", "friends", "private"] = "friends"
     ingredient_sections: list[IngredientSectionCreate] = []
     ingredients: list[IngredientCreate] = []
     steps: list[StepCreate] = []
@@ -274,7 +277,7 @@ class RecipeUpdate(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     language: Optional[str] = None
-    visibility: Optional[Literal["private", "public"]] = None
+    visibility: Optional[Literal["public", "friends", "private"]] = None
     # When provided, these fully replace the recipe's existing children.
     # Omit them to leave the collections untouched (scalar-only update).
     ingredient_sections: Optional[list[IngredientSectionCreate]] = None

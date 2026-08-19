@@ -23,28 +23,53 @@
 ## Direction update (2026-08-19, post-Phase-1a review)
 
 Six product decisions from the user after Phase 1a shipped/staged. **Direction, not
-built** — recorded here so the later phases build the right thing. Where one revises an
-earlier "locked" line, the revision wins and the older text is annotated in place.
+built** — recorded here so the later phases build the right thing — **except #2
+(profile visibility), now BUILT/shipped in #68.** Where one revises an earlier "locked"
+line, the revision wins and the older text is annotated in place.
 
 1. **Kitchen tab holds recipes AND posts.** "Your kitchen" becomes the one place a user
    sees both their own recipes and their own past posts. And a friend viewing your
    profile/kitchen sees both your recipes and posts (subject to the visibility rule in
    #2). Reshapes `MyRecipes` and `UserProfile` into a two-section (or tabbed) view.
-2. **Profile-level public/private, with per-item overrides.** This *replaces* the plan's
-   per-recipe `private | friends | public` 3-tier model (see "The visibility change"
-   section — now superseded). The model is:
-   - A **profile** is `public` or `private`.
-   - **Public profile:** any user can see all your recipes and posts.
-   - **Private profile:** only accepted friends see your recipes and posts. A private
-     user can still mark **specific** recipes/posts public to expose just those.
-   - This means both `Recipe` and `Post` need a per-item public flag/visibility, AND
-     `User` needs a profile-visibility field; `can_view` (recipes) and the posts scope
-     checks both consult profile-visibility + the per-item override + `are_friends`.
-     Keep it one rule per resource type, as today.
+2. **Profile-level public/private, with a concrete per-item visibility.** *(BUILT/shipped
+   in #68.)* This *replaces* the plan's per-recipe `private | friends | public` 3-tier
+   model (see "The visibility change" section — now superseded) **and** the earlier
+   inherit/live-follow/`force_*` design once sketched here. The model, as shipped:
+   - A **profile** (`User.profile_visibility`) is `public` or `private`. **Default:
+     private** (the app's spine is the intentional handoff; public is the opt-in, or the
+     app drifts toward "broadcast + browse" and weakens the request loop).
+   - **Each item's `visibility` is a concrete literal, not a pointer to the profile:**
+     `public | friends | private`. There is **no `inherit`** and no live-follow. New
+     items default to `friends` (schema-level); `Post`'s DB `server_default` is
+     `"friends"` and `Recipe`'s stays `"private"` as a bypass safety net. A label like
+     "Friends only" therefore means friends only, permanently — it never silently changes
+     when the profile changes.
+   - **The profile is NOT consulted at read time.** It does exactly two things: (a) it
+     picks the default the create form auto-selects for a new item ("Everyone" on a public
+     profile, "Friends only" on a private one), and (b) it drives the bulk sweep below. So
+     **flipping the profile changes nothing already stored.**
+   - **Rescoping existing items is the bulk sweep, not a profile flip.** `PATCH /auth/me`
+     accepts `apply_visibility_to_all` (`public | friends | private`) and sets **every** one
+     of the caller's recipes and posts to that one concrete value in a single action. It's
+     offered by the Profile-page confirm dialog in both directions ("Make everything
+     public" when opening the profile, "Make everything friends-only" when closing it); the
+     other dialog option leaves existing items untouched. This is the only thing that
+     rescopes what's already there, and it always writes a concrete value to every row.
+   - **Applies symmetrically to BOTH `Post` and `Recipe`:** a post (or recipe) can be
+     `public` while its author's profile is private — that's how a private user surfaces one
+     meal into the eventual "everyone" feed (#3) / Browse (#4) without opening their whole
+     profile.
+   - **`can_view` (recipes) and `can_view_post` (posts) share one truth table**
+     (`_resource_is_visible`, one rule per resource type): `owner OR visibility=='public'
+     OR (visibility=='friends' AND are_friends) OR accepted handoff grant`. **The handoff
+     grant stays orthogonal** — a grantee reads the one recipe handed to them regardless of
+     visibility or friendship; it's checked only for recipes, and only after the visibility
+     rule says no. `effective_visibility` returns the recipe's own concrete `visibility`
+     unchanged; Browse shows recipes where `visibility == "public"`.
 3. **Feed friends/everyone toggle.** The feed gains a control to show either just
    friends (the Phase-1a default) or everyone (public posts from non-friends). This
    revises the "friends-only feed, no public/global feed" constraint above. The
-   "everyone" view is scoped to posts whose author/profile is public per #2.
+   "everyone" view is scoped to posts whose own `visibility` is `public` (per #2).
 4. **Browse shows posts, not just recipes.** Browse becomes recipes + posts so a user
    can search a dish and, on finding a post with no attached recipe, **request the
    recipe** (ties directly to the Phase 2 request loop). Interface for mixing the two
@@ -57,10 +82,10 @@ earlier "locked" line, the revision wins and the older text is annotated in plac
    backend already accepts `recipe_id`; only the composer UI is missing. Small — fold
    into Phase 2 with the request loop.
 
-**Sequencing note:** #2 (profile visibility) is now the backbone the others lean on —
+**Sequencing note:** #2 (profile visibility) is the backbone the others lean on —
 #1 (friend sees your posts), #3 (everyone feed), and #4 (posts in Browse) all depend on
-a coherent "who can see this" answer. Build #2 first as its own reviewed step; it
-supersedes the old per-recipe 3-tier plan below.
+a coherent "who can see this" answer. It shipped first, as its own reviewed step (#68);
+it supersedes the old per-recipe 3-tier plan below.
 
 ## Conventions the code must match (from the current repo)
 

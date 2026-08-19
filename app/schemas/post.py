@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from pydantic import BaseModel, Field, ConfigDict, StringConstraints
 
 
@@ -20,6 +20,11 @@ class PostCreate(BaseModel):
     # Optionally attach an existing recipe the caller owns. Ownership is enforced
     # in the router; a post never links a recipe that isn't yours.
     recipe_id: Optional[int] = None
+    # Concrete: "public" (everyone-feed/Browse) | "friends" (accepted friends only) |
+    # "private" (only me). The create UI auto-selects from the author's profile, but the
+    # value is stored literally. Same three states and rule as a recipe
+    # (services/sharing.can_view_post). Default "friends" if the client omits it.
+    visibility: Literal["public", "friends", "private"] = "friends"
 
 
 class PostResponse(BaseModel):
@@ -35,6 +40,7 @@ class PostResponse(BaseModel):
     dish_name: str
     description: Optional[str] = None
     recipe_id: Optional[int] = None
+    visibility: str = "friends"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

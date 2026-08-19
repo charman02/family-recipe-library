@@ -1,11 +1,14 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class Post(Base):
@@ -32,9 +35,19 @@ class Post(Base):
     photo_url: Mapped[str] = mapped_column(nullable=False)
     dish_name: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # "public" | "friends" | "private" — CONCRETE, same three values and the same rule
+    # as Recipe.visibility (services/sharing.can_view_post):
+    #   public  → anyone (eligible for the everyone-feed / Browse).
+    #   friends → the author's accepted friends only.
+    #   private → only the author.
+    # The literal stored value, not a pointer to the profile. server_default "friends"
+    # so a bypassing insert is closed to friends, never accidentally public.
+    visibility: Mapped[str] = mapped_column(server_default="friends")
     recipe_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), index=True
     )
+    # The author — needed by can_view_post to read the owner's profile_visibility.
+    user: Mapped["User"] = relationship("User")

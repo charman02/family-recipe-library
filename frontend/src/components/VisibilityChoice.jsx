@@ -2,30 +2,33 @@
 // form (PlantRecipe passes it as RecipeForm's beforeSubmitSlot). Its edit-time
 // sibling is VisibilityControl, which toggles an already-saved recipe.
 //
-// Why this exists: it's the create-time choice of who sees a recipe. The default
-// is now "public" (see PlantRecipe) so new recipes seed Browse and Home's "Passed
-// down lately" — but the choice is always shown, so opting down to "Only me" is
-// one tap. This component just reflects whichever `value` is passed; the default
-// lives in the parent.
+// THREE CONCRETE choices (issei #68) — each stored literally, so the label never lies:
+// "Friends only" means friends only, permanently, whatever your profile later becomes.
+// The parent auto-selects the default from the caller's profile ("Everyone" on a public
+// profile, "Friends only" on a private one), but the user can pick any of the three.
 //
-// Copy avoids the app's own vocabulary ("pass it on", "issei", "public") that
-// round-2 user testing showed people couldn't decode, and instead names the
-// consequence: which screen the recipe lands on, and who ends up seeing it.
-const OPTIONS = [
-  {
-    value: 'private',
-    title: 'Only me',
-    detail:
-      'It stays in your kitchen. You can still send it to someone directly.',
-  },
-  {
-    value: 'public',
-    title: 'Everyone',
-    detail: 'It shows up in Browse, where anyone can find it and cook it.',
-  },
-]
-
+// Copy avoids the app's own vocabulary ("pass it on", "issei") that round-2 user testing
+// showed people couldn't decode, and names the consequence instead.
 export default function VisibilityChoice({ value, onChange }) {
+  const OPTIONS = [
+    {
+      value: 'public',
+      title: 'Everyone',
+      detail: 'It shows up in Browse, where anyone can find it and cook it.',
+    },
+    {
+      value: 'friends',
+      title: 'Friends only',
+      detail: 'Only the people you’re friends with on issei can see it.',
+    },
+    {
+      value: 'private',
+      title: 'Only me',
+      detail:
+        'It stays in your kitchen. You can still send it to someone directly.',
+    },
+  ]
+
   return (
     <fieldset className="mt-7">
       <legend className="font-display font-black text-[19px] text-ink mb-2.5">
