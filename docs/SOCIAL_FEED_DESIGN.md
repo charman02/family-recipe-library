@@ -1,7 +1,8 @@
 # Design: "What are your friends making" — the presence feed
 
-> **Status:** design draft, not built. Working artifact for a dedicated build session.
-> Nothing here is committed to product until the open decisions below are settled.
+> **Status:** Phases 0–1a built (friend graph + minimal profiles, then posts + the
+> friends feed that became Home); later phases still design draft. Working artifact for
+> a dedicated build session — later open decisions below aren't committed to product yet.
 
 ## The idea (as proposed)
 

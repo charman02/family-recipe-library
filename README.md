@@ -13,7 +13,7 @@ So a recipe here is attributed to a **person** — the dish is the title, the pe
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system over private / public visibility (new recipes default to public so the Browse feed isn't empty; one tap sets a recipe to "only me").
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 36 endpoints, 10 data models, 756 automated tests (244 pytest + 512 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 41 endpoints, 11 data models, 735 automated tests (261 pytest + 474 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -30,9 +30,9 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - backend tests (244) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, the invite link-preview card, the source/cuisine autosuggest scope, the friend graph, signup + account-edit validation).
+**pytest** - backend tests (261) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, the invite link-preview card, the source/cuisine autosuggest scope, the friend graph, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (512 in 38 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (474 in 39 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -102,8 +102,13 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | GET | /friends/requests | Yes | Pending requests addressed to the caller. |
 | GET | /friends/suggestions | Yes | People to friend, seeded from the caller's handoff graph (whom they've handed a recipe to / received one from), never strangers. |
 | GET | /friends/profile/{user_id} | Yes | A user's read-only profile: name, the caller-side friend state, and a count of their recipes the caller may see (public-only for a non-owner). |
+| POST | /posts | Yes | Share a meal: `photo_url` + `dish_name` required, an optional `description`, and an optional `recipe_id` — linkable **only** to a recipe the caller owns and hasn't deleted. Not a recipe (no ingredients/steps). |
+| GET | /posts/feed | Yes | The presence feed: the caller's accepted friends' posts plus their own, newest first. Keyset-paginated via `?before_id=` (a cursor on post `id`, page size 30). No like button, ever. A linked `recipe_id` the viewer can't read (private/soft-deleted) is nulled out so "See the recipe" never dead-ends. |
+| GET | /posts/{post_id} | Yes | A single post — visible to its author or a friend of the author; a stranger gets 404 (don't confirm it exists). Same recipe-link nulling as the feed. |
+| DELETE | /posts/{post_id} | Yes | Delete a post — **author only** (read is not write); a non-author or unknown id gets 404. |
+| GET | /posts/users/{user_id} | Yes | A user's posts for their profile grid — friend-or-own gated; a non-friend gets an empty list (the profile is public, its posts are not). Same recipe-link nulling as the feed. |
 
-*36 application routes as shipped to prod — the table is the whole product surface. Counts have changed several times as features were added and removed, so verify rather than trust: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
+*41 application routes as shipped to prod — the table is the whole product surface. Counts have changed several times as features were added and removed, so verify rather than trust: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
 
 **Three visibility tiers — Private → Shared → Public.** A recipe is viewable by a user when: its visibility is `public`, **or** they own it, **or** they hold an accepted handoff (grant) on it. "Shared" is not a stored enum value — `visibility` stays `private | public`; a private recipe with ≥1 accepted grant *is* shared with those people. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `can_view` (`app/services/sharing.py`) is the single read-authorization rule every recipe read funnels through. **Read is not write:** editing and deleting stay owner-only, enforced by a `user_id` filter in `patch_recipe`/`delete_recipe` — a grantee can read and cook a recipe they were handed, never change someone else's record of it.
 

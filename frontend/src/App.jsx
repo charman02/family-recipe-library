@@ -6,10 +6,12 @@ import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Welcome from './pages/Welcome'
-import Home from './pages/Home'
+import Feed from './pages/Feed'
 import Browse from './pages/Browse'
 import MyRecipes from './pages/MyRecipes'
 import RecipePage from './pages/RecipePage'
+import AddChooser from './pages/AddChooser'
+import PostComposer from './pages/PostComposer'
 import PlantRecipe from './pages/PlantRecipe'
 import EditRecipe from './pages/EditRecipe'
 import HandoffPage from './pages/HandoffPage'
@@ -62,7 +64,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Layout>
-              <Home />
+              <Feed />
             </Layout>
           </ProtectedRoute>
         }
@@ -149,6 +151,26 @@ export default function App() {
       />
       <Route
         path="/add"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <AddChooser />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/add/meal"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <PostComposer />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/add/recipe"
         element={
           <ProtectedRoute>
             <Layout>

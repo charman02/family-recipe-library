@@ -81,7 +81,7 @@ export default function Friends() {
         <BackButton to="/profile" label="You" />
       </div>
       <MarkerTitle
-        color="bg-periwinkle"
+        color="bg-peach"
         className="font-display font-black text-[32px] text-ink leading-none"
       >
         Friends<span className="text-terra">.</span>
@@ -99,7 +99,7 @@ export default function Friends() {
       {nothingAnywhere && (
         <EmptyState
           icon="🧑‍🍳"
-          badge="bg-periwinkle"
+          badge="bg-peach"
           title="No one here yet"
           sub="When you hand someone a recipe — or they hand you one — they’ll show up here to add."
           className="mt-6"

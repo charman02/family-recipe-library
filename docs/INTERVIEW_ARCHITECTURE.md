@@ -3,7 +3,7 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 36 endpoints · 10 tables · 14 migrations · 244 backend tests · 512 frontend
+**Scale:** 41 endpoints · 11 tables · 15 migrations · 261 backend tests · 474 frontend
 tests · ~2,200 lines of Python, deployed (AWS ECS Fargate + Vercel + Neon Postgres).
 
 ---
@@ -27,7 +27,7 @@ downstream of one product decision.
 | API | FastAPI | Pydantic gives request/response validation at the boundary for free; async for the LLM call |
 | ORM | SQLAlchemy 2.0 (`Mapped[]` typed style) | Types are checkable; the models double as documentation |
 | DB | Postgres (Neon) in prod, SQLite locally | Same ORM either way; `database.py` branches on the URL |
-| Migrations | Alembic | 14 versioned migrations, forward-only in practice |
+| Migrations | Alembic | 15 versioned migrations, forward-only in practice |
 | Auth | JWT, stateless, bcrypt | No session store to run; the token carries `sub` = user id |
 | Frontend | React + Vite + Tailwind | — |
 | Hosting | AWS ECS Fargate (API) · Vercel (web) · Neon (DB) | Push to `main` auto-deploys via GitHub Actions OIDC pipeline |
@@ -45,11 +45,13 @@ data engineer will respect:
 
 ---
 
-## 3. Data model (10 tables)
+## 3. Data model (11 tables)
 
 ```
 users
   ├── password_reset_tokens      (user_id FK)
+  ├── friendships                (requester_id, addressee_id + pair_low/pair_high — one row per pair)
+  ├── posts                      (user_id FK; optional recipe_id FK, SET NULL — a shared meal)
   └── recipes                    (user_id FK, CASCADE)
         ├── ingredient_sections  (recipe_id FK, CASCADE)
         │     └── ingredients    (section_id FK, SET NULL)

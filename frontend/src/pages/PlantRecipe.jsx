@@ -40,7 +40,9 @@ export default function PlantRecipe() {
   function goBack() {
     if (step === 'form') setStep(seeded ? 'paste' : 'doorway')
     else if (step === 'paste') setStep('doorway')
-    else navigate('/')
+    // From the doorway, back goes to the Add chooser (this flow is now reached via
+    // /add → "Keep a recipe"), not to the feed.
+    else navigate('/add')
   }
 
   // A parse lands on the ordinary form, pre-filled. Nothing is saved here — either
@@ -97,7 +99,7 @@ export default function PlantRecipe() {
     return (
       <div className="min-h-screen bg-cream px-[18px] pt-5">
         <div className="mb-4">
-          <BackButton to="/" label="Home" />
+          <BackButton to="/add" label="Back" />
         </div>
         {/* eyebrow stamp — a small rotated "new recipe" badge for character */}
         <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-saffron border-2 border-ink rounded-full px-3 py-1 -rotate-2 shadow-[0_2px_0_#2E3A24]">

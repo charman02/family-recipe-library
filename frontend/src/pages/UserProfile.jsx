@@ -68,7 +68,7 @@ export default function UserProfile() {
     return (
       <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-4 p-6 text-center">
         <span className="error-pill">{error}</span>
-        <BackButton to="/friends" label="Your people" />
+        <BackButton label="Back" />
       </div>
     )
   }
@@ -119,7 +119,7 @@ export default function UserProfile() {
   return (
     <div className="min-h-screen bg-cream px-5 pt-5 pb-10">
       <div className="mb-6">
-        <BackButton to="/friends" label="Your people" />
+        <BackButton label="Back" />
       </div>
 
       <div className="flex flex-col items-center text-center">

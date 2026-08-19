@@ -1,13 +1,17 @@
 # Implementation plan: the social presence feed (issei #62)
 
 > Phased build plan derived from `SOCIAL_FEED_DESIGN.md` (design + locked decisions).
-> **Nothing here is built.** Each phase is independently shippable, gets its own
-> ship-review + docs gate, and is a "stop and ask" item (new feature + data model +
-> positioning) per the autonomy policy in `TESTING.md`. Approve phase-by-phase.
+> **Phase 0 shipped** (friend graph + minimal profiles) and **Phase 1a is built/staged**
+> (posts + the friends feed, which became Home); later phases remain **planned, not
+> built**. Each phase is independently shippable, gets its own ship-review + docs gate,
+> and is a "stop and ask" item (new feature + data model + positioning) per the autonomy
+> policy in `TESTING.md`. Approve phase-by-phase.
 
 ## Guiding constraints (carried from the design)
 
 - **Symmetric friends** (both accept). **Friends-only feed** (no public/global feed).
+  *(Superseded 2026-08-19 — see Direction update: the feed gains a friends/everyone
+  toggle. "No like button" and symmetric friends stand.)*
 - **Extension, not replacement** — handoffs, recipes, invite/OG, Cloudinary all reused.
 - **Web-first**; native iOS is a later amplifier, not a prerequisite.
 - **No like button** — the recipe-request is the only "reaction."
@@ -15,6 +19,48 @@
 - Every new endpoint pins auth + scope (TESTING.md invariants 1–3); every new
   surface respects POSITIONING (invariants 5–6). New models → migration replays on
   SQLite (invariant + `test_migrations.py`).
+
+## Direction update (2026-08-19, post-Phase-1a review)
+
+Six product decisions from the user after Phase 1a shipped/staged. **Direction, not
+built** — recorded here so the later phases build the right thing. Where one revises an
+earlier "locked" line, the revision wins and the older text is annotated in place.
+
+1. **Kitchen tab holds recipes AND posts.** "Your kitchen" becomes the one place a user
+   sees both their own recipes and their own past posts. And a friend viewing your
+   profile/kitchen sees both your recipes and posts (subject to the visibility rule in
+   #2). Reshapes `MyRecipes` and `UserProfile` into a two-section (or tabbed) view.
+2. **Profile-level public/private, with per-item overrides.** This *replaces* the plan's
+   per-recipe `private | friends | public` 3-tier model (see "The visibility change"
+   section — now superseded). The model is:
+   - A **profile** is `public` or `private`.
+   - **Public profile:** any user can see all your recipes and posts.
+   - **Private profile:** only accepted friends see your recipes and posts. A private
+     user can still mark **specific** recipes/posts public to expose just those.
+   - This means both `Recipe` and `Post` need a per-item public flag/visibility, AND
+     `User` needs a profile-visibility field; `can_view` (recipes) and the posts scope
+     checks both consult profile-visibility + the per-item override + `are_friends`.
+     Keep it one rule per resource type, as today.
+3. **Feed friends/everyone toggle.** The feed gains a control to show either just
+   friends (the Phase-1a default) or everyone (public posts from non-friends). This
+   revises the "friends-only feed, no public/global feed" constraint above. The
+   "everyone" view is scoped to posts whose author/profile is public per #2.
+4. **Browse shows posts, not just recipes.** Browse becomes recipes + posts so a user
+   can search a dish and, on finding a post with no attached recipe, **request the
+   recipe** (ties directly to the Phase 2 request loop). Interface for mixing the two
+   result types is an open design question — flag at build.
+5. **Non-cook audience is in-scope as an on-ramp, not a redefinition.** People who don't
+   cook stay connected and see what friends are making; the core job is unchanged. Now
+   reflected in `POSITIONING.md` ("Who it's for").
+6. **Attach-a-recipe button in the post composer.** `PostComposer` gains an "Attach a
+   recipe" control that picks from recipes the author owns (sets `recipe_id`). The
+   backend already accepts `recipe_id`; only the composer UI is missing. Small — fold
+   into Phase 2 with the request loop.
+
+**Sequencing note:** #2 (profile visibility) is now the backbone the others lean on —
+#1 (friend sees your posts), #3 (everyone feed), and #4 (posts in Browse) all depend on
+a coherent "who can see this" answer. Build #2 first as its own reviewed step; it
+supersedes the old per-recipe 3-tier plan below.
 
 ## Conventions the code must match (from the current repo)
 
@@ -84,6 +130,22 @@ see their profile. No feed yet.
 **Goal:** post a photo + dish name; see a reverse-chron feed of friends' posts. This
 alone delivers the "see what your friends are making / stay connected from afar" value.
 **Ship and learn before building the request loop.**
+
+### Decisions locked (2026-08-18, build session)
+- **Scope split:** Phase 1 is posts + feed ONLY. The 3-tier recipe visibility
+  (`private/friends/public`, default→friends) is a SEPARATE later step (Phase 1b) —
+  the feed is inherently friends-only and doesn't need it. Lower risk, faster to a
+  shippable feed. (POSITIONING rework rides with 1b, not 1a.)
+- **Feed FULLY replaces Home** (`/`). No hero deck / kitchen grid / "passed down
+  lately" tail — a scroll feed has no natural footer, and Kitchen + Browse tabs
+  already own that content. An **empty feed shows a warm onboarding empty state**
+  driving the two cold-start actions ("Share a meal" + "Find friends" → the Phase-0
+  suggestions). The empty state IS the cold-start fix — no own-content tail.
+- **The + (Add) nav slot becomes a chooser**: "📸 Share a meal" (photo post) and
+  "📖 Keep a recipe" (existing add flow). One slot, both creation paths; posting is
+  framed as the light everyday act, recipe-keeping as the deliberate one.
+- **Re-surface the Friends entry** on the You page (hidden in Phase 0) as part of
+  this — and it's also reachable from the feed's empty state.
 
 ### Backend
 - **Model `Post`** (`models/post.py`): `id`, `user_id` FK, `photo_url` (Cloudinary,
@@ -196,7 +258,15 @@ are waiting," and fulfilling hands it to them automatically.
 
 ---
 
-## The visibility change (`private | friends | public`) — lands WITH Phase 0/1
+## The visibility change (`private | friends | public`) — SUPERSEDED 2026-08-19
+
+> **Superseded by Direction update #2.** The per-recipe three-tier model below is no
+> longer the plan — visibility is now **profile-level public/private with per-item
+> public overrides**, applied to both recipes and posts. The mechanics below (one
+> `can_view` branch per rule, Browse shows only public, migration flips a default, the
+> 3-way create/edit control absorbing backlog #61) are still the right *shape* to reuse;
+> read them as guidance for building the profile-visibility model, not as the target
+> model itself.
 
 Sequenced here because "friends" visibility is meaningless before the friend graph.
 Do it as its own reviewed step once Phase 0's `are_friends` exists (it can ride in
@@ -214,14 +284,14 @@ Phase 1, or immediately after Phase 0):
 - Update the visibility tests (`test_visibility.py`, `test_sharing.py`) for the new
   tier; update TESTING.md invariant 1 to name the friends branch.
 
-## POSITIONING rework (do it as part of Phase 1, before the feed ships publicly)
+## POSITIONING rework — DONE (2026-08-19, user-approved)
 
-`POSITIONING.md` currently disclaims being a social feed. Rework it deliberately (not
-a quiet edit): *the honest handoff, now with a reason to stay* — presence + connection,
-demand-driven, **no likes, symmetric friends, no virality, friends-only**. This is a
-**"stop and ask" doc change** — draft it and get explicit sign-off before it lands,
-since it redefines what the app is. The docs-auditor's POSITIONING scan must stay green
-against the new text.
+`POSITIONING.md` was reworked with explicit sign-off. It now frames the feed and the
+handoff as **one product** (presence → the ask → the handoff), keeps the one-liner,
+adds a "social food feeds" competitor row, folds in the non-cook on-ramp, and bans
+claiming the unbuilt social layer (no "everyone" feed / profile visibility / posts in
+Browse / request action yet) and treating the friend graph as lineage. The
+docs-auditor's POSITIONING scan is green against the new text.
 
 ## Backlog items this absorbs / closes
 

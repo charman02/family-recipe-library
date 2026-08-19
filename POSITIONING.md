@@ -28,6 +28,26 @@ read the whole thing without making an account. What arrives is the recipe *and*
 knowledge around it — who it came from, why it's cooked this way, and the one warning
 that keeps you from ruining it the first time.
 
+## The feed and the handoff: one product
+
+The app now opens on a feed of what your friends cooked. That looks like a second
+product; it isn't — the feed exists to manufacture the founding moment. The origin
+needed a table: you had to taste the dish to want it. The feed reproduces that trigger
+at a distance — you see a friend's dish, it stops you, you ask for it. The pipeline is
+**presence → the ask → the handoff.** The feed is the top of the funnel; the handoff is
+still the payload.
+
+This is why there is **no like button, and never will be.** A like is a dead end; a
+recipe-request turns presence into a handoff — the one thing the rest of the app is
+built to carry. A post is deliberately thin — a photo and a dish name, no ingredients,
+no steps (`app/models/post.py`) — because a post is not a recipe. It's the "I made
+this" that earns the "can I have it?"
+
+**Status (check before claiming):** the friends feed + posts ship in Phase 1a. The
+request-the-recipe action that closes the loop is **Phase 2, not built**. A post can
+*link* a recipe the author owns; the card links through only when the viewer can read
+that recipe.
+
 ## Who it's for
 
 The person who has **never tasted the dish**, and the person trying to get it to them.
@@ -35,6 +55,13 @@ The person who has **never tasted the dish**, and the person trying to get it to
 This is the founding case, not a hypothetical: the founder shared food his mom cooked
 with a friend, the friend had never had the dish, loved it, and asked for the recipe.
 Everything in the product is downstream of "what does that friend actually need?"
+
+The feed widened the front door. You no longer have to be mid-handoff to have a reason
+to open the app — a person who doesn't cook is a legitimate user: they stay connected to
+what the people they eat with are making, and when a dish stops them, asking costs
+nothing. That's an on-ramp, not a redefinition. The job is still getting one dish from
+the cook to the person who wants it; we don't tailor the core to people who'll never
+cook, we just don't wall them out.
 
 ## Why nobody else serves this
 
@@ -48,6 +75,10 @@ The market splits in two, and **both halves assume you already know the dish**:
   for the family that already eats the food and wants it commemorated. The output is a
   keepsake — a book, an archive — for people who could already cook the dish from
   memory. Nothing is built to be *followed*.
+- **Social food feeds** — Instagram, TikTok, the food side of any app. Presence with no
+  payload: you see the dish and can applaud it, but you can't *get* it and can't ask the
+  person for it. issei's feed is built so the dish is one tap from a request, and the
+  request is answered with the real thing.
 
 Neither is built for a first-time cook receiving a dish from a person. That's the
 unoccupied space, and it's the one this app sits in.
@@ -157,7 +188,7 @@ and that the text is verbatim speech from the source person.
 The UI has already been corrected to say **"a note on this step"**, and the story
 heading says **"{Name}'s story"** rather than "In {Name}'s words"
 (`frontend/src/components/RecipeBody.jsx`). Four test files assert no voice/audio claim
-appears in the UI: `frontend/src/pages/Home.test.jsx`,
+appears in the UI: `frontend/src/pages/PlantRecipe.test.jsx`,
 `frontend/src/pages/Login.test.jsx`, `frontend/src/pages/Welcome.test.jsx`,
 `frontend/src/pages/InviteLanding.test.jsx`.
 
@@ -183,6 +214,20 @@ fact about one recipe, not an edge between two.
 The reason matters for positioning. This app is a **bridge between two people** — one
 recipe, handed to one person — not a family network. A tree is a different product, and
 claiming one invites the question "where is it?"
+
+The friend graph is **not** lineage either. issei now has friendships (symmetric, one
+row per unordered pair — `app/models/friendship.py`) and a feed scoped to them. That's a
+flat, mutual relation between *people*. It is not recipe ancestry — recipes still form no
+trees, and a friendship is not a parent/child edge. "It has a graph now" does not
+resurrect the tree language this section bans.
+
+### Never claim the unbuilt social layer
+
+As of Phase 1a there is a friends-only feed and posts, and nothing more of the social
+plan. There is **no "everyone" feed, no public/private profile setting, no posts in
+Browse, and no recipe-request action.** All are planned (see `docs/SOCIAL_FEED_PLAN.md`)
+and none has shipped. Write them as direction, never as present features — and check the
+code before describing any social capability, because this is the area moving fastest.
 
 ### Never claim a recipient can edit, add to, or contribute to a recipe they were sent
 
@@ -231,8 +276,8 @@ git history now.
 
 ### Don't inflate the numbers — measure them
 
-As measured on this branch (see `README.md` for the method): **36 routes**, **10 models**,
-**244 backend tests**, **512 frontend tests in 38 files**. Endpoint and test counts have
+As measured on this branch (see `README.md` for the method): **41 routes**, **11 models**,
+**261 backend tests**, **474 frontend tests in 39 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 
