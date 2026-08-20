@@ -16,7 +16,7 @@ from app.schemas.friend import (
     FriendSuggestion,
     ProfileResponse,
 )
-from app.services.friends import existing_friendship
+from app.services.friends import existing_friendship, friend_ids
 from app.services.sharing import can_view, can_view_post
 
 router = APIRouter(prefix="/friends", tags=["friends"])
@@ -324,6 +324,11 @@ def user_profile(
         p.user = target
     post_count = sum(1 for p in posts if can_view_post(p, current_user, db, is_friend))
 
+    # Friend count is a public, symmetric fact about the target — not gated by the
+    # caller (unlike recipe/post counts). Reuse friend_ids so there's one definition of
+    # "who is an accepted friend"; the list is small, so len() is fine.
+    friend_count = len(friend_ids(user_id, db))
+
     return ProfileResponse(
         user_id=user_id,
         first_name=target.first_name,
@@ -333,4 +338,5 @@ def user_profile(
         friend_can_accept=friend_can_accept,
         recipe_count=recipe_count,
         post_count=post_count,
+        friend_count=friend_count,
     )

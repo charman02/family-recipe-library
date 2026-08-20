@@ -15,7 +15,16 @@ vi.mock('../api/client', () => ({
   toUserMessage: (err, fallback) =>
     err?.response?.data?.detail || fallback,
 }))
+// The You page now loads its identity-box counts (own profile) + incoming request
+// count. Default both to benign values; individual tests override as needed.
+vi.mock('../api/friends', () => ({
+  getUserProfile: vi.fn(() =>
+    Promise.resolve({ data: { recipe_count: 0, post_count: 0, friend_count: 0 } }),
+  ),
+  getFriendRequests: vi.fn(() => Promise.resolve({ data: [] })),
+}))
 import client from '../api/client'
+import { getUserProfile, getFriendRequests } from '../api/friends'
 import Profile from './Profile'
 
 // Covers the settings copy: round-2 testers read "Reduce motion" as jargon and
@@ -144,6 +153,48 @@ describe('Profile visibility toggle (profile-visibility model)', () => {
       profile_visibility: 'private',
       apply_visibility_to_all: 'friends',
     })
+  })
+})
+
+describe('Profile identity-box counts (#74)', () => {
+  it('shows recipes/posts/friends counts from the profile fetch', async () => {
+    getUserProfile.mockResolvedValueOnce({
+      data: { recipe_count: 12, post_count: 5, friend_count: 8 },
+    })
+    renderProfile()
+    // Counts fetched with the user's OWN id.
+    expect(getUserProfile).toHaveBeenCalledWith(1)
+    expect(await screen.findByText('12')).toBeInTheDocument()
+    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(screen.getByText('8')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /recipes/i })).toBeInTheDocument()
+  })
+
+  it('recipes/posts counts deep-link into the Kitchen (posts via ?tab=posts)', async () => {
+    getUserProfile.mockResolvedValueOnce({
+      data: { recipe_count: 3, post_count: 2, friend_count: 1 },
+    })
+    renderProfile()
+    await screen.findByText('3')
+    await userEvent.click(screen.getByRole('button', { name: /posts/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/my-recipes?tab=posts')
+    await userEvent.click(screen.getByRole('button', { name: /friends/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/friends')
+  })
+
+  it('shows the friend-requests button only when there are pending requests', async () => {
+    getFriendRequests.mockResolvedValueOnce({ data: [{ id: 1 }, { id: 2 }] })
+    renderProfile()
+    const btn = await screen.findByRole('button', { name: /2 friend requests/i })
+    await userEvent.click(btn)
+    expect(mockNavigate).toHaveBeenCalledWith('/friends')
+  })
+
+  it('hides the friend-requests button when there are none', async () => {
+    getFriendRequests.mockResolvedValueOnce({ data: [] })
+    renderProfile()
+    await screen.findByText('Settings') // let effects settle
+    expect(screen.queryByRole('button', { name: /friend request/i })).toBeNull()
   })
 })
 

@@ -33,6 +33,7 @@ function profile(over = {}) {
     friend_can_accept: false,
     recipe_count: 3,
     post_count: 0,
+    friend_count: 0,
     ...over,
   }
 }
@@ -60,6 +61,17 @@ describe('UserProfile', () => {
     // The tabbed profile content replaced the old bare recipe-count line.
     expect(screen.getByRole('tab', { name: /recipes/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /posts/i })).toBeInTheDocument()
+  })
+
+  it('shows a recipes · posts · friends summary line', async () => {
+    getUserProfile.mockResolvedValue({
+      data: profile({ recipe_count: 12, post_count: 5, friend_count: 8 }),
+    })
+    renderAt()
+    await screen.findByText('Lola Remedios')
+    expect(
+      screen.getByText(/12 recipes · 5 posts · 8 friends/i),
+    ).toBeInTheDocument()
   })
 
   it('loads the person’s recipes into the grid', async () => {

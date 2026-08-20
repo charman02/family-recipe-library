@@ -2,18 +2,34 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import client from '../api/client'
 import { getSharedWithMe } from '../api/sharing'
+import { getUserPosts } from '../api/posts'
 import RecipeCard from '../components/RecipeCard'
+import PostCard from '../components/PostCard'
 import IconField from '../components/IconField'
 import MarkerTitle from '../components/MarkerTitle'
 import EmptyState from '../components/EmptyState'
+import Loader from '../components/Loader'
 import { personOf } from '../lib/kitchenFacts'
 
 export default function MyRecipes() {
   const [mine, setMine] = useState([])
   const [handed, setHanded] = useState([])
+  const [myPosts, setMyPosts] = useState(null) // null = not loaded (lazy, posts tab only)
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
+
+  // Your kitchen now holds both your recipes and your posts (the #69 self-view). Which
+  // tab shows is driven by ?tab=posts so the "You" page's Posts count can deep-link
+  // straight here. Default (no param) = recipes, the primary content.
+  const me = JSON.parse(localStorage.getItem('issei_user') || '{}')
+  const tab = params.get('tab') === 'posts' ? 'posts' : 'recipes'
+  function setTab(next) {
+    const p = new URLSearchParams(params)
+    if (next === 'posts') p.set('tab', 'posts')
+    else p.delete('tab')
+    setParams(p, { replace: true })
+  }
 
   // ?person=Lola — where Home's "whose recipes live here" row lands. Without this
   // the row would navigate here and show an UNFILTERED kitchen, which reads as a
@@ -42,6 +58,15 @@ export default function MyRecipes() {
       .catch(() => {})
   }, [person])
 
+  // Your own posts, loaded lazily the first time the Posts tab is opened (self id →
+  // GET /posts/users/{me}, which returns all your own posts).
+  useEffect(() => {
+    if (tab !== 'posts' || myPosts !== null || !me.id) return
+    getUserPosts(me.id)
+      .then((res) => setMyPosts(res.data))
+      .catch(() => setMyPosts([]))
+  }, [tab, myPosts, me.id])
+
   const recipes = person ? [...mine, ...handed] : mine
   const query = search.trim()
   const searching = query.length > 0
@@ -61,9 +86,55 @@ export default function MyRecipes() {
         Your kitchen<span className="text-terra">.</span>
       </MarkerTitle>
       <p className="font-display italic text-[15px] text-ink-soft mt-3">
-        {person ? `Everything from ${person}.` : 'Everything you’ve kept.'}
+        {person
+          ? `Everything from ${person}.`
+          : tab === 'posts'
+            ? 'Meals you’ve shared.'
+            : 'Everything you’ve kept.'}
       </p>
 
+      {/* Recipes | Posts tabs — your kitchen holds both now. Hidden while filtering by a
+          person (that view is recipe-specific). */}
+      {!person && (
+        <div role="tablist" aria-label="Recipes or posts" className="flex justify-center mt-4">
+          <div className="inline-flex rounded-full border-2 border-ink bg-cream p-0.5 text-[13.5px] font-display font-bold">
+            {['recipes', 'posts'].map((t) => (
+              <button
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className={`px-5 py-1.5 rounded-full capitalize transition ${
+                  tab === t ? 'bg-terra text-cream' : 'text-ink-soft'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* POSTS TAB */}
+      {tab === 'posts' && !person ? (
+        myPosts === null ? (
+          <Loader />
+        ) : myPosts.length === 0 ? (
+          <EmptyState
+            icon="📸"
+            title="No posts yet"
+            sub="Share a meal from the Add tab and it’ll show up here."
+            className="mt-8"
+          />
+        ) : (
+          <div className="space-y-5 mt-5">
+            {myPosts.map((p) => (
+              <PostCard key={p.id} post={p} />
+            ))}
+          </div>
+        )
+      ) : (
+      <>
       {person && (
         <button
           onClick={() => {
@@ -129,6 +200,8 @@ export default function MyRecipes() {
           sub="Keep your first recipe to get started."
           className="mt-8"
         />
+      )}
+      </>
       )}
     </div>
   )

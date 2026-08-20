@@ -192,6 +192,25 @@ def test_profile_counts_all_own_recipes(client, make_user):
     assert prof["recipe_count"] == 2  # own profile sees all
 
 
+def test_profile_reports_friend_count(client, make_user):
+    # friend_count is a public, symmetric fact — not gated by the caller. Powers the
+    # "You" page identity-box counts.
+    a, ah = make_user()
+    b, bh = make_user()
+    c, ch = make_user()
+    # a befriends both b and c.
+    for other, oh in [(b, bh), (c, ch)]:
+        fid = client.post("/friends/request", json={"to_user_id": other.id}, headers=ah).json()["id"]
+        client.post(f"/friends/{fid}/accept", headers=oh)
+    # A's own profile reports 2 friends...
+    assert client.get(f"/friends/profile/{a.id}", headers=ah).json()["friend_count"] == 2
+    # ...and a stranger sees the same count (it's not gated).
+    stranger, sh = make_user()
+    assert client.get(f"/friends/profile/{a.id}", headers=sh).json()["friend_count"] == 2
+    # B has just the one friend (a).
+    assert client.get(f"/friends/profile/{b.id}", headers=bh).json()["friend_count"] == 1
+
+
 def test_profile_reports_pending_acceptability(client, make_user):
     a, ah = make_user()
     b, bh = make_user()

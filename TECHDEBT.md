@@ -289,6 +289,16 @@ narrow situations.
   `app/routers/friends.py` (`user_profile`) vs grid in `app/routers/recipes.py`
   (`user_recipes`).
 
+- **Posts `post_count` can exceed the 30 the Kitchen Posts tab renders.** The You-page
+  posts count comes from `GET /friends/profile/{id}` (unbounded count of the user's
+  posts), but the Kitchen Posts tab loads `GET /posts/users/{id}` which caps at 30 with
+  no load-more. So a user with >30 posts sees the true count but can't scroll to all of
+  them. *Why flagged:* cosmetic + beta-irrelevant today (no one has 30 posts), but it'll
+  read as a bug at scale — fix with pagination/load-more on the posts grid (and mirror it
+  on the recipes grid, which has the same 30-cap since #69). *Where:*
+  `app/routers/posts.py` (`user_posts` FEED_PAGE), `frontend/src/pages/MyRecipes.jsx`
+  (posts tab, no load-more); count in `app/routers/friends.py` (`user_profile`).
+
 ### Infra & deployment
 
 - **New migrations that ALTER an existing FK must repeat a specific pattern** (a

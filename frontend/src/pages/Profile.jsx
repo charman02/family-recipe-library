@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
+import { getUserProfile, getFriendRequests } from '../api/friends'
 import MarkerTitle from '../components/MarkerTitle'
 
 // Client-side display preferences (no backend needed). Persisted in localStorage
@@ -93,6 +94,23 @@ export default function Profile() {
     JSON.parse(localStorage.getItem('issei_user') || '{}'),
   )
   const [prefs, setPrefs] = useState(loadPrefs)
+
+  // Identity-box counts (recipes · posts · friends) + the incoming friend-request
+  // count for the separate requests button. Loaded from the SAME endpoint that powers
+  // another user's profile — GET /friends/profile/{id} with your own id: can_view/
+  // can_view_post let the owner see everything, so the counts come back complete.
+  // Reusing it keeps one definition of "the counts", rather than a second self-only path.
+  const [stats, setStats] = useState(null) // { recipe_count, post_count, friend_count }
+  const [requestCount, setRequestCount] = useState(0)
+  useEffect(() => {
+    if (!user.id) return
+    getUserProfile(user.id)
+      .then((r) => setStats(r.data))
+      .catch(() => setStats(null))
+    getFriendRequests()
+      .then((r) => setRequestCount(r.data.length))
+      .catch(() => setRequestCount(0))
+  }, [user.id])
 
   // Which account row is open (only one at a time), plus the edit form's own state.
   const [openRow, setOpenRow] = useState(null) // 'name' | 'email' | 'password' | 'delete' | null
@@ -236,7 +254,12 @@ export default function Profile() {
         You<span className="text-terra">.</span>
       </MarkerTitle>
 
-      {/* ACCOUNT — identity card. */}
+      {/* ACCOUNT — identity card. Avatar + name, then three quiet tappable counts
+          (recipes · posts · friends). The counts are shortcuts into existing surfaces,
+          NOT new grids: recipes/posts → your Kitchen (which has Recipes|Posts tabs),
+          friends → the Friends page. Deliberately understated — issei avoids vanity
+          metrics; a friend count is fine because it's mutual, but it's a label, not a
+          trophy. */}
       <div className="sticker bg-card p-5 mt-6">
         <div className="w-16 h-16 rounded-full bg-plum text-cream font-display font-black text-3xl flex items-center justify-center border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] mb-4">
           {monogram}
@@ -246,11 +269,46 @@ export default function Profile() {
             {fullName}
           </p>
         )}
-        <p className="section-label mt-3">Email</p>
-        <p className="font-sans text-[14px] text-ink mt-0.5">
+        <p className="font-sans text-[13px] text-ink-soft mt-0.5">
           {user.email || 'Unknown'}
         </p>
+
+        {/* The three counts. Rendered as buttons so each is a tap target; a thin
+            divider row under the identity, not a stat-block. Shows em-dashes until the
+            fetch lands so the layout doesn't jump. */}
+        <div className="flex items-stretch gap-1 mt-4 border-t-2 border-line pt-3">
+          {[
+            { key: 'recipe_count', label: 'Recipes', to: '/my-recipes' },
+            { key: 'post_count', label: 'Posts', to: '/my-recipes?tab=posts' },
+            { key: 'friend_count', label: 'Friends', to: '/friends' },
+          ].map((c) => (
+            <button
+              key={c.key}
+              onClick={() => navigate(c.to)}
+              className="flex-1 text-center py-1 rounded-[10px] active:bg-cream transition-colors"
+            >
+              <span className="block font-display font-black text-[20px] text-ink leading-none">
+                {stats ? stats[c.key] : '—'}
+              </span>
+              <span className="block font-display text-[12px] text-ink-soft mt-1">
+                {c.label}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* Friend requests — its own button below the box, because a pending request is
+          an action waiting on you, not a stat. Shows a count badge only when there are
+          any. Routes to the Friends page, which lists incoming requests at the top. */}
+      {requestCount > 0 && (
+        <button
+          onClick={() => navigate('/friends')}
+          className="w-full mt-3 inline-flex items-center justify-center gap-2 py-2.5 rounded-full bg-terra text-cream border-[2.5px] border-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
+        >
+          {requestCount} friend {requestCount === 1 ? 'request' : 'requests'} →
+        </button>
+      )}
 
       {/* PROFILE VISIBILITY — the profile-visibility model (#68). Its own card above
           Settings because it decides who sees everything you make, not just a display
@@ -518,14 +576,8 @@ export default function Profile() {
         </AccountRow>
       </div>
 
-      {/* Friends — the friend graph. Re-surfaced in Phase 1 now that the feed
-          (Home) gives friendship a payoff. Also reachable from the feed's empty state. */}
-      <button
-        onClick={() => navigate('/friends')}
-        className="w-full mt-6 inline-flex items-center justify-center gap-2 py-3 rounded-full bg-peach border-[2.5px] border-ink text-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
-      >
-        🧑‍🍳 Friends
-      </button>
+      {/* (The Friends entry moved into the identity box's tappable counts — the
+          Friends count links here, and incoming requests get their own button above.) */}
 
       {/* Send feedback — now an in-app form (/feedback), replacing the external
           hosted form this used to open in a new tab. VITE_FEEDBACK_URL is gone

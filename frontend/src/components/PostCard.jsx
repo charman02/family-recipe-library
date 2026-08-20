@@ -43,12 +43,18 @@ export default function PostCard({ post }) {
   const navigate = useNavigate()
   const initial = (post.author_first_name || '?').charAt(0).toUpperCase()
 
+  // Tapping the author opens their profile — but for your OWN post, /u/{yourId} is the
+  // read-only "other user" view of yourself; send yourself to /profile ("You") instead.
+  const me = JSON.parse(localStorage.getItem('issei_user') || '{}')
+  const isMine = String(me.id) === String(post.user_id)
+  const openAuthor = () => navigate(isMine ? '/profile' : `/u/${post.user_id}`)
+
   return (
     <article className="sticker bg-card overflow-hidden">
       {/* Header: who + when. Tapping the name opens their profile. */}
       <div className="flex items-center gap-2.5 px-3.5 py-3">
         <button
-          onClick={() => navigate(`/u/${post.user_id}`)}
+          onClick={openAuthor}
           className="flex items-center gap-2.5 min-w-0 text-left"
         >
           <span className="flex-none flex items-center justify-center w-9 h-9 rounded-full bg-peach border-2 border-ink text-ink font-display font-black text-[15px]">

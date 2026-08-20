@@ -130,6 +130,16 @@ export default function UserProfile() {
         <h1 className="font-display font-black text-[28px] text-ink leading-tight mt-4">
           {fullName(profile)}
         </h1>
+        {/* A quiet one-line summary of what they have — mirrors the counts on your own
+            "You" box. recipe_count/post_count are what YOU may see (gated); friend_count
+            is a public symmetric number. Understated, not a leaderboard. */}
+        <p className="font-display text-[13px] text-ink-soft mt-1.5">
+          {profile.recipe_count} {profile.recipe_count === 1 ? 'recipe' : 'recipes'}
+          {' · '}
+          {profile.post_count} {profile.post_count === 1 ? 'post' : 'posts'}
+          {' · '}
+          {profile.friend_count} {profile.friend_count === 1 ? 'friend' : 'friends'}
+        </p>
         <div className="mt-5">
           <FriendButton />
         </div>

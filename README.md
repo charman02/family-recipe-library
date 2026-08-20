@@ -13,7 +13,7 @@ So a recipe here is attributed to a **person** — the dish is the title, the pe
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system layered over a concrete visibility model. A profile is public or private (private by default); each recipe or post is set to "Everyone" (public), "Friends only" (friends), or "Only me" (private) — new items default to "Friends only", or "Everyone" on a public profile. The chosen value is stored literally and fixed once chosen, so a label never silently changes if the profile later changes.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 42 endpoints, 11 data models, 782 automated tests (293 pytest + 489 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 42 endpoints, 11 data models, 792 automated tests (294 pytest + 498 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -30,9 +30,9 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - backend tests (293) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, the invite link-preview card, the source/cuisine autosuggest scope, the friend graph, signup + account-edit validation).
+**pytest** - backend tests (294) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, the invite link-preview card, the source/cuisine autosuggest scope, the friend graph, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (489 in 40 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (498 in 40 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
 **Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
 
@@ -102,7 +102,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | GET | /friends | Yes | The caller's accepted friends. |
 | GET | /friends/requests | Yes | Pending requests addressed to the caller. |
 | GET | /friends/suggestions | Yes | People to friend, seeded from the caller's handoff graph (whom they've handed a recipe to / received one from), never strangers. |
-| GET | /friends/profile/{user_id} | Yes | A user's read-only profile: name, their `profile_visibility` (public/private), the caller-side friend state, and counts of their recipes and posts **the caller may see** (each gated by the same `can_view` / `can_view_post` rule). |
+| GET | /friends/profile/{user_id} | Yes | A user's read-only profile: name, their `profile_visibility` (public/private), the caller-side friend state, counts of their recipes and posts **the caller may see** (each gated by the same `can_view` / `can_view_post` rule), and their `friend_count` (a symmetric public number — **not** caller-gated). |
 | POST | /posts | Yes | Share a meal: `photo_url` + `dish_name` required, an optional `description`, and an optional `recipe_id` — linkable **only** to a recipe the caller owns and hasn't deleted. Not a recipe (no ingredients/steps). |
 | GET | /posts/feed | Yes | The presence feed: the caller's accepted friends' posts plus their own, newest first. Keyset-paginated via `?before_id=` (a cursor on post `id`, page size 30). No like button, ever. A linked `recipe_id` the viewer can't read (private/soft-deleted) is nulled out so "See the recipe" never dead-ends. |
 | GET | /posts/{post_id} | Yes | A single post — visible to its author or a friend of the author; a stranger gets 404 (don't confirm it exists). Same recipe-link nulling as the feed. |

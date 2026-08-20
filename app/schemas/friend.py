@@ -56,3 +56,7 @@ class ProfileResponse(BaseModel):
     friend_can_accept: bool = False
     recipe_count: int = 0
     post_count: int = 0
+    # The target's accepted-friend count. Not gated — a friend count is a public,
+    # symmetric fact (unlike recipe/post counts, which are what the CALLER may see).
+    # Powers the "You" page's identity-box counts (own profile) and any profile header.
+    friend_count: int = 0

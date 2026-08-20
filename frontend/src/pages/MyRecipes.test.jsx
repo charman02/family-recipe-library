@@ -5,15 +5,21 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('../api/client', () => ({ default: { get: vi.fn() } }))
 vi.mock('../api/sharing', () => ({ getSharedWithMe: vi.fn() }))
+// Kitchen now has a Posts tab (#74) that lazy-loads the user's own posts.
+vi.mock('../api/posts', () => ({ getUserPosts: vi.fn(() => Promise.resolve({ data: [] })) }))
 import client from '../api/client'
 import { getSharedWithMe } from '../api/sharing'
+import { getUserPosts } from '../api/posts'
 import MyRecipes from './MyRecipes'
 
 beforeEach(() => {
+  localStorage.setItem('issei_user', JSON.stringify({ id: 1, first_name: 'Me' }))
   client.get.mockReset()
   client.get.mockResolvedValue({ data: [] }) // default: empty kitchen
   getSharedWithMe.mockReset()
   getSharedWithMe.mockResolvedValue({ data: [] })
+  getUserPosts.mockReset()
+  getUserPosts.mockResolvedValue({ data: [] })
 })
 
 describe('MyRecipes', () => {
@@ -158,5 +164,60 @@ describe('MyRecipes — filtered to one person', () => {
     renderAt('/my-recipes?person=Ghost')
     expect(await screen.findByText(/Nothing from Ghost here/)).toBeInTheDocument()
     expect(screen.queryByText(/kitchen's empty/i)).toBeNull()
+  })
+})
+
+// #74: the kitchen holds your posts too, on a Posts tab reachable via ?tab=posts.
+describe('MyRecipes — posts tab', () => {
+  function renderAt(entry) {
+    return render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/my-recipes" element={<MyRecipes />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('defaults to the recipes tab and does NOT fetch posts', async () => {
+    client.get.mockResolvedValue({ data: [{ id: 1, name: 'Adobo' }] })
+    renderAt('/my-recipes')
+    await screen.findByText('Adobo')
+    expect(getUserPosts).not.toHaveBeenCalled()
+  })
+
+  it('?tab=posts opens the posts tab and loads the user’s own posts', async () => {
+    getUserPosts.mockResolvedValueOnce({
+      data: [
+        {
+          id: 5,
+          user_id: 1,
+          author_first_name: 'Me',
+          author_last_name: '',
+          photo_url: 'https://img.test/x.jpg',
+          dish_name: 'My meal',
+          created_at: '2026-08-20T12:00:00Z',
+        },
+      ],
+    })
+    renderAt('/my-recipes?tab=posts')
+    expect(await screen.findByText('My meal')).toBeInTheDocument()
+    expect(getUserPosts).toHaveBeenCalledWith(1)
+  })
+
+  it('shows an empty state on the posts tab when there are none', async () => {
+    getUserPosts.mockResolvedValueOnce({ data: [] })
+    renderAt('/my-recipes?tab=posts')
+    expect(await screen.findByText(/no posts yet/i)).toBeInTheDocument()
+  })
+
+  it('switching to Posts fetches, switching back to Recipes shows the grid', async () => {
+    client.get.mockResolvedValue({ data: [{ id: 1, name: 'Adobo' }] })
+    renderAt('/my-recipes')
+    await screen.findByText('Adobo')
+    await userEvent.click(screen.getByRole('tab', { name: /posts/i }))
+    expect(getUserPosts).toHaveBeenCalledWith(1)
+    await userEvent.click(screen.getByRole('tab', { name: /recipes/i }))
+    expect(screen.getByText('Adobo')).toBeInTheDocument()
   })
 })
