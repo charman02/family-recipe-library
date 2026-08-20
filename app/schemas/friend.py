@@ -18,6 +18,9 @@ class FriendResponse(BaseModel):
     user_id: int
     first_name: str
     last_name: str
+    # The other person's profile picture (or None → monogram), so the friends list shows
+    # faces. Set by the router from the resolved user.
+    photo_url: Optional[str] = None
     # True when the CALLER sent this request (so a pending one they sent shows
     # "Requested", not an accept button). Set by the router per-caller.
     outgoing: bool
@@ -34,6 +37,7 @@ class FriendSuggestion(BaseModel):
     user_id: int
     first_name: str
     last_name: str
+    photo_url: Optional[str] = None
     # Why they're suggested — 'sent' (you handed them a recipe) or 'received'
     # (they handed you one). Lets the UI say "you cooked for them" / "cooked for you".
     reason: Literal["sent", "received"]
@@ -48,6 +52,8 @@ class ProfileResponse(BaseModel):
     user_id: int
     first_name: str
     last_name: str
+    # The target's profile picture (or None → monogram) for the profile header.
+    photo_url: Optional[str] = None
     # The target's profile visibility, so the UI can label a private profile.
     profile_visibility: str = "private"
     # None = no relationship; else the friendship state, plus whether the caller

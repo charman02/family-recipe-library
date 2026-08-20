@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -22,6 +22,15 @@ vi.mock('../api/friends', () => ({
     Promise.resolve({ data: { recipe_count: 0, post_count: 0, friend_count: 0 } }),
   ),
   getFriendRequests: vi.fn(() => Promise.resolve({ data: [] })),
+}))
+// Avatar upload (#33): stub the shared uploader so picking a photo synchronously yields
+// a URL (the real one hits Cloudinary via axios).
+vi.mock('../lib/photoUpload', () => ({
+  PHOTO_ACCEPT: 'image/*',
+  createUploader: () => ({
+    upload: ({ onUrl }) => onUrl('https://cdn.test/new-avatar.jpg'),
+    retire: () => {},
+  }),
 }))
 import client from '../api/client'
 import { getUserProfile, getFriendRequests } from '../api/friends'
@@ -195,6 +204,29 @@ describe('Profile identity-box counts (#74)', () => {
     renderProfile()
     await screen.findByText('Settings') // let effects settle
     expect(screen.queryByRole('button', { name: /friend request/i })).toBeNull()
+  })
+
+  it('picking a profile photo uploads it and saves via PATCH /auth/me', async () => {
+    client.patch.mockResolvedValueOnce({ data: { photo_url: 'https://cdn.test/new-avatar.jpg' } })
+    renderProfile()
+    const input = screen.getByLabelText(/change your profile photo/i)
+    // Define files + fire change directly (the stubbed uploader reads onUrl, not the
+    // real file), matching PostComposer's test pattern.
+    Object.defineProperty(input, 'files', {
+      value: [new File(['x'], 'me.jpg', { type: 'image/jpeg' })],
+      configurable: true,
+    })
+    fireEvent.change(input)
+    // The stubbed uploader yields a URL synchronously; the handler PATCHes it.
+    await waitFor(() =>
+      expect(client.patch).toHaveBeenCalledWith('/auth/me', {
+        photo_url: 'https://cdn.test/new-avatar.jpg',
+      }),
+    )
+    // Cached user updated so the avatar shows everywhere without a reload.
+    expect(JSON.parse(localStorage.getItem('issei_user')).photo_url).toBe(
+      'https://cdn.test/new-avatar.jpg',
+    )
   })
 })
 

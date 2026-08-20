@@ -36,6 +36,9 @@ class PostResponse(BaseModel):
     user_id: int
     author_first_name: str
     author_last_name: str
+    # The author's profile picture (or None → monogram), so a feed/profile post shows a
+    # face beside the name.
+    author_photo_url: Optional[str] = None
     photo_url: str
     dish_name: str
     description: Optional[str] = None

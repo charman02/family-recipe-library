@@ -269,6 +269,18 @@ narrow situations.
 
 ### Auth & permissions
 
+- **User-supplied image URLs are rendered as `<img src>` with only avatar-scoped
+  validation.** `photo_url` (avatars, #33) is now validated to a Cloudinary HTTPS host,
+  because it's shown to anyone who sees the user's name and an arbitrary URL is a
+  viewer-IP tracking pixel. But `recipe.cover_photo_url` and `post.photo_url` are still
+  accepted as arbitrary strings and rendered the same way (Browse, feed) — same
+  tracking-pixel class, unguarded. Not XSS (React `<img src>` won't run
+  `javascript:`/`data:` script). *Why flagged:* the real fix is one shared validator (or
+  an image proxy) applied to every user-supplied image URL, not per-field patches.
+  *Where:* `app/routers/auth.py` (avatar guard, done), vs `app/schemas/recipe.py`
+  `cover_photo_url` + `app/schemas/post.py` `photo_url` (unguarded); render sites
+  `frontend/src/components/{Avatar,CoverImage,PostCard}.jsx`.
+
 - **Signup leaks account existence; forgot-password deliberately doesn't.** Signup returns
   "Email already registered" (confirms an account exists), while forgot-password always
   returns 204 to avoid enumeration. *Why flagged:* an inconsistency to know about if

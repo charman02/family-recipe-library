@@ -34,6 +34,7 @@ def _to_friend_response(f: Friendship, me_id: int, users_by_id: dict) -> FriendR
         user_id=other_id,
         first_name=u.first_name,
         last_name=u.last_name,
+        photo_url=u.photo_url,
         outgoing=f.requester_id == me_id,
         created_at=f.created_at,
     )
@@ -253,6 +254,7 @@ def friend_suggestions(
                 user_id=uid,
                 first_name=u.first_name,
                 last_name=u.last_name,
+                photo_url=u.photo_url,
                 reason=reason_by_id[uid],
             )
         )
@@ -333,6 +335,7 @@ def user_profile(
         user_id=user_id,
         first_name=target.first_name,
         last_name=target.last_name,
+        photo_url=target.photo_url,
         profile_visibility=target.profile_visibility,
         friend_state=friend_state,
         friend_can_accept=friend_can_accept,

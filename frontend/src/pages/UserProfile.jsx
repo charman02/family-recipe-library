@@ -11,6 +11,7 @@ import {
 import BackButton from '../components/BackButton'
 import Loader from '../components/Loader'
 import ProfileContent from '../components/ProfileContent'
+import Avatar from '../components/Avatar'
 
 const fullName = (p) => `${p.first_name} ${p.last_name}`.trim()
 
@@ -124,9 +125,7 @@ export default function UserProfile() {
       </div>
 
       <div className="flex flex-col items-center text-center">
-        <span className="flex items-center justify-center w-20 h-20 rounded-full bg-peach border-[2.5px] border-ink text-ink font-display font-black text-[32px] shadow-[0_4px_0_#2E3A24]">
-          {(profile.first_name || '?').charAt(0).toUpperCase()}
-        </span>
+        <Avatar name={profile.first_name} photoUrl={profile.photo_url} size="xl" />
         <h1 className="font-display font-black text-[28px] text-ink leading-tight mt-4">
           {fullName(profile)}
         </h1>

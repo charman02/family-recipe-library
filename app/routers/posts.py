@@ -29,6 +29,7 @@ def _to_response(post: Post, author: User, viewable_recipe_ids: set) -> PostResp
         user_id=post.user_id,
         author_first_name=author.first_name,
         author_last_name=author.last_name,
+        author_photo_url=author.photo_url,
         photo_url=post.photo_url,
         dish_name=post.dish_name,
         description=post.description,

@@ -68,3 +68,35 @@ def upload_recipe_photo(
     except Exception:
         logger.exception("Cloudinary upload failed for user %s", current_user.id)
         raise HTTPException(status_code=502, detail="Image upload failed. Please try again.")
+
+
+@router.post("/avatar")
+def upload_avatar(
+    file: UploadFile = File(...), current_user: User = Depends(get_current_user)
+):
+    """A profile picture. Same guards + Cloudinary pipeline as recipe photos, but a
+    SQUARE crop (400x400) with face-gravity so the crop centers on a face — a landscape
+    800x600 recipe crop reads wrong for an avatar. Its own folder keeps avatars separate
+    from recipe covers. Returns the URL; the client saves it via PATCH /auth/me.
+
+    Same known orphan-asset gap as recipe uploads (see the note at the top of this file):
+    replacing your photo leaves the old asset in Cloudinary until the future sweep."""
+    if file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are supported")
+
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Image is too large (max 10 MB)")
+
+    try:
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder="issei/avatars",
+            transformation=[
+                {"width": 400, "height": 400, "crop": "fill", "gravity": "face"},
+                {"quality": "auto"},
+            ],
+        )
+        return {"url": result["secure_url"]}
+    except Exception:
+        logger.exception("Cloudinary avatar upload failed for user %s", current_user.id)
+        raise HTTPException(status_code=502, detail="Image upload failed. Please try again.")

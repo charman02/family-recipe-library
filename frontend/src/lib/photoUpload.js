@@ -55,7 +55,7 @@ export function createUploader() {
     aborts.get(slot)?.abort()
   }
 
-  async function upload({ slot, event, onBusy, onError, onUrl }) {
+  async function upload({ slot, event, onBusy, onError, onUrl, endpoint = '/upload/recipe-photo' }) {
     let file = event.target.files?.[0]
     if (!file) return
     const input = event.target
@@ -110,7 +110,7 @@ export function createUploader() {
 
       const formData = new FormData()
       formData.append('file', file)
-      const { data } = await client.post('/upload/recipe-photo', formData, {
+      const { data } = await client.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         signal: controller?.signal,
       })

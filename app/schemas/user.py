@@ -38,6 +38,8 @@ class UserResponse(UserBase):
     # expose (unlike the name rules, no stored row can violate it: the column is NOT
     # NULL with a server_default, so every user has a concrete value).
     profile_visibility: str = "private"
+    # Cloudinary URL of the profile picture, or None → the UI shows the monogram.
+    photo_url: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -69,3 +71,7 @@ class AccountUpdate(BaseModel):
     # profile flip alone changes NOTHING existing — this sweep is the only way to
     # bulk-rescope what's already there, and it's always an explicit, confirmed choice.
     apply_visibility_to_all: Optional[Literal["public", "friends", "private"]] = None
+    # Profile picture URL (from POST /upload/avatar), or "" / null to clear back to the
+    # monogram. Low-risk like a name edit — no current_password. Empty string is allowed
+    # here (unlike the name rules) precisely so a user can remove their photo.
+    photo_url: Optional[str] = None

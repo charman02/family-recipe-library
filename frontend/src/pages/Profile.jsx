@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
 import { getUserProfile, getFriendRequests } from '../api/friends'
+import { createUploader, PHOTO_ACCEPT } from '../lib/photoUpload'
 import MarkerTitle from '../components/MarkerTitle'
+import Avatar from '../components/Avatar'
 
 // Client-side display preferences (no backend needed). Persisted in localStorage
 // so they survive reloads. Account edits (name/email/password) DO hit the backend
@@ -111,6 +113,33 @@ export default function Profile() {
       .then((r) => setRequestCount(r.data.length))
       .catch(() => setRequestCount(0))
   }, [user.id])
+
+  // Avatar upload (#33). Reuses the shared race-safe uploader, pointed at the avatar
+  // endpoint (square face-crop). On a successful upload we immediately PATCH /auth/me
+  // with the new URL and refresh the cached issei_user, so the box + everywhere the
+  // avatar shows updates without a reload.
+  const uploader = useRef(createUploader())
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  async function onPickPhoto(e) {
+    await uploader.current.upload({
+      slot: 'avatar',
+      event: e,
+      endpoint: '/upload/avatar',
+      onBusy: setUploadingPhoto,
+      onError: setPhotoError,
+      onUrl: async (url) => {
+        try {
+          const { data } = await client.patch('/auth/me', { photo_url: url })
+          const next = { ...user, photo_url: data.photo_url }
+          setUser(next)
+          localStorage.setItem('issei_user', JSON.stringify(next))
+        } catch (err) {
+          setPhotoError(toUserMessage(err, 'Could not save your photo. Try again.'))
+        }
+      },
+    })
+  }
 
   // Which account row is open (only one at a time), plus the edit form's own state.
   const [openRow, setOpenRow] = useState(null) // 'name' | 'email' | 'password' | 'delete' | null
@@ -240,10 +269,6 @@ export default function Profile() {
   }
 
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ')
-  const monogram = (fullName || user.email || '?')
-    .trim()
-    .charAt(0)
-    .toUpperCase()
 
   return (
     <div className="min-h-screen bg-cream px-5 pt-6">
@@ -261,9 +286,27 @@ export default function Profile() {
           metrics; a friend count is fine because it's mutual, but it's a label, not a
           trophy. */}
       <div className="sticker bg-card p-5 mt-6">
-        <div className="w-16 h-16 rounded-full bg-plum text-cream font-display font-black text-3xl flex items-center justify-center border-[2.5px] border-ink shadow-[0_3px_0_#2E3A24] mb-4">
-          {monogram}
-        </div>
+        {/* Tap the avatar to change your photo. The camera badge signals it's editable;
+            the label wraps a hidden file input (same pattern as the recipe photo box). */}
+        <label
+          className="relative inline-block cursor-pointer mb-4"
+          aria-busy={uploadingPhoto || undefined}
+        >
+          <input
+            type="file"
+            accept={PHOTO_ACCEPT}
+            onChange={onPickPhoto}
+            aria-label="Change your profile photo"
+            className="sr-only"
+          />
+          <Avatar name={fullName || user.email} photoUrl={user.photo_url} size="lg" bg="bg-plum" />
+          <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-terra text-cream border-2 border-ink flex items-center justify-center text-[11px] shadow-[0_2px_0_#2E3A24]">
+            {uploadingPhoto ? '…' : '✎'}
+          </span>
+        </label>
+        {photoError && (
+          <p className="mb-2"><span className="error-pill">{photoError}</span></p>
+        )}
         {fullName && (
           <p className="font-display font-black text-[22px] text-ink">
             {fullName}

@@ -13,7 +13,7 @@ So a recipe here is attributed to a **person** — the dish is the title, the pe
 
 Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-quantity model, serving-size scaling that refuses to invent precision, photo upload (with automatic iPhone HEIC → JPEG conversion), and a capability-token sharing system layered over a concrete visibility model. A profile is public or private (private by default); each recipe or post is set to "Everyone" (public), "Friends only" (friends), or "Only me" (private) — new items default to "Friends only", or "Everyone" on a public profile. The chosen value is stored literally and fixed once chosen, so a label never silently changes if the profile later changes.
 
-**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 42 endpoints, 11 data models, 792 automated tests (294 pytest + 498 Vitest).
+**Stack at a glance:** React + Vite + Tailwind SPA (Vercel) → FastAPI + SQLAlchemy REST API (AWS ECS Fargate) → PostgreSQL (Neon). JWT auth, 43 endpoints, 11 data models, 808 automated tests (305 pytest + 503 Vitest).
 
 ## Tech Stack
 **FastAPI** - automatic request validation via Pydantic, auto-generated /docs page for testing, and async-ready. Faster to build with than Flask for the backend API.
@@ -30,11 +30,11 @@ Under the hood that's a full CRUD REST API with JWT auth, a domain-driven fuzzy-
 
 **python-jose** JWT creation and verification for stateless authentication. Tokens are signed with a secret key and include expiry - no server-side session storage needed.
 
-**pytest** - backend tests (294) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, the invite link-preview card, the source/cuisine autosuggest scope, the friend graph, signup + account-edit validation).
+**pytest** - backend tests (305) for the scaling service and its folk-unit vocabulary, and the authorization surface (visibility, sharing/grants, the invite-token flow, the invite link-preview card, the source/cuisine autosuggest scope, the friend graph, signup + account-edit validation).
 
-**Vitest + React Testing Library** - frontend unit/component tests (498 in 40 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
+**Vitest + React Testing Library** - frontend unit/component tests (503 in 41 files: quantity parsing, imprecise-measure labelling, handoff/invite flows, form and page components, plus design-token invariants). Run with `npm test` in `frontend/`.
 
-**Cloudinary** - hosts recipe photos uploaded through the `/upload` endpoint.
+**Cloudinary** - hosts recipe photos and profile pictures uploaded through the `/upload` endpoint.
 
 **React + Vite + Tailwind CSS** - the frontend single-page app (`frontend/`), with **axios** for API calls and **React Router** for client-side routing. Mobile-first, talks to the backend over HTTP.
 
@@ -73,7 +73,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | POST | /auth/forgot-password | No | Request password reset email. |
 | POST | /auth/reset-password | No | Set new password with reset token. |
 | GET | /auth/me | Yes | Returns the currently authenticated user. |
-| PATCH | /auth/me | Yes | Edits the account: name, email, password, and/or profile visibility (public/private). Email and password changes require the correct current password; a name or profile-visibility change doesn't. Also accepts `apply_visibility_to_all` (`public`/`friends`/`private`) — a bulk sweep that sets **every** one of the caller's recipes and posts to that concrete value in one action (the "make everything public" / "make everything friends-only" confirm dialog). Email must be unique. Returns the updated user. |
+| PATCH | /auth/me | Yes | Edits the account: name, email, password, profile picture (`photo_url`), and/or profile visibility (public/private). Email and password changes require the correct current password; a name, photo, or profile-visibility change doesn't. Also accepts `apply_visibility_to_all` (`public`/`friends`/`private`) — a bulk sweep that sets **every** one of the caller's recipes and posts to that concrete value in one action (the "make everything public" / "make everything friends-only" confirm dialog). Email must be unique. Returns the updated user. |
 | DELETE | /auth/me | Yes | Delete account (requires password). |
 | POST | /recipes | Yes | Creates and returns a new recipe. |
 | GET | /recipes | Yes | Returns the current user's recipes. |
@@ -91,6 +91,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | GET | /recipes/invite/{token}/preview | No | Link-preview (OpenGraph) HTML for a shared invite, so it unfurls in iMessage/Slack showing the actual recipe (name, byline, cover photo). Crawler-only (Vercel routes bot user-agents here); humans meta-refresh to the invite page. Bad token → an honest "expired" card, never a 5xx. |
 | GET | /recipes/browse | No | Public discovery feed: shows recipes whose `visibility` is `public`. `friends` and `private` recipes never appear. |
 | POST | /upload/recipe-photo | Yes | Uploads a photo to Cloudinary (recipe cover or a step). |
+| POST | /upload/avatar | Yes | Uploads a profile picture (square face-centered crop). Returns the Cloudinary URL; saved via PATCH /auth/me. |
 | POST | /feedback | Yes | Files a feedback note from inside the app. |
 | GET | /feedback | Yes | Returns **only the caller's own** notes. |
 | GET | /recipes/ingredient-suggestions | Yes | The caller's own ingredient vocabulary, for autosuggest. |
@@ -109,7 +110,7 @@ A *lineage tree* modeled recipes as a generational graph (`parent_recipe_id`, a 
 | DELETE | /posts/{post_id} | Yes | Delete a post — **author only** (read is not write); a non-author or unknown id gets 404. |
 | GET | /posts/users/{user_id} | Yes | A user's posts for their profile grid — friend-or-own gated; a non-friend gets an empty list (the profile is public, its posts are not). Same recipe-link nulling as the feed. |
 
-*42 application routes as shipped to prod — the table is the whole product surface. Counts have changed several times as features were added and removed, so verify rather than trust: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
+*43 application routes as shipped to prod — the table is the whole product surface. Counts have changed several times as features were added and removed, so verify rather than trust: `grep -rn "^@router\.\|^@app\." app/` (router decorators + `GET /health`, declared on the app itself in `app/main.py`).*
 
 **Visibility — a concrete three-value setting per item, plus a profile that picks the default.** Each **recipe or post** carries its own `visibility`, one of three literal values: `public` (anyone can read it; eligible for Browse), `friends` (the owner's accepted friends only), or `private` (only the owner — plus, for recipes, accepted handoff grantees). New items default to `friends`. The value is **stored literally** — a label like "Friends only" means friends only, permanently. A recipe is viewable when: they own it, **or** it's `public`, **or** it's `friends` **and** the viewer is an accepted friend of the owner, **or** they hold an accepted handoff (grant) on it. The handoff grant is **orthogonal** — a grantee reads the one recipe handed to them whatever the visibility or friendship says. In-app grants are accepted instantly; email invites are pending until the invitee signs up with the matching email, at which point they auto-accept. `can_view` (recipes) and `can_view_post` (posts) in `app/services/sharing.py` are the single read-authorization rules every read funnels through, sharing one truth table (`_resource_is_visible`).
 

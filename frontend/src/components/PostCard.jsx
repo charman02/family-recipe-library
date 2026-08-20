@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import Avatar from './Avatar'
 
 // A single meal in the feed: the photo big, then who made it and what it is.
 // Deliberately quiet on actions in Phase 1 — no like button (never), and the
@@ -41,7 +42,6 @@ const fullName = (p) => `${p.author_first_name} ${p.author_last_name}`.trim()
 
 export default function PostCard({ post }) {
   const navigate = useNavigate()
-  const initial = (post.author_first_name || '?').charAt(0).toUpperCase()
 
   // Tapping the author opens their profile — but for your OWN post, /u/{yourId} is the
   // read-only "other user" view of yourself; send yourself to /profile ("You") instead.
@@ -57,9 +57,7 @@ export default function PostCard({ post }) {
           onClick={openAuthor}
           className="flex items-center gap-2.5 min-w-0 text-left"
         >
-          <span className="flex-none flex items-center justify-center w-9 h-9 rounded-full bg-peach border-2 border-ink text-ink font-display font-black text-[15px]">
-            {initial}
-          </span>
+          <Avatar name={post.author_first_name} photoUrl={post.author_photo_url} size="sm" />
           <span className="font-display font-bold text-[14.5px] text-ink truncate">
             {fullName(post)}
           </span>

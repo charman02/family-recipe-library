@@ -12,18 +12,16 @@ import MarkerTitle from '../components/MarkerTitle'
 import BackButton from '../components/BackButton'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
+import Avatar from '../components/Avatar'
 import { toUserMessage } from '../api/client'
 
 const fullName = (p) => `${p.first_name} ${p.last_name}`.trim()
 
-// A round monogram stands in for an avatar until real photos land (backlog #33).
+// A person's avatar in a friends-list row — their photo (#33) or the monogram
+// fallback, via the shared <Avatar>. `person` carries first_name + photo_url from the
+// friend/request/suggestion payloads.
 function Monogram({ person }) {
-  const initial = (person.first_name || '?').charAt(0).toUpperCase()
-  return (
-    <span className="flex-none flex items-center justify-center w-11 h-11 rounded-full bg-peach border-2 border-ink text-ink font-display font-black text-[17px]">
-      {initial}
-    </span>
-  )
+  return <Avatar name={person.first_name} photoUrl={person.photo_url} size="md" />
 }
 
 // Who you cook with. Three sections: requests waiting on you, people to add
