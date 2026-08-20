@@ -3,9 +3,12 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import RecipeGlimpse from '../components/RecipeGlimpse'
 import IsseiMeaning from '../components/IsseiMeaning'
 import Wordmark from '../components/Wordmark'
+import Avatar from '../components/Avatar'
 import { loadPrefs, setPref } from '../lib/prefs'
+import { PHOTO_ACCEPT } from '../lib/photoUpload'
+import { useAvatarUpload } from '../lib/useAvatarUpload'
 
-// The post-signup welcome (/welcome) — two panels, once, then never again.
+// The post-signup welcome (/welcome) — three panels, once, then never again.
 //
 // WHY A ROUTE, NOT AN OVERLAY ON HOME. Home can't render until three API calls
 // answer, so an overlay means the new user watches a spinner before they're
@@ -15,12 +18,17 @@ import { loadPrefs, setPref } from '../lib/prefs'
 // `replace` — so it occupies no history entry and no back gesture can return to
 // it.
 //
-// WHY TWO PANELS. The owner asked for both halves — what issei is for, and how
-// to use it — and the previous attempt failed by stacking all of it onto the
-// sign-in screen at once. One panel here would rebuild that same wall. Three
-// would be a carousel, and testers have already told us this app asks for too
-// many taps. Two is the fewest that keeps "what it is" (shown, not asserted)
-// from crowding "what to do".
+// WHY (NOW) THREE PANELS. Two panels TEACH — what issei is for, and how to use
+// it — and the rule used to be "never three", because a third TEACHING panel is a
+// carousel and testers punished tap-heavy onboarding. The third panel added here is
+// NOT teaching: it's a single ACTION (add a profile photo). An action step as the
+// last thing before "you're in" is the standard onboarding shape (it converts because
+// it's isolated and prominent), and it's categorically different from another wall of
+// text to absorb. It stays honest by being genuinely optional — Skip in the header and
+// "Open my kitchen" both finish with or without a photo, no hard gate. So the rule is
+// really "at most two TEACHING panels"; the photo step is the exception that proves it.
+// (The You page also nudges anyone who skips — see #77 — so this panel maximizes
+// photo adoption without becoming a gate.)
 //
 // SEEN IS MARKED ON MOUNT, not on exit. Any way out counts as final: both
 // buttons, a nav tap, a closed tab. Nothing here is worth making someone sit
@@ -37,6 +45,15 @@ function currentUserId() {
     return JSON.parse(localStorage.getItem('issei_user') || 'null')?.id ?? null
   } catch {
     return null
+  }
+}
+
+// The signed-in user's first name, for the photo panel's monogram fallback.
+function currentUserName() {
+  try {
+    return JSON.parse(localStorage.getItem('issei_user') || 'null')?.first_name ?? ''
+  } catch {
+    return ''
   }
 }
 
@@ -58,7 +75,7 @@ export function hasSeenWelcome() {
 }
 
 // The eyebrow badge — reused on both panels so the panel count is stated up
-// front. "1 of 2" is a promise that this is short; a bare dot row isn't.
+// front. "1 of 3" is a promise that this is short; a bare dot row isn't.
 function StepBadge({ children }) {
   return (
     <span className="inline-block font-display font-bold uppercase tracking-[0.14em] text-[10.5px] text-ink bg-saffron border-2 border-ink rounded-full px-3 py-1">
@@ -93,6 +110,9 @@ export default function Welcome() {
   // otherwise marking-on-mount would immediately redirect the panel away.
   const [alreadySeen] = useState(hasSeenWelcome)
   const [panel, setPanel] = useState(0)
+  // The photo step (panel 2). photoUrl reflects the just-uploaded avatar so the panel
+  // shows it immediately; uploading drives the busy state on the picker.
+  const { onPick, uploading: uploadingPhoto, error: photoError, photoUrl } = useAvatarUpload()
 
   useEffect(() => {
     markWelcomeSeen()
@@ -121,7 +141,7 @@ export default function Welcome() {
             <Wordmark size="sm" />
           ) : (
             <button
-              onClick={() => setPanel(0)}
+              onClick={() => setPanel((p) => p - 1)}
               className="font-display font-bold text-[14px] text-ink-soft"
             >
               &larr; Back
@@ -143,7 +163,7 @@ export default function Welcome() {
            left alone faster than you can read a sentence saying amounts are left
            alone. The name is glossed last, once there's a reason to care. */
           <div className="pt-6">
-            <StepBadge>1 of 2</StepBadge>
+            <StepBadge>1 of 3</StepBadge>
             <h1 className="font-display font-medium text-[30px] leading-[1.08] text-ink mt-4 max-w-[17rem]">
               Recipes kept <span className="font-black italic">their way.</span>
             </h1>
@@ -158,13 +178,13 @@ export default function Welcome() {
               Next &rarr;
             </button>
           </div>
-        ) : (
+        ) : panel === 1 ? (
           /* PANEL 2 — HOW TO USE IT. Two steps because the app really only has
            two verbs; naming the actual controls ("＋", "Send this to someone")
            rather than paraphrasing them means the words they just read are the
            words they'll find on screen. */
           <div className="pt-6">
-            <StepBadge>2 of 2</StepBadge>
+            <StepBadge>2 of 3</StepBadge>
             <h1 className="font-display font-medium text-[30px] leading-[1.08] text-ink mt-4 max-w-[17rem]">
               So there are two things{' '}
               <span className="font-black italic">to do.</span>
@@ -190,8 +210,52 @@ export default function Welcome() {
               </p>
             </div>
 
-            <button onClick={done} className="btn-primary !mt-7">
-              Open my kitchen &rarr;
+            <button onClick={() => setPanel(2)} className="btn-primary !mt-7">
+              Next &rarr;
+            </button>
+          </div>
+        ) : (
+          /* PANEL 3 — THE ONE ACTION: add a profile photo. Last, so it's the "you're
+           all set" moment, not a gate between the teaching. Genuinely optional: Skip in
+           the header finishes, and "Open my kitchen" works with or without a photo. Once
+           a photo is picked the button label switches to the finish so the flow moves on
+           without a second tap; anyone who skips gets the You-page nudge (#77). */
+          <div className="pt-6">
+            <StepBadge>3 of 3</StepBadge>
+            <h1 className="font-display font-medium text-[30px] leading-[1.08] text-ink mt-4 max-w-[17rem]">
+              Add a <span className="font-black italic">photo.</span>
+            </h1>
+            <p className="font-display text-[15px] leading-snug text-ink-soft mt-2.5 max-w-xs">
+              So the people you cook with recognize you. You can always change it later.
+            </p>
+
+            <div className="flex flex-col items-center mt-8">
+              <label
+                className="relative inline-block cursor-pointer"
+                aria-busy={uploadingPhoto || undefined}
+              >
+                <input
+                  type="file"
+                  accept={PHOTO_ACCEPT}
+                  onChange={onPick}
+                  aria-label="Add a profile photo"
+                  className="sr-only"
+                />
+                <Avatar name={currentUserName()} photoUrl={photoUrl} size="xl" bg="bg-plum" />
+                <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-terra text-cream border-2 border-ink flex items-center justify-center text-[13px] shadow-[0_2px_0_#2E3A24]">
+                  {uploadingPhoto ? '…' : photoUrl ? '✓' : '＋'}
+                </span>
+              </label>
+              <span className="font-display text-[13px] text-ink-soft mt-3">
+                {photoUrl ? 'Looking good.' : 'Tap to add a photo'}
+              </span>
+              {photoError && (
+                <p className="mt-2"><span className="error-pill">{photoError}</span></p>
+              )}
+            </div>
+
+            <button onClick={done} className="btn-primary !mt-8">
+              {photoUrl ? 'Open my kitchen →' : 'Skip for now →'}
             </button>
           </div>
         )}
@@ -199,7 +263,7 @@ export default function Welcome() {
         {/* Progress, under the fold-line rather than above the headline: it's
           reassurance, not the point of the screen. */}
         <div className="flex justify-center gap-2 pt-7 pb-8" aria-hidden="true">
-          {[0, 1].map((i) => (
+          {[0, 1, 2].map((i) => (
             <span
               key={i}
               className={`w-2.5 h-2.5 rounded-full border-2 border-ink ${

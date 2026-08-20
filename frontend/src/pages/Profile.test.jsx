@@ -206,6 +206,42 @@ describe('Profile identity-box counts (#74)', () => {
     expect(screen.queryByRole('button', { name: /friend request/i })).toBeNull()
   })
 
+  it('nudges a photo-less user to add one, dismissibly (#77)', async () => {
+    // Seeded user has no photo_url and no dismissal, so the nudge is shown.
+    renderProfile()
+    expect(
+      screen.getByText(/add a photo so friends recognize you/i),
+    ).toBeInTheDocument()
+    // Dismiss it — it disappears and the choice persists in the prefs bag so it
+    // stays gone across reloads (not a per-session state).
+    await userEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    expect(
+      screen.queryByText(/add a photo so friends recognize you/i),
+    ).toBeNull()
+    expect(JSON.parse(localStorage.getItem('issei_prefs')).photoNudgeDismissed).toBe(true)
+  })
+
+  it('does not nudge once dismissed, nor when a photo is already set (#77)', async () => {
+    // Already dismissed → no nudge even though there's still no photo.
+    localStorage.setItem('issei_prefs', JSON.stringify({ photoNudgeDismissed: true }))
+    const { unmount } = renderProfile()
+    expect(
+      screen.queryByText(/add a photo so friends recognize you/i),
+    ).toBeNull()
+    unmount()
+
+    // Fresh prefs but a photo already set → also no nudge (the fix is already done).
+    localStorage.setItem('issei_prefs', '{}')
+    localStorage.setItem(
+      'issei_user',
+      JSON.stringify({ id: 1, first_name: 'Yoko', email: 'y@e.com', photo_url: 'https://res.cloudinary.com/issei/avatars/x.jpg' }),
+    )
+    renderProfile()
+    expect(
+      screen.queryByText(/add a photo so friends recognize you/i),
+    ).toBeNull()
+  })
+
   it('picking a profile photo uploads it and saves via PATCH /auth/me', async () => {
     client.patch.mockResolvedValueOnce({ data: { photo_url: 'https://cdn.test/new-avatar.jpg' } })
     renderProfile()

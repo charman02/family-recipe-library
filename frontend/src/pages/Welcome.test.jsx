@@ -56,15 +56,32 @@ describe('Welcome — what it teaches', () => {
     ).toBeInTheDocument()
   })
 
-  it('is two panels — not a carousel', async () => {
+  it('is three panels — two that teach, one optional photo step at the end', async () => {
+    // The rule is "at most two TEACHING panels", not "never three". Panels 1–2
+    // teach; panel 3 is a single optional ACTION (add a photo), so it advances
+    // rather than ending on panel 2 the way the two-panel version did.
     renderWelcome()
-    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    expect(screen.getByText('2 of 2')).toBeInTheDocument()
-    // The second panel's button leaves; there is no third.
+    expect(screen.getByText('2 of 3')).toBeInTheDocument()
+    // Panel two now advances to the photo step — its button is still "Next".
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    expect(screen.getByText('3 of 3')).toBeInTheDocument()
+    // The photo panel is the last one: it finishes, it does not go to a fourth.
     expect(
       screen.queryByRole('button', { name: /next/i }),
     ).not.toBeInTheDocument()
+  })
+
+  it('the photo step is genuinely optional — skipping it lands on Home', async () => {
+    // Honesty requirement: the photo panel must never be a gate. With no photo
+    // picked its finish button reads "Skip for now" and completes the welcome.
+    renderWelcome()
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    expect(screen.getByLabelText(/add a profile photo/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /skip for now/i }))
+    expect(await screen.findByText('home')).toBeInTheDocument()
   })
 
   it('claims nothing about voice or audio', async () => {
@@ -90,7 +107,7 @@ describe('Welcome — what it teaches', () => {
 describe('Welcome — shows exactly once', () => {
   it('marks itself seen on arrival, before any button is pressed', async () => {
     renderWelcome()
-    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
     // Closing the tab here must be as final as finishing, so the flag is written
     // on mount rather than on exit.
     expect(JSON.parse(localStorage.getItem('issei_prefs')).welcomeSeenBy).toEqual([
@@ -106,14 +123,17 @@ describe('Welcome — shows exactly once', () => {
 
     renderWelcome()
     expect(await screen.findByText('home')).toBeInTheDocument()
-    expect(screen.queryByText('1 of 2')).not.toBeInTheDocument()
+    expect(screen.queryByText('1 of 3')).not.toBeInTheDocument()
   })
 
   it('completing also persists, and lands on Home', async () => {
     const { unmount } = renderWelcome()
+    // Walk both teaching panels, then finish from the photo panel. With no photo
+    // picked the finish button reads "Skip for now"; either label calls done().
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
     await userEvent.click(
-      screen.getByRole('button', { name: /open my kitchen/i }),
+      screen.getByRole('button', { name: /skip for now/i }),
     )
     expect(await screen.findByText('home')).toBeInTheDocument()
     unmount()
@@ -122,22 +142,34 @@ describe('Welcome — shows exactly once', () => {
     expect(await screen.findByText('home')).toBeInTheDocument()
   })
 
-  it('panel two can go BACK to panel one', async () => {
+  it('Back steps back ONE panel from anywhere, never straight to the start', async () => {
     // A forward-only intro means one mistaken tap costs the explanation for good,
-    // since the welcome never runs again.
+    // since the welcome never runs again. Back must also step back exactly one — from
+    // the photo panel it should land on the how-to panel, not skip it back to panel one.
     renderWelcome()
     expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    // On the photo panel now; Back → the how-to panel (2 of 3), not the start.
+    expect(screen.getByText('3 of 3')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
-    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('2 of 3')).toBeInTheDocument()
+    // And Back again → panel one, with its content.
+    await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
     expect(screen.getByText(/not grams\. theirs\./i)).toBeInTheDocument()
   })
 
-  it('skip is reachable from BOTH panels, so nobody is stranded on panel two', async () => {
+  it('skip is reachable from EVERY panel, so nobody is stranded', async () => {
+    // The header Skip is at the same coordinates on all three panels. On the photo
+    // panel there are two ways out (header Skip + the "Skip for now" finish button),
+    // so getAllByRole is used there rather than the single-match getByRole.
     renderWelcome()
-    expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^skip$/i })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^skip$/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    expect(screen.getByRole('button', { name: /^skip$/i })).toBeInTheDocument()
   })
 
   it('shares the issei_prefs bag rather than inventing a key', async () => {
@@ -158,7 +190,7 @@ describe('Welcome — shows exactly once', () => {
 
     signIn(99)
     renderWelcome()
-    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
     // and the first account is still marked, not clobbered
     expect(
       JSON.parse(localStorage.getItem('issei_prefs')).welcomeSeenBy,
@@ -170,12 +202,12 @@ describe('Welcome — shows exactly once', () => {
     // scheme. They get welcomed once more rather than hitting a type error.
     localStorage.setItem('issei_prefs', JSON.stringify({ welcomeSeen: true }))
     renderWelcome()
-    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
   })
 
   it('survives an unreadable prefs bag instead of crashing', async () => {
     localStorage.setItem('issei_prefs', 'not json{')
     renderWelcome()
-    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
   })
 })

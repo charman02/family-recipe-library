@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
 import { getUserProfile, getFriendRequests } from '../api/friends'
-import { createUploader, PHOTO_ACCEPT } from '../lib/photoUpload'
+import { PHOTO_ACCEPT } from '../lib/photoUpload'
+import { useAvatarUpload } from '../lib/useAvatarUpload'
 import MarkerTitle from '../components/MarkerTitle'
 import Avatar from '../components/Avatar'
 
@@ -114,31 +115,27 @@ export default function Profile() {
       .catch(() => setRequestCount(0))
   }, [user.id])
 
-  // Avatar upload (#33). Reuses the shared race-safe uploader, pointed at the avatar
-  // endpoint (square face-crop). On a successful upload we immediately PATCH /auth/me
-  // with the new URL and refresh the cached issei_user, so the box + everywhere the
-  // avatar shows updates without a reload.
-  const uploader = useRef(createUploader())
-  const [uploadingPhoto, setUploadingPhoto] = useState(false)
-  const [photoError, setPhotoError] = useState('')
-  async function onPickPhoto(e) {
-    await uploader.current.upload({
-      slot: 'avatar',
-      event: e,
-      endpoint: '/upload/avatar',
-      onBusy: setUploadingPhoto,
-      onError: setPhotoError,
-      onUrl: async (url) => {
-        try {
-          const { data } = await client.patch('/auth/me', { photo_url: url })
-          const next = { ...user, photo_url: data.photo_url }
-          setUser(next)
-          localStorage.setItem('issei_user', JSON.stringify(next))
-        } catch (err) {
-          setPhotoError(toUserMessage(err, 'Could not save your photo. Try again.'))
-        }
-      },
-    })
+  // Avatar upload (#33) via the shared hook — it uploads (square face-crop), PATCHes
+  // /auth/me, and refreshes the cached issei_user. onDone mirrors the new URL into this
+  // page's own `user` state so the identity card updates immediately.
+  const {
+    onPick: onPickPhoto,
+    uploading: uploadingPhoto,
+    error: photoError,
+  } = useAvatarUpload({
+    onDone: (url) => setUser((u) => ({ ...u, photo_url: url })),
+  })
+  // Skipper reminder (#77): a gentle, dismissible line under the avatar shown only while
+  // the user has NO photo and hasn't dismissed it. Disappears the moment a photo is set
+  // (user.photo_url), or when dismissed (persisted in prefs so it stays gone). Not shown
+  // on the feed too — one nudge, in the place the fix already lives.
+  const [photoNudgeDismissed, setPhotoNudgeDismissed] = useState(
+    () => !!loadPrefs().photoNudgeDismissed,
+  )
+  const showPhotoNudge = !user.photo_url && !photoNudgeDismissed
+  function dismissPhotoNudge() {
+    setPref('photoNudgeDismissed', true)
+    setPhotoNudgeDismissed(true)
   }
 
   // Which account row is open (only one at a time), plus the edit form's own state.
@@ -306,6 +303,23 @@ export default function Profile() {
         </label>
         {photoError && (
           <p className="mb-2"><span className="error-pill">{photoError}</span></p>
+        )}
+        {/* Skipper reminder (#77): only while there's no photo and it hasn't been
+            dismissed. The avatar above IS the fix, so this is a pointer to it, not a
+            second control — a tiny × dismisses it for good. */}
+        {showPhotoNudge && (
+          <div className="flex items-start gap-2 mb-3 -mt-1">
+            <p className="font-display text-[13px] text-ink-soft leading-snug">
+              Add a photo so friends recognize you — tap the circle above.
+            </p>
+            <button
+              onClick={dismissPhotoNudge}
+              aria-label="Dismiss"
+              className="flex-none font-display font-bold text-[14px] text-ink-soft leading-none px-1"
+            >
+              &times;
+            </button>
+          </div>
         )}
         {fullName && (
           <p className="font-display font-black text-[22px] text-ink">
