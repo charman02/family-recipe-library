@@ -26,6 +26,10 @@ export const scaleRecipe = (id, servings) =>
   client.get(`/recipes/${id}/scale`, { params: { servings } })
 
 export const getSharedWithMe = () => client.get('/recipes/shared')
+// A user's recipes for their profile grid (#69). Visibility-gated server-side by
+// can_view: own → all; friend → public + friends; stranger → public only. Never a
+// private or individually-handed-off recipe. Pairs with getUserPosts in api/posts.js.
+export const getUserRecipes = (userId) => client.get(`/recipes/users/${userId}`)
 export const getInvitePreview = (token) =>
   client.get(`/recipes/invite/${token}`)
 export const claimInvite = (token) =>

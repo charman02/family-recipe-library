@@ -10,6 +10,7 @@ import {
 } from '../api/friends'
 import BackButton from '../components/BackButton'
 import Loader from '../components/Loader'
+import ProfileContent from '../components/ProfileContent'
 
 const fullName = (p) => `${p.first_name} ${p.last_name}`.trim()
 
@@ -129,19 +130,35 @@ export default function UserProfile() {
         <h1 className="font-display font-black text-[28px] text-ink leading-tight mt-4">
           {fullName(profile)}
         </h1>
-        <p className="font-display italic text-[14px] text-ink-soft mt-1">
-          {profile.recipe_count === 0
-            ? 'No recipes to see yet'
-            : `${profile.recipe_count} ${
-                profile.recipe_count === 1 ? 'recipe' : 'recipes'
-              } you can see`}
-        </p>
         <div className="mt-5">
           <FriendButton />
         </div>
       </div>
 
-      {/* The recipe grid + their posts land here with the feed (Phase 1). */}
+      {/* Body. A non-friend looking at someone who's shown them nothing (private
+          profile, no public items) gets a warm nudge toward the core action —
+          friending — instead of two empty grids. Everyone else gets the tabbed
+          recipes/posts content. `nothingVisible` uses the counts the profile payload
+          already computed with the same can_view/can_view_post rules the grids use, so
+          the header and the body can't disagree about whether there's anything to see. */}
+      {(() => {
+        const nothingVisible =
+          !isSelf &&
+          profile.friend_state !== 'accepted' &&
+          (profile.recipe_count || 0) === 0 &&
+          (profile.post_count || 0) === 0
+        if (nothingVisible) {
+          return (
+            <div className="mt-10 text-center">
+              <p className="font-display text-[15px] text-ink-soft leading-snug max-w-xs mx-auto">
+                Nothing to see here yet. Add {profile.first_name} as a friend to see
+                what they cook.
+              </p>
+            </div>
+          )
+        }
+        return <ProfileContent userId={userId} />
+      })()}
     </div>
   )
 }

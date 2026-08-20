@@ -11,7 +11,17 @@ vi.mock('../api/friends', () => ({
   getFriends: vi.fn(() => Promise.resolve({ data: [] })),
   getFriendRequests: vi.fn(() => Promise.resolve({ data: [] })),
 }))
+// UserProfile now renders <ProfileContent>, which loads the person's recipes + posts.
+// Default both to empty so the identity/friend-button tests don't need real data;
+// individual tests override getUserRecipes to assert the grid.
+vi.mock('../api/sharing', () => ({
+  getUserRecipes: vi.fn(() => Promise.resolve({ data: [] })),
+}))
+vi.mock('../api/posts', () => ({
+  getUserPosts: vi.fn(() => Promise.resolve({ data: [] })),
+}))
 import { getUserProfile, requestFriend } from '../api/friends'
+import { getUserRecipes } from '../api/sharing'
 import UserProfile from './UserProfile'
 
 function profile(over = {}) {
@@ -22,6 +32,7 @@ function profile(over = {}) {
     friend_state: null,
     friend_can_accept: false,
     recipe_count: 3,
+    post_count: 0,
     ...over,
   }
 }
@@ -42,11 +53,44 @@ beforeEach(() => {
 afterEach(() => localStorage.clear())
 
 describe('UserProfile', () => {
-  it('shows the name and visible-recipe count', async () => {
+  it('shows the name and the recipes/posts tabs', async () => {
     getUserProfile.mockResolvedValue({ data: profile() })
     renderAt()
     expect(await screen.findByText('Lola Remedios')).toBeInTheDocument()
-    expect(screen.getByText(/3 recipes you can see/i)).toBeInTheDocument()
+    // The tabbed profile content replaced the old bare recipe-count line.
+    expect(screen.getByRole('tab', { name: /recipes/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /posts/i })).toBeInTheDocument()
+  })
+
+  it('loads the person’s recipes into the grid', async () => {
+    getUserProfile.mockResolvedValue({ data: profile() })
+    getUserRecipes.mockResolvedValueOnce({
+      data: [{ id: 7, name: 'Adobo', author_full_name: 'Lola Remedios' }],
+    })
+    renderAt()
+    expect(await screen.findByText('Adobo')).toBeInTheDocument()
+    expect(getUserRecipes).toHaveBeenCalledWith('2')
+  })
+
+  it('shows a warm nudge (no tabs) when a non-friend can see nothing', async () => {
+    getUserProfile.mockResolvedValue({
+      data: profile({ friend_state: null, recipe_count: 0, post_count: 0 }),
+    })
+    renderAt()
+    expect(await screen.findByText(/nothing to see here yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/add lola as a friend/i)).toBeInTheDocument()
+    // The nudge replaces the tabs entirely.
+    expect(screen.queryByRole('tab', { name: /recipes/i })).toBeNull()
+  })
+
+  it('shows the tabs (not the nudge) for a friend even with nothing loaded', async () => {
+    getUserProfile.mockResolvedValue({
+      data: profile({ friend_state: 'accepted', recipe_count: 0, post_count: 0 }),
+    })
+    renderAt()
+    await screen.findByText('Lola Remedios')
+    expect(screen.getByRole('tab', { name: /recipes/i })).toBeInTheDocument()
+    expect(screen.queryByText(/nothing to see here yet/i)).toBeNull()
   })
 
   it('offers "Add friend" when there is no relationship, and sends the request', async () => {

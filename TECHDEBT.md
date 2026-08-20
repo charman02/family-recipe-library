@@ -274,6 +274,21 @@ narrow situations.
   returns 204 to avoid enumeration. *Why flagged:* an inconsistency to know about if
   enumeration ever matters. *Where:* `app/routers/auth.py`.
 
+### Frontend / state
+
+- **UserProfile's "nothing to see" nudge can disagree with the grid in one benign
+  direction.** The warm empty-state gate uses `recipe_count`/`post_count` from
+  `GET /friends/profile/{id}`, which *counts* an individually-handed recipe; the grid
+  endpoint (`GET /recipes/users/{id}`) *hides* handed recipes (`is_grantee=False`). So a
+  non-friend holding a handoff to the owner's only otherwise-hidden recipe sees the tabs
+  with an empty grid instead of the nudge. *Why flagged:* it's cosmetic-only and **never a
+  leak** — the grid rule is a strict subset of the count rule, so "nudge shown" always
+  means both grids are truly empty; it can never hide a visible item. Left as-is rather
+  than over-engineered; revisit if it ever confuses a real user. *Where:*
+  `frontend/src/pages/UserProfile.jsx` (`nothingVisible`); counts in
+  `app/routers/friends.py` (`user_profile`) vs grid in `app/routers/recipes.py`
+  (`user_recipes`).
+
 ### Infra & deployment
 
 - **New migrations that ALTER an existing FK must repeat a specific pattern** (a

@@ -33,6 +33,7 @@ from app.schemas.recipe import (
 )
 from app.services.scaling import scale_ingredient
 from app.services.sharing import effective_visibility, can_view
+from app.services.friends import are_friends
 from app.services.growth import soul_count, growth_stage, growth_vitality
 from app.services.recipe_ai import RecipeAIUnavailable, extract_recipe
 from app.services.invite_og import build_invite_meta, render_invite_og_document
@@ -40,6 +41,10 @@ from app.services.invite_og import build_invite_meta, render_invite_og_document
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
+
+# Cap on a profile's recipe grid (GET /recipes/users/{id}) — matches the posts feed's
+# FEED_PAGE so the two tabs on one profile behave alike under a prolific user.
+PROFILE_GRID_LIMIT = 30
 
 
 def _attach_growth_fields(recipe, db):
@@ -317,6 +322,65 @@ def shared_with_me(
     for r in recipes:
         _attach_growth_fields(r, db)
     return recipes
+
+
+@router.get("/users/{user_id}", response_model=list[RecipeResponse])
+def user_recipes(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """A user's recipes, for their profile grid — the recipe half of #69 (the post half
+    is GET /posts/users/{id}). Filtered by the ONE recipe read rule, can_view: your own →
+    all; a friend → their public + friends recipes; a non-friend → only their public ones
+    (never a private one, never one merely handed to you individually — that surfaces
+    under /recipes/shared, not on someone's public grid). A non-friend on a private
+    profile with nothing public just gets an empty list, not a 404 — the profile itself
+    is reachable, mirroring GET /posts/users/{id}.
+
+    Authorization note (privacy-sensitive): the query pre-filters to this owner's
+    non-deleted rows, but the actual visibility decision is can_view — the single
+    read-authorization rule (services/sharing.py). We do NOT write a second visibility
+    filter here; a bespoke `WHERE visibility=...` could drift from can_view and leak.
+    The viewer↔owner friendship is invariant across all their recipes, so it's resolved
+    ONCE and passed to can_view as is_friend (avoids an are_friends query per recipe).
+
+    NOTE: declared before GET /{recipe_id} so the literal "users" prefix isn't captured
+    as recipe_id="users"."""
+    author = db.query(User).filter(User.id == user_id).first()
+    if author is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    recipes = (
+        db.query(Recipe)
+        .filter(Recipe.user_id == user_id, Recipe.deleted_at == None)
+        .options(
+            selectinload(Recipe.ingredient_sections).selectinload(IngredientSection.ingredients),
+            selectinload(Recipe.ingredients),
+            selectinload(Recipe.steps),
+            selectinload(Recipe.user),
+        )
+        .order_by(Recipe.created_at.desc())
+        .all()
+    )
+    is_friend = user_id == current_user.id or are_friends(current_user.id, user_id, db)
+    # Handoff grants are per-recipe and orthogonal to friendship, but they don't belong
+    # on a public profile grid (a recipe handed to you privately isn't "their profile"
+    # content — it's in your /shared). So pass is_grantee=False to keep can_view's grant
+    # branch from surfacing individually-shared recipes here.
+    visible = [
+        r
+        for r in recipes
+        if can_view(r, current_user, db, is_friend=is_friend, is_grantee=False)
+    ]
+    # Cap the RESPONSE, not the query: slicing after the can_view filter (rather than a
+    # SQL LIMIT before it) means a stranger still gets the owner's public recipes even if
+    # the newest rows are private — a pre-filter LIMIT could return an empty grid for a
+    # prolific private user. The owner's own recipe count bounds the rows we load.
+    visible = visible[:PROFILE_GRID_LIMIT]
+    for r in visible:
+        _attach_growth_fields(r, db)
+    return visible
 
 
 @router.post("/parse", response_model=ParsedRecipe)
