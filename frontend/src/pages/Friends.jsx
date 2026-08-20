@@ -76,7 +76,7 @@ export default function Friends() {
   return (
     <div className="min-h-screen bg-cream px-5 pt-5 pb-10">
       <div className="mb-5">
-        <BackButton to="/profile" label="You" />
+        <BackButton to="/profile" label="Back" />
       </div>
       <MarkerTitle
         color="bg-peach"

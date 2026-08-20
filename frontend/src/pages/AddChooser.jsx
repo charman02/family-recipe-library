@@ -11,7 +11,7 @@ export default function AddChooser() {
   return (
     <div className="min-h-screen bg-cream px-[18px] pt-5">
       <div className="mb-4">
-        <BackButton to="/" label="Home" />
+        <BackButton to="/" label="Back" />
       </div>
       <h1 className="font-display font-black text-[30px] text-ink leading-tight">
         What are you adding?

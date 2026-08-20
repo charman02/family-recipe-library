@@ -225,7 +225,7 @@ factored into small reusable components. The core `.sticker` / `.field` /
 | `FriendsStrip.jsx` | The Feed's presence rail (#75) — a horizontal, edge-bleeding row of friends' `Avatar`s at the top of Home, each a tap to that person's `/u/:id` profile. Fetches `GET /friends?order=active`, so whoever posted most recently leads ("who's been cooking lately"); all accepted friends appear (quiet ones trail), first names only. Authorizes nothing itself — the `active` sort counts only posts the caller may see (enforced server-side). Renders nothing with no friends (the Feed's own empty state covers cold-start) or on a fetch error. |
 | `ProfileContent.jsx` | A person's recipes + posts as two tabs (Recipes \| Posts), lazy-loading each tab from `GET /recipes/users/{id}` and `GET /posts/users/{id}` (both server-gated by `can_view`/`can_view_post`). Used by `UserProfile`; reusable for the "You" page. Renders `RecipeCard` (two-up grid) and `PostCard` (column). |
 | `EmptyState.jsx` / `Loader.jsx` | Shared sticker-styled empty/no-results state (peach card + emoji badge) and loading state (bouncing pot badge). |
-| `BackButton.jsx` | Icon-only sticker back button for sub-pages. |
+| `BackButton.jsx` | Icon-only sticker back button for sub-pages. **History-first:** pops real browser history (`navigate(-1)`) whenever the user arrived from another in-app screen, so it returns to wherever they actually came from — not a fixed guess. `to` is a **fallback** used only on a cold entry (shared link / fresh tab / bookmark, where `location.key === 'default'` and there's nothing to pop); `onClick` fully overrides for multi-step in-page flows. Fixes #76, where a hardcoded `to` sent every visitor of a multiply-reachable page (e.g. `/friends`) to one fixed tab. |
 | `Icon.jsx` / `IconField.jsx` | The inline-SVG line-icon set and a labeled input field. |
 | `FilterSelect.jsx` | A custom sticker-styled dropdown (used for the Browse cuisine/diet/ready-in filters). |
 | `FieldLabel.jsx` | A persistent field label (stays visible after a field is filled), shared by RecipeForm and the capture flow. |
@@ -336,7 +336,7 @@ React app                FastAPI app          Postgres (Neon)
 - **Two servers must be running to use the app locally**: `uvicorn app.main:app
   --reload` (backend) and `npm run dev` in `frontend/` (frontend).
 - **Verifying changes:** backend has `pytest` (**311 tests** across `tests/`);
-  frontend has Vitest + React Testing Library (**514 tests in 42 files**) — run
+  frontend has Vitest + React Testing Library (**519 tests in 43 files**) — run
   `npm test` (`vitest run`) in `frontend/`. `npm run build` still catches
   syntax/import errors. These counts move; re-run both suites rather than
   quoting a number from a doc.
