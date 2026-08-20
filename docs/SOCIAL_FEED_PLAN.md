@@ -265,7 +265,18 @@ the recipe auto-delivers it to everyone who asked. Requires a notification cente
 - **`components/NotificationCenter`** — a bell in the header or a "You"-tab section;
   unread badge; list of notifications with deep links (request → your post; fulfilled →
   the recipe). In-app only (no push — that's the native phase).
-- Tests: request button states, the seeded add flow, notification list + read state.
+- **A requests surface (user-requested 2026-08-19):** the author needs to see their
+  incoming recipe-requests two ways — a TOTAL across all their posts, and a per-post
+  count on each PostCard. Mirror the friend-requests pattern: a dedicated "Recipe
+  requests" page listing every post of theirs that has ≥1 pending request with its
+  count (tapping a post → who asked / fulfill). The total surfaces as a count/badge
+  (e.g. on the You page or the notification bell). Backend: `GET /posts/{id}` already
+  plans to return the per-post count; add a caller-scoped aggregate (total pending
+  across own posts) + a list endpoint of own posts-with-requests. This is the demand
+  dashboard that makes "6 friends are waiting" visible — build it with the request loop,
+  not after.
+- Tests: request button states, the seeded add flow, notification list + read state,
+  the per-post + total request counts.
 
 **Phase 2 ships:** the motivation engine. Requests turn "why log this?" into "6 friends
 are waiting," and fulfilling hands it to them automatically.
