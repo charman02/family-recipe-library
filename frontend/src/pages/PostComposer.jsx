@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { createPost } from '../api/posts'
 import { toUserMessage } from '../api/client'
 import { createUploader, PHOTO_ACCEPT } from '../lib/photoUpload'
+import { sourceNameOf } from '../lib/sourceName'
 import BackButton from '../components/BackButton'
 import Icon from '../components/Icon'
 import FieldLabel from '../components/FieldLabel'
+import RecipePicker from '../components/RecipePicker'
 
 // "Share a meal" — the light everyday post. Photo (required, it IS the post) + dish
 // name (required) + an optional line. NOT a recipe: no ingredients, no steps. Lands
@@ -29,6 +31,22 @@ export default function PostComposer() {
   const [error, setError] = useState('')
   const [posting, setPosting] = useState(false)
   const uploader = useRef(createUploader())
+  // Optionally link one of your OWN recipes (#72). We keep the whole recipe object for the
+  // chip's label/byline; only its id is sent. Ownership is the backend's call — create_post
+  // 404s a recipe_id that isn't the caller's — so this is a convenience link, not a grant.
+  const [recipe, setRecipe] = useState(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  function attachRecipe(r) {
+    setRecipe(r)
+    setPickerOpen(false)
+    // Prefill the dish name from the recipe ONLY if the field is still empty — never
+    // clobber something the author already typed. Recipe names are uncapped but a post's
+    // dish_name is bounded at 120 (PostCreate.DishName), so clamp the programmatic fill to
+    // match the input's maxLength — otherwise a long recipe name would sail past the field
+    // cap and 422 on submit.
+    if (!dishName.trim()) setDishName(r.name.slice(0, 120))
+  }
 
   function onPickPhoto(e) {
     return uploader.current.upload({
@@ -58,6 +76,7 @@ export default function PostComposer() {
         dish_name: dishName.trim(),
         description: description.trim() || null,
         visibility,
+        recipe_id: recipe ? recipe.id : null,
       })
       // Land on the feed, where the new post now sits at the top.
       navigate('/', { state: { justPosted: data.id } })
@@ -169,6 +188,56 @@ export default function PostComposer() {
         />
       </div>
 
+      {/* Attach a recipe (#72) — optional link to one of YOUR recipes, so a friend who
+          sees the meal can open the actual recipe. Closed state: a dashed "add" button.
+          Attached: a chip showing the recipe (cover/pot + name) with a remove ×. The
+          post is still a light meal post; this is a pointer, not the recipe itself. */}
+      <div className="mt-5">
+        <span className="section-label">Attach a recipe (optional)</span>
+        {recipe ? (
+          <div className="mt-2 flex items-center gap-3 rounded-[14px] border-2 border-ink bg-card p-2 shadow-[0_2px_0_#2E3A24]">
+            {recipe.cover_photo_url ? (
+              <img
+                src={recipe.cover_photo_url}
+                alt=""
+                className="flex-none w-10 h-10 rounded-[10px] border-2 border-ink object-cover"
+              />
+            ) : (
+              <span className="flex-none flex items-center justify-center w-10 h-10 rounded-[10px] border-2 border-ink bg-peach text-ink">
+                <Icon name="pot" className="w-5 h-5" />
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block font-display font-bold text-[14px] text-ink truncate">
+                {recipe.name}
+              </span>
+              {sourceNameOf(recipe) && (
+                <span className="block font-display text-[12px] text-ink-soft truncate">
+                  from {sourceNameOf(recipe)}
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => setRecipe(null)}
+              aria-label="Remove recipe"
+              className="flex-none w-8 h-8 rounded-full bg-cream border-2 border-ink text-ink flex items-center justify-center shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform"
+            >
+              <Icon name="close" className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-[14px] border-2 border-dashed border-ink/50 bg-card py-3 font-display font-bold text-[14px] text-ink-soft active:translate-y-[1px] transition-transform"
+          >
+            <Icon name="plus" className="w-4 h-4" />
+            Attach one of your recipes
+          </button>
+        )}
+      </div>
+
       {/* Who sees it — three concrete choices (#68), each stored literally. Auto-selected
           from the author's profile, but any is pickable. Compact pill row — a post is a
           light act, not a form. */}
@@ -212,6 +281,10 @@ export default function PostComposer() {
       >
         {posting ? 'Sharing…' : 'Share it'}
       </button>
+
+      {pickerOpen && (
+        <RecipePicker onPick={attachRecipe} onClose={() => setPickerOpen(false)} />
+      )}
     </div>
   )
 }
