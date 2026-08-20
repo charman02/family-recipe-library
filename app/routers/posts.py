@@ -172,6 +172,42 @@ def feed(
     return [_to_response(p, p.user, viewable) for p in posts]
 
 
+@router.get("/browse", response_model=list[PostResponse])
+def browse_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Public posts for discovery in Browse (#71) — the post counterpart of
+    GET /recipes/browse, and deliberately the same SHAPE as it: return every public post
+    (newest first) and let the client filter/search, rather than paginating. Scoped in SQL
+    to `visibility == "public"`, the same public-only boundary Browse uses for recipes and
+    the everyone-feed uses for posts: a 'friends' or 'private' post can never surface here,
+    whoever the viewer is. Unlike the feed's 'everyone' scope this does NOT exclude the
+    caller's own or friends' public posts — Browse is discovery of what's public, not a
+    social feed, so there's no overlap rule to keep.
+
+    NOT capped: the Meals tab searches client-side, so a cap would silently hide older
+    public meals from search (the #71 review caught exactly this). Load-all matches
+    /recipes/browse; both share the "loads everything, filters in Python, wants pagination
+    + server-side search once the corpus grows" debt (see TECHDEBT.md), accepted at
+    current scale.
+
+    Registered ABOVE /{post_id} so the literal 'browse' path isn't captured as an id."""
+    posts = (
+        db.query(Post)
+        .options(selectinload(Post.user))
+        .filter(Post.visibility == "public")
+        .order_by(Post.id.desc())
+        .all()
+    )
+    # Belt-and-suspenders: re-gate through the single read rule. Every row is already
+    # public, so can_view_post passes each regardless of the viewer — but routing all
+    # reads through one rule keeps "who can see a post" defined in exactly one place.
+    posts = [p for p in posts if can_view_post(p, current_user, db)]
+    viewable = _viewable_recipe_ids(posts, current_user, db)
+    return [_to_response(p, p.user, viewable) for p in posts]
+
+
 @router.get("/{post_id}", response_model=PostResponse)
 def get_post(
     post_id: int,

@@ -72,10 +72,13 @@ line, the revision wins and the older text is annotated in place.
    above. The "everyone" view is scoped to posts whose own `visibility` is `public` (per
    #2) — enforced in SQL — and excludes the caller's own and friends' posts, so it's pure
    discovery with no overlap with the friends scope.
-4. **Browse shows posts, not just recipes.** Browse becomes recipes + posts so a user
-   can search a dish and, on finding a post with no attached recipe, **request the
-   recipe** (ties directly to the Phase 2 request loop). Interface for mixing the two
-   result types is an open design question — flag at build.
+4. **Browse shows posts, not just recipes.** *(BUILT — shipped in #71.)* Browse gained a
+   **Recipes | Meals** tab switcher: Recipes is the existing recipe discovery; Meals is a
+   grid of public posts (`GET /posts/browse`, `visibility == "public"` only), each opening
+   a read-only `/posts/:id` page. The open "how to mix two result types" question was
+   resolved as separate tabs (not a blended grid). The **request the recipe** action on a
+   post with no attached recipe stays Phase 2 — Browse surfaces the posts; the fulfill loop
+   comes later.
 5. **Non-cook audience is in-scope as an on-ramp, not a redefinition.** People who don't
    cook stay connected and see what friends are making; the core job is unchanged. Now
    reflected in `POSITIONING.md` ("Who it's for").

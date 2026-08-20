@@ -66,12 +66,17 @@ strangers arrive. Security/privacy first.
   flagged:* it's a performance optimization that can become a leak if used carelessly.
   *Where:* `app/services/sharing.py`; callers in `app/routers/posts.py`, `friends.py`.
 
-- **Browse is unauthenticated and filters in memory.** It loads *all* non-deleted recipes
-  then drops non-public ones with one Python line. Mis-edit that line → every private
-  recipe streams to anonymous callers; also it reads the whole table per call (a
-  scaling/DoS surface). A query-level `WHERE visibility='public'` would be safer *and*
-  faster. *Why flagged:* both a privacy single-point-of-failure and a scaling wall.
-  *Where:* `app/routers/recipes.py` (`browse_recipes`).
+- **Browse loads whole tables and filters/searches in memory (recipes AND posts).** The
+  recipe Browse (`browse_recipes`, unauthenticated) loads *all* non-deleted recipes then
+  drops non-public ones with one Python line — mis-edit that line and every private recipe
+  streams to anonymous callers. The Meals tab's `browse_posts` (#71, auth-gated) filters
+  `visibility=='public'` in SQL (safer), but is deliberately **uncapped** so the client
+  can search the full set — both read the whole matching table per call and paginate/search
+  client-side. Fine now; a scaling wall as the corpus grows. *Fix:* server-side search +
+  keyset pagination on both, mirroring the feed's `?before_id=` cursor. *Why flagged:* the
+  recipe one is also a privacy single-point-of-failure; both are scaling walls.
+  *Where:* `app/routers/recipes.py` (`browse_recipes`), `app/routers/posts.py` (`browse_posts`);
+  frontends `frontend/src/pages/Browse.jsx`.
 
 - **JWT has no revocation, and login isn't rate-limited.** Tokens are valid until they
   expire no matter what; changing/resetting a password does NOT log out existing sessions,

@@ -16,5 +16,9 @@ export const getFeed = (beforeId, scope) =>
     },
   })
 export const getPost = (id) => client.get(`/posts/${id}`)
+// Public posts for Browse discovery (#71). Returns every public post (newest first);
+// Browse filters/searches client-side, same shape as GET /recipes/browse. Backend scopes
+// to visibility == 'public', so this never returns a friends/private post.
+export const browsePosts = () => client.get('/posts/browse')
 export const deletePost = (id) => client.delete(`/posts/${id}`)
 export const getUserPosts = (userId) => client.get(`/posts/users/${userId}`)

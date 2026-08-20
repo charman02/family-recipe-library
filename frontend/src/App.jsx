@@ -10,6 +10,7 @@ import Feed from './pages/Feed'
 import Browse from './pages/Browse'
 import MyRecipes from './pages/MyRecipes'
 import RecipePage from './pages/RecipePage'
+import PostPage from './pages/PostPage'
 import AddChooser from './pages/AddChooser'
 import PostComposer from './pages/PostComposer'
 import PlantRecipe from './pages/PlantRecipe'
@@ -95,6 +96,16 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <RecipePage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/posts/:id"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <PostPage />
             </Layout>
           </ProtectedRoute>
         }

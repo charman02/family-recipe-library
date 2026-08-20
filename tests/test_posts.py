@@ -335,7 +335,59 @@ def test_feed_rejects_an_unknown_scope(client, make_user):
     assert client.get("/posts/feed?scope=nonsense", headers=mh).status_code == 422
 
 
+# --- Browse posts (#71): public discovery ---
+#
+# GET /posts/browse surfaces PUBLIC posts for discovery. Unlike the feed it doesn't scope
+# to friends — but it's still public-only, so a friends/private post never appears.
+
+
+def test_browse_shows_only_public_posts(client, make_user):
+    _, ah = make_user()
+    _, vh = make_user()  # a stranger
+    _post_vis(client, ah, "public", dish="Public meal")
+    _post_vis(client, ah, "friends", dish="Friends meal")
+    _post_vis(client, ah, "private", dish="Private meal")
+    dishes = {p["dish_name"] for p in client.get("/posts/browse", headers=vh).json()}
+    assert dishes == {"Public meal"}  # friends/private never surface
+
+
+def test_browse_includes_own_and_friends_public_posts(client, make_user):
+    # Unlike the everyone-FEED scope, Browse is discovery of what's public — it does NOT
+    # exclude your own or your friends' public posts.
+    me, mh = make_user()
+    friend, fh = make_user()
+    _befriend(client, me, mh, friend, fh)
+    _post_vis(client, mh, "public", dish="Mine public")
+    _post_vis(client, fh, "public", dish="Friend public")
+    dishes = {p["dish_name"] for p in client.get("/posts/browse", headers=mh).json()}
+    assert dishes == {"Mine public", "Friend public"}
+
+
+def test_browse_returns_all_public_posts_uncapped(client, make_user):
+    # Browse loads EVERY public post (newest first) and lets the client filter/search —
+    # same shape as GET /recipes/browse. A cap here would silently hide older public meals
+    # from the Meals-tab search (the #71 review caught exactly that), so there's no LIMIT.
+    _, ah = make_user()
+    _, vh = make_user()
+    # 35 > the 30 feed-page size, so a LIMIT would drop the oldest 5.
+    made = [_post_vis(client, ah, "public", dish=f"Dish {i}") for i in range(35)]
+    got = client.get("/posts/browse", headers=vh).json()
+    # All of them come back — more than one feed page — newest first.
+    assert len(got) == len(made) == 35
+    assert [p["id"] for p in got] == sorted((p["id"] for p in made), reverse=True)
+
+
+def test_browse_is_reverse_chron(client, make_user):
+    _, ah = make_user()
+    _, vh = make_user()
+    _post_vis(client, ah, "public", dish="older")
+    _post_vis(client, ah, "public", dish="newer")
+    dishes = [p["dish_name"] for p in client.get("/posts/browse", headers=vh).json()]
+    assert dishes == ["newer", "older"]
+
+
 def test_all_post_endpoints_require_auth(client, make_user):
     make_user()
     assert client.get("/posts/feed").status_code == 401
+    assert client.get("/posts/browse").status_code == 401
     assert client.post("/posts", json={"photo_url": "x", "dish_name": "y"}).status_code == 401

@@ -223,14 +223,17 @@ resurrect the tree language this section bans.
 
 ### Never claim the unbuilt social layer
 
-There is a friends-only feed and posts (Phase 1a), plus the public/private profile
-setting (Phase 1b, #68 — a profile is public or private, and a recipe or post can be set
-to public, friends-only, or private). Beyond that, nothing of the social plan has shipped. The feed is still **friends-only**: there is **no "everyone"
-feed** (that toggle is #70), **no posts in Browse** (#71), and **no recipe-request
-action** (Phase 2). All three are planned (see `docs/SOCIAL_FEED_PLAN.md`) and none has
-shipped — write them as direction, never as present features, and don't imply the
-everyone-feed exists. Check the code before describing any social capability, because
-this is the area moving fastest.
+Shipped so far: posts + a friends feed (Phase 1a); the public/private profile setting
+with concrete per-item visibility (Phase 1b, #68 — a profile is public or private, and a
+recipe or post is public, friends-only, or private); the feed's **friends/everyone
+toggle** (#70 — "everyone" shows *public* posts from non-friends); and **public posts in
+Browse** (#71 — the Meals tab + the `/posts/:id` post page). What has **not** shipped is
+the **recipe-request action** (Phase 2 — the "ask the cook for the recipe" loop and its
+notification center); write that as direction, never as a present feature. Two invariants
+still hold everywhere and must not be contradicted: the "everyone"/Browse surfaces show
+**public** posts only (a friends-only or private post never leaks into them — enforced in
+SQL), and there is still **no like button** anywhere. Check the code before describing any
+social capability — this is the area moving fastest (see `docs/SOCIAL_FEED_PLAN.md`).
 
 ### Never claim a recipient can edit, add to, or contribute to a recipe they were sent
 
@@ -279,8 +282,8 @@ git history now.
 
 ### Don't inflate the numbers — measure them
 
-As measured on this branch (see `README.md` for the method): **43 routes**, **11 models**,
-**316 backend tests**, **531 frontend tests in 43 files**. Endpoint and test counts have
+As measured on this branch (see `README.md` for the method): **44 routes**, **11 models**,
+**320 backend tests**, **541 frontend tests in 45 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

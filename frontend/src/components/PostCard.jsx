@@ -40,7 +40,11 @@ function ago(iso) {
 
 const fullName = (p) => `${p.author_first_name} ${p.author_last_name}`.trim()
 
-export default function PostCard({ post }) {
+// `onOpen`, when provided, makes the meal photo a tap target that opens the post — used
+// in Browse (#71), where a card is a PREVIEW that should open the full post at /posts/:id.
+// In the feed it's omitted: the feed already shows the whole post inline, so there's
+// nothing to "open", and the photo stays a plain image.
+export default function PostCard({ post, onOpen }) {
   const navigate = useNavigate()
 
   // Tapping the author opens their profile — but for your OWN post, /u/{yourId} is the
@@ -67,12 +71,28 @@ export default function PostCard({ post }) {
         </span>
       </div>
 
-      {/* The photo — the point of the post. */}
-      <img
-        src={post.photo_url}
-        alt={post.dish_name}
-        className="w-full aspect-square object-cover block border-y-2 border-ink"
-      />
+      {/* The photo — the point of the post. In Browse (onOpen set) it's a button that
+          opens the full post; in the feed it's a plain image (the post is already inline). */}
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open ${post.dish_name}`}
+          className="block w-full"
+        >
+          <img
+            src={post.photo_url}
+            alt={post.dish_name}
+            className="w-full aspect-square object-cover block border-y-2 border-ink"
+          />
+        </button>
+      ) : (
+        <img
+          src={post.photo_url}
+          alt={post.dish_name}
+          className="w-full aspect-square object-cover block border-y-2 border-ink"
+        />
+      )}
 
       {/* Dish name + optional line. */}
       <div className="px-3.5 py-3">
