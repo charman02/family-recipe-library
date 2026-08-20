@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, selectinload
 
@@ -103,6 +105,13 @@ def create_post(
 
 @router.get("/feed", response_model=list[PostResponse])
 def feed(
+    scope: Literal["friends", "everyone"] = Query(
+        default="friends",
+        description="'friends' (default) = your accepted friends' posts + your own. "
+        "'everyone' = public posts from people you're NOT friends with (discovery); "
+        "your own and your friends' posts stay in the 'friends' scope, so the two views "
+        "don't overlap.",
+    ),
     before_id: int | None = Query(
         default=None,
         description="Cursor: id of the last post on the previous page. Returns the "
@@ -111,9 +120,7 @@ def feed(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The presence feed: posts by the caller's ACCEPTED friends, plus the caller's
-    own, newest first. Scope is the whole point — a non-friend's post can never
-    appear here (friends resolved via services.friends).
+    """The presence feed, in one of two scopes (the friends/everyone toggle, #70).
 
     KEYSET pagination on `id`, not `created_at`. `id` is a monotonic insertion
     counter and a post's created_at is server-set at that same insert (never
@@ -125,23 +132,37 @@ def feed(
     a second and can skip or repeat one at a page boundary. An integer id cursor has
     none of that — it can't skip or duplicate, on SQLite or Postgres.
 
-    Own posts are included so an active poster with few friends still sees a feed
-    rather than a blank screen (BeReal shows yours too).
+    SCOPE = 'friends' (the Phase-1a default): posts by the caller's ACCEPTED friends,
+    plus the caller's own, newest first. Own posts are included so an active poster with
+    few friends still sees a feed rather than a blank screen (BeReal shows yours too). A
+    friend's PRIVATE post is excluded even here — the scope is friends, but a private post
+    is theirs alone (can_view_post). friends/public posts show normally.
 
-    A friend's PRIVATE post is excluded even here: the scope is friends, but a private
-    post is theirs alone (can_view_post). friends/public posts show normally. (The
-    friends/everyone toggle that widens scope to public strangers is a later step; this
-    feed is friends-only.)"""
+    SCOPE = 'everyone' (discovery): PUBLIC posts from people the caller is NOT friends
+    with, and not their own — the friends scope already covers those, so the two views
+    don't overlap. `visibility == "public"` is enforced in SQL (not app-side), because
+    that is EXACTLY what can_view_post grants a non-friend viewer (public only — never a
+    stranger's 'friends' post, never a 'private' one). So a friends-visibility post can
+    never leak into the everyone feed, even though both scopes read the same table."""
     friends = set(friend_ids(current_user.id, db))
-    q = db.query(Post).options(selectinload(Post.user)).filter(
-        Post.user_id.in_(friends | {current_user.id})
-    )
+    q = db.query(Post).options(selectinload(Post.user))
+    if scope == "everyone":
+        # Public posts from strangers only: exclude the caller and every accepted friend,
+        # so 'everyone' is pure discovery and never duplicates the 'friends' scope. The
+        # visibility=='public' predicate is the real privacy boundary — see docstring.
+        excluded = friends | {current_user.id}
+        q = q.filter(Post.visibility == "public", Post.user_id.notin_(excluded))
+    else:
+        q = q.filter(Post.user_id.in_(friends | {current_user.id}))
     if before_id is not None:
         q = q.filter(Post.id < before_id)
     posts = q.order_by(Post.id.desc()).limit(FEED_PAGE).all()
-    # Every author here is the caller or an accepted friend (that's the query scope), so
-    # the viewer↔author friendship is known — pass it to can_view_post so a "friends"
-    # post isn't re-queried per row. This still drops a friend's PRIVATE post.
+    # Defense-in-depth: re-gate every row through the single read rule regardless of
+    # scope. In 'friends' scope every author is the caller or an accepted friend, so the
+    # viewer↔author friendship is known — pass it in so a "friends" post isn't re-queried
+    # per row (this still drops a friend's PRIVATE post). In 'everyone' scope the authors
+    # are non-friends, so is_friend is False and only their 'public' posts pass — which
+    # the SQL already guaranteed; the check is a belt-and-suspenders assertion of that.
     posts = [
         p
         for p in posts

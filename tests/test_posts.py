@@ -261,6 +261,80 @@ def test_user_posts_friend_gated(client, make_user):
     assert client.get(f"/posts/users/{author.id}", headers=sh).json() == []
 
 
+# --- the friends/everyone toggle (#70) ---
+#
+# 'everyone' scope is discovery: PUBLIC posts from people you're NOT friends with (and
+# not your own). The privacy invariant is that ONLY visibility=='public' posts surface —
+# a stranger's 'friends' post must never leak into your everyone feed.
+
+
+def _post_vis(client, headers, visibility, dish="Dish"):
+    r = client.post(
+        "/posts",
+        json={"photo_url": "https://img.test/x.jpg", "dish_name": dish, "visibility": visibility},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    return r.json()
+
+
+def test_everyone_scope_shows_strangers_public_posts(client, make_user):
+    _, mh = make_user()
+    _, sh = make_user()  # a stranger (not a friend)
+    _post_vis(client, sh, "public", dish="Stranger public")
+    feed = client.get("/posts/feed?scope=everyone", headers=mh).json()
+    assert {p["dish_name"] for p in feed} == {"Stranger public"}
+
+
+def test_everyone_scope_hides_a_strangers_non_public_posts(client, make_user):
+    # THE privacy test: a stranger's 'friends' and 'private' posts must NOT appear in the
+    # everyone feed — only their 'public' ones. can_view_post grants a non-friend public
+    # only, and the SQL predicate enforces exactly that.
+    _, mh = make_user()
+    _, sh = make_user()
+    _post_vis(client, sh, "public", dish="Public one")
+    _post_vis(client, sh, "friends", dish="Friends only")  # must not leak
+    _post_vis(client, sh, "private", dish="Private")       # must not leak
+    dishes = {p["dish_name"] for p in client.get("/posts/feed?scope=everyone", headers=mh).json()}
+    assert dishes == {"Public one"}
+
+
+def test_everyone_scope_excludes_own_and_friends_posts(client, make_user):
+    # No overlap with the friends scope: your own public posts and your friends' public
+    # posts stay in 'friends'; 'everyone' is strangers only.
+    me, mh = make_user()
+    friend, fh = make_user()
+    _, sh = make_user()
+    _befriend(client, me, mh, friend, fh)
+    _post_vis(client, mh, "public", dish="My public")
+    _post_vis(client, fh, "public", dish="Friend public")
+    _post_vis(client, sh, "public", dish="Stranger public")
+    everyone = {p["dish_name"] for p in client.get("/posts/feed?scope=everyone", headers=mh).json()}
+    assert everyone == {"Stranger public"}  # not mine, not my friend's
+
+
+def test_friends_scope_unchanged_by_the_new_param(client, make_user):
+    # The default scope (and explicit ?scope=friends) is the Phase-1a behavior: friends'
+    # + own posts, never a stranger's — regardless of the stranger's post being public.
+    me, mh = make_user()
+    friend, fh = make_user()
+    _, sh = make_user()
+    _befriend(client, me, mh, friend, fh)
+    _post_vis(client, fh, "friends", dish="Friend dish")
+    _post_vis(client, mh, "friends", dish="My dish")
+    _post_vis(client, sh, "public", dish="Stranger public")
+    for url in ("/posts/feed", "/posts/feed?scope=friends"):
+        dishes = {p["dish_name"] for p in client.get(url, headers=mh).json()}
+        assert dishes == {"Friend dish", "My dish"}
+        assert "Stranger public" not in dishes
+
+
+def test_feed_rejects_an_unknown_scope(client, make_user):
+    _, mh = make_user()
+    # The Literal enum makes a bogus scope a 422, not a silent fallback to friends.
+    assert client.get("/posts/feed?scope=nonsense", headers=mh).status_code == 422
+
+
 def test_all_post_endpoints_require_auth(client, make_user):
     make_user()
     assert client.get("/posts/feed").status_code == 401

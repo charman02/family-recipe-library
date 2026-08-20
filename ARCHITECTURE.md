@@ -238,7 +238,7 @@ factored into small reusable components. The core `.sticker` / `.field` /
 | `Login.jsx` | `/login` | Login + signup (tabs). One of the two public routes (the other is `/invite/:token`). Sticker masthead with a single italic subtitle; a "Forgot password?" link routes to `/forgot-password`. Replaces history on sign-in, so Back doesn't return to the sign-in screen. |
 | `ForgotPassword.jsx` | `/forgot-password` | Public page where a user enters their email to request a password-reset link (sent via AWS SES). |
 | `ResetPassword.jsx` | `/reset-password` | Public page reached from the emailed reset link; accepts a new password and the reset token from the URL. |
-| `Feed.jsx` | `/` | The presence feed — the new Home. A `<FriendsStrip>` presence rail sits at the top (friends' faces, most-recently-active first), above a newest-first list of `PostCard`s from the caller's friends (and their own posts), read via `GET /posts/feed` and keyset-paginated on `before_id`. No like button. Empty state when there's nothing yet (the strip still shows if you have friends but no posts). (Replaced the hero-deck `Home.jsx`.) |
+| `Feed.jsx` | `/` | The presence feed — the new Home. A **Friends \| Everyone** segmented toggle sits under the masthead (#70): **Friends** (default, resets each visit) shows the caller's friends' + own posts with the `<FriendsStrip>` presence rail on top; **Everyone** shows public posts from people you're *not* friends with (discovery — the strip hides, and the empty state is discovery-flavored). Both read `GET /posts/feed?scope=…` and keyset-paginate on `before_id`; the scope-change refetch drops a stale in-flight response. No like button. Empty state when there's nothing yet (in Friends, the strip still shows if you have friends but no posts). (Replaced the hero-deck `Home.jsx`.) |
 | `Browse.jsx` | `/browse` | Discovery: search + Cuisine / Diet / Ready-In sticker dropdowns. Unfiltered → curated horizontal cuisine/recency rows; searching or filtering → a flat results grid (section titles hide). |
 | `MyRecipes.jsx` | `/my-recipes` | The Kitchen — a **Recipes \| Posts** tab switcher (`?tab=posts` deep-links the Posts tab; the You page's Posts count lands here). Recipes: a grid of your recipe cards + search + a "Shared with you" link. Posts: your own posts (lazy-loaded via `GET /posts/users/{me}`, rendered as `<PostCard>`). Empty/no-match states use `EmptyState`. |
 | `SharedWithMe.jsx` | `/shared` | Recipes others have passed to the user (accepted grants only; no accept UI). |
@@ -336,8 +336,8 @@ React app                FastAPI app          Postgres (Neon)
   automatic. Watch for them when reviewing changes.
 - **Two servers must be running to use the app locally**: `uvicorn app.main:app
   --reload` (backend) and `npm run dev` in `frontend/` (frontend).
-- **Verifying changes:** backend has `pytest` (**311 tests** across `tests/`);
-  frontend has Vitest + React Testing Library (**525 tests in 43 files**) — run
+- **Verifying changes:** backend has `pytest` (**316 tests** across `tests/`);
+  frontend has Vitest + React Testing Library (**531 tests in 43 files**) — run
   `npm test` (`vitest run`) in `frontend/`. `npm run build` still catches
   syntax/import errors. These counts move; re-run both suites rather than
   quoting a number from a doc.

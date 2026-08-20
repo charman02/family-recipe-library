@@ -280,7 +280,7 @@ git history now.
 ### Don't inflate the numbers — measure them
 
 As measured on this branch (see `README.md` for the method): **43 routes**, **11 models**,
-**311 backend tests**, **525 frontend tests in 43 files**. Endpoint and test counts have
+**316 backend tests**, **531 frontend tests in 43 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

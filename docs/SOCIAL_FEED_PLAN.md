@@ -66,10 +66,12 @@ line, the revision wins and the older text is annotated in place.
      visibility or friendship; it's checked only for recipes, and only after the visibility
      rule says no. `effective_visibility` returns the recipe's own concrete `visibility`
      unchanged; Browse shows recipes where `visibility == "public"`.
-3. **Feed friends/everyone toggle.** The feed gains a control to show either just
-   friends (the Phase-1a default) or everyone (public posts from non-friends). This
-   revises the "friends-only feed, no public/global feed" constraint above. The
-   "everyone" view is scoped to posts whose own `visibility` is `public` (per #2).
+3. **Feed friends/everyone toggle.** *(BUILT — shipped in #70.)* The feed gains a control
+   to show either just friends (the Phase-1a default) or everyone (public posts from
+   non-friends). This revises the "friends-only feed, no public/global feed" constraint
+   above. The "everyone" view is scoped to posts whose own `visibility` is `public` (per
+   #2) — enforced in SQL — and excludes the caller's own and friends' posts, so it's pure
+   discovery with no overlap with the friends scope.
 4. **Browse shows posts, not just recipes.** Browse becomes recipes + posts so a user
    can search a dish and, on finding a post with no attached recipe, **request the
    recipe** (ties directly to the Phase 2 request loop). Interface for mixing the two
