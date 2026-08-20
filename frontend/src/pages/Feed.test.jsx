@@ -6,7 +6,14 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 vi.mock('../api/posts', () => ({
   getFeed: vi.fn(),
 }))
+// Feed now renders the FriendsStrip (#75), which fetches the caller's friends. Mock it
+// so these Feed tests don't hit the real axios client; default to no friends (the strip
+// self-hides), and the strip test below overrides it.
+vi.mock('../api/friends', () => ({
+  getFriends: vi.fn(() => Promise.resolve({ data: [] })),
+}))
 import { getFeed } from '../api/posts'
+import { getFriends } from '../api/friends'
 import Feed from './Feed'
 
 const post = (id, over = {}) => ({
@@ -29,6 +36,7 @@ function renderFeed() {
         <Route path="/" element={<Feed />} />
         <Route path="/add/meal" element={<div>compose meal</div>} />
         <Route path="/friends" element={<div>friends page</div>} />
+        <Route path="/u/:userId" element={<div>user profile</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -66,5 +74,17 @@ describe('Feed (Home)', () => {
     renderFeed()
     await screen.findByText('Dish 1')
     expect(screen.queryByRole('button', { name: /load more/i })).toBeNull()
+  })
+
+  it('shows the friends strip (active order) above the feed, tapping through to a profile', async () => {
+    getFeed.mockResolvedValue({ data: [post(1)] })
+    getFriends.mockResolvedValue({
+      data: [{ user_id: 42, first_name: 'Ana', last_name: 'R', photo_url: null }],
+    })
+    renderFeed()
+    // The strip requests the activity ordering, not the friendship-recency default.
+    await waitFor(() => expect(getFriends).toHaveBeenCalledWith('active'))
+    await userEvent.click(await screen.findByRole('button', { name: /ana/i }))
+    expect(await screen.findByText('user profile')).toBeInTheDocument()
   })
 })

@@ -222,6 +222,7 @@ factored into small reusable components. The core `.sticker` / `.field` /
 | `MarkerTitle.jsx` | A heading with a highlighter-swipe color block behind the text (the app's section-header motif). |
 | `Wordmark.jsx` | The `issei.` logo, as a component (not inline). A cream-on-ink plate in the sticker language (ink outline + hard offset shadow) — the *only* inverted element in an app of dark type on light fields, so nothing else can accidentally read as the brand. Chosen from nine treatments against the real Home page, where a bare-Fraunces mark competed with the hero heading and lost. A `bare` prop drops the plate to render ink type on an already-colored field (used by `CoverImage`'s photo-less placeholder). |
 | `PostCard.jsx` | A single feed post as a sticker card — the author's name, the meal photo, dish name, an optional line, and (when the viewer can read it) a "See the recipe" link to the linked recipe. Used by `Feed` and the profile grid. No like button. |
+| `FriendsStrip.jsx` | The Feed's presence rail (#75) — a horizontal, edge-bleeding row of friends' `Avatar`s at the top of Home, each a tap to that person's `/u/:id` profile. Fetches `GET /friends?order=active`, so whoever posted most recently leads ("who's been cooking lately"); all accepted friends appear (quiet ones trail), first names only. Authorizes nothing itself — the `active` sort counts only posts the caller may see (enforced server-side). Renders nothing with no friends (the Feed's own empty state covers cold-start) or on a fetch error. |
 | `ProfileContent.jsx` | A person's recipes + posts as two tabs (Recipes \| Posts), lazy-loading each tab from `GET /recipes/users/{id}` and `GET /posts/users/{id}` (both server-gated by `can_view`/`can_view_post`). Used by `UserProfile`; reusable for the "You" page. Renders `RecipeCard` (two-up grid) and `PostCard` (column). |
 | `EmptyState.jsx` / `Loader.jsx` | Shared sticker-styled empty/no-results state (peach card + emoji badge) and loading state (bouncing pot badge). |
 | `BackButton.jsx` | Icon-only sticker back button for sub-pages. |
@@ -236,7 +237,7 @@ factored into small reusable components. The core `.sticker` / `.field` /
 | `Login.jsx` | `/login` | Login + signup (tabs). One of the two public routes (the other is `/invite/:token`). Sticker masthead with a single italic subtitle; a "Forgot password?" link routes to `/forgot-password`. Replaces history on sign-in, so Back doesn't return to the sign-in screen. |
 | `ForgotPassword.jsx` | `/forgot-password` | Public page where a user enters their email to request a password-reset link (sent via AWS SES). |
 | `ResetPassword.jsx` | `/reset-password` | Public page reached from the emailed reset link; accepts a new password and the reset token from the URL. |
-| `Feed.jsx` | `/` | The presence feed — the new Home. A newest-first list of `PostCard`s from the caller's friends (and their own posts), read via `GET /posts/feed` and keyset-paginated on `before_id`. No like button. Empty state when there's nothing yet. (Replaced the hero-deck `Home.jsx`.) |
+| `Feed.jsx` | `/` | The presence feed — the new Home. A `<FriendsStrip>` presence rail sits at the top (friends' faces, most-recently-active first), above a newest-first list of `PostCard`s from the caller's friends (and their own posts), read via `GET /posts/feed` and keyset-paginated on `before_id`. No like button. Empty state when there's nothing yet (the strip still shows if you have friends but no posts). (Replaced the hero-deck `Home.jsx`.) |
 | `Browse.jsx` | `/browse` | Discovery: search + Cuisine / Diet / Ready-In sticker dropdowns. Unfiltered → curated horizontal cuisine/recency rows; searching or filtering → a flat results grid (section titles hide). |
 | `MyRecipes.jsx` | `/my-recipes` | The Kitchen — a **Recipes \| Posts** tab switcher (`?tab=posts` deep-links the Posts tab; the You page's Posts count lands here). Recipes: a grid of your recipe cards + search + a "Shared with you" link. Posts: your own posts (lazy-loaded via `GET /posts/users/{me}`, rendered as `<PostCard>`). Empty/no-match states use `EmptyState`. |
 | `SharedWithMe.jsx` | `/shared` | Recipes others have passed to the user (accepted grants only; no accept UI). |
@@ -334,8 +335,8 @@ React app                FastAPI app          Postgres (Neon)
   automatic. Watch for them when reviewing changes.
 - **Two servers must be running to use the app locally**: `uvicorn app.main:app
   --reload` (backend) and `npm run dev` in `frontend/` (frontend).
-- **Verifying changes:** backend has `pytest` (**305 tests** across `tests/`);
-  frontend has Vitest + React Testing Library (**506 tests in 41 files**) — run
+- **Verifying changes:** backend has `pytest` (**311 tests** across `tests/`);
+  frontend has Vitest + React Testing Library (**514 tests in 42 files**) — run
   `npm test` (`vitest run`) in `frontend/`. `npm run build` still catches
   syntax/import errors. These counts move; re-run both suites rather than
   quoting a number from a doc.

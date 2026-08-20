@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -147,10 +149,28 @@ def remove_friend(
 
 @router.get("", response_model=list[FriendResponse])
 def list_friends(
+    order: Literal["recent", "active"] = Query(
+        default="recent",
+        description="'recent' (default) = newest friendship first, for the Friends "
+        "management page. 'active' = friends who posted most recently first (the Feed's "
+        "presence strip); friends with no visible post fall back to friendship recency.",
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The caller's ACCEPTED friends."""
+    """The caller's ACCEPTED friends.
+
+    Two orderings, same rows. `recent` sorts by when the friendship formed (what the
+    Friends page has always shown). `active` sorts by each friend's most recent VISIBLE
+    post, so the Feed's avatar strip surfaces who's been cooking lately (#75).
+
+    Privacy — enforced here at the query layer, not the UI: the activity scan counts only
+    posts with `visibility != 'private'`. Every row is an ACCEPTED friend, and for an
+    accepted friend that is exactly what `can_view_post` permits (their public + friends
+    posts, never their private ones). So a friend's private post can never move them up
+    the caller's strip — which would itself leak that a hidden post exists. This endpoint
+    stays a re-presentation of friendships the caller is already party to; no post content
+    or count is returned, only the sort changes."""
     rows = (
         db.query(Friendship)
         .filter(
@@ -165,6 +185,37 @@ def list_friends(
     )
     ids = [f.addressee_id if f.requester_id == current_user.id else f.requester_id for f in rows]
     users = _users_by_id(ids, db)
+
+    if order == "active" and ids:
+        # Each friend's latest visible post, keyed by MAX(Post.id) not MAX(created_at):
+        # ids are monotonic and posts are never backdated, so the largest id IS the most
+        # recent post (the same reasoning the feed's keyset pagination relies on), and it
+        # comes back as a plain int on both SQLite and Postgres — no aggregate-over-
+        # datetime dialect surprises. `visibility != 'private'` is the read-authorization
+        # filter (see the docstring); a friend with no visible post isn't in this map.
+        latest = dict(
+            db.query(Post.user_id, func.max(Post.id))
+            .filter(
+                Post.user_id.in_(ids),
+                Post.visibility != "private",
+            )
+            .group_by(Post.user_id)
+            .all()
+        )
+        # Sort friends by (has a visible post, then how recent it is) — both descending —
+        # so recent posters lead and quiet friends keep their friendship-recency order
+        # behind them. `rows` is already friendship-newest-first, and Python's sort is
+        # stable, so friends who tie on activity (e.g. all the never-posted ones at 0)
+        # preserve that original order for free.
+        rows = sorted(
+            rows,
+            key=lambda f: latest.get(
+                f.addressee_id if f.requester_id == current_user.id else f.requester_id,
+                0,
+            ),
+            reverse=True,
+        )
+
     return [_to_friend_response(f, current_user.id, users) for f in rows]
 
 

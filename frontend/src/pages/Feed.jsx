@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getFeed } from '../api/posts'
 import PostCard from '../components/PostCard'
+import FriendsStrip from '../components/FriendsStrip'
 import Wordmark from '../components/Wordmark'
 import Loader from '../components/Loader'
 
@@ -61,6 +62,14 @@ export default function Feed() {
   return (
     <div className="min-h-screen bg-cream pb-6">
       <Masthead />
+
+      {/* The friends presence strip (#75) — friends' faces, most-recently-active first,
+          each a tap to their profile. Sits above BOTH states: a user with friends but no
+          posts yet still sees their circle. Self-hides when you have no friends and adds
+          its own padding, so the px-4 here only wraps it (the branches set their own). */}
+      <div className="px-4">
+        <FriendsStrip />
+      </div>
 
       {posts.length === 0 ? (
         // ONBOARDING EMPTY STATE — the cold-start fix. Not a blank screen: the two

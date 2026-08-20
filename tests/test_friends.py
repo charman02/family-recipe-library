@@ -229,3 +229,106 @@ def test_all_friends_endpoints_require_auth(client, make_user):
     assert client.get("/friends/requests").status_code == 401
     assert client.get("/friends/suggestions").status_code == 401
     assert client.post("/friends/request", json={"to_user_id": 1}).status_code == 401
+
+
+# --- GET /friends?order=active (the Feed presence strip, #75) ---
+#
+# The strip re-sorts the SAME accepted-friends list by who posted most recently. The
+# privacy invariant is the point: a friend's PRIVATE post must not move them up the
+# caller's strip, because that would leak that a hidden post exists.
+
+
+def _accept(client, ah, bh, b):
+    """Make the caller (ah) and b accepted friends; return nothing."""
+    fid = client.post("/friends/request", json={"to_user_id": b.id}, headers=ah).json()["id"]
+    client.post(f"/friends/{fid}/accept", headers=bh)
+
+
+def _post(client, headers, visibility="friends", dish="Dish"):
+    r = client.post(
+        "/posts",
+        json={"photo_url": "https://img.test/x.jpg", "dish_name": dish, "visibility": visibility},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    return r.json()
+
+
+def test_default_order_is_not_reshuffled_by_posting(client, make_user):
+    # The Friends management page (default order) is friendship-based and must NOT
+    # reshuffle when a friend posts — only the Feed's ?order=active does that. Asserted
+    # as stability (query the default before and after a post, expect the same list)
+    # rather than a fixed sequence: two friendships created in the same test share a
+    # second-granularity created_at, so their tie-break is the DB's to decide, not ours.
+    _, mh = make_user()
+    a, ah = make_user()
+    b, bh = make_user()
+    _accept(client, mh, ah, a)
+    _accept(client, mh, bh, b)
+    before = [f["user_id"] for f in client.get("/friends", headers=mh).json()]
+    _post(client, ah)  # a friend posts
+    after = [f["user_id"] for f in client.get("/friends", headers=mh).json()]
+    assert after == before  # default order is unmoved by the post
+    # ...whereas the active order now leads with the poster.
+    active = [f["user_id"] for f in client.get("/friends?order=active", headers=mh).json()]
+    assert active[0] == a.id
+
+
+def test_order_active_surfaces_recent_posters_first(client, make_user):
+    _, mh = make_user()
+    a, ah = make_user()
+    b, bh = make_user()
+    c, ch = make_user()
+    _accept(client, mh, ah, a)
+    _accept(client, mh, bh, b)
+    _accept(client, mh, ch, c)
+    # B posts, then A posts (A is now the most-recent poster). C never posts.
+    _post(client, bh)
+    _post(client, ah)
+    order = [f["user_id"] for f in client.get("/friends?order=active", headers=mh).json()]
+    # A (latest post) then B (older post) then C (never posted, falls to the back).
+    assert order == [a.id, b.id, c.id]
+    # And it's still the whole friend list — quiet friends aren't dropped.
+    assert set(order) == {a.id, b.id, c.id}
+
+
+def test_order_active_ignores_a_friends_private_post(client, make_user):
+    # THE PRIVACY TEST. A posts PUBLICLY (old); B posts PRIVATELY (new). If the private
+    # post counted, B would jump ahead of A and reveal to `me` that B posted something
+    # hidden. It must not: only visible posts (public/friends) order the strip.
+    _, mh = make_user()
+    a, ah = make_user()
+    b, bh = make_user()
+    _accept(client, mh, ah, a)
+    _accept(client, mh, bh, b)
+    _post(client, ah, visibility="public")   # A's visible post, older
+    _post(client, bh, visibility="private")  # B's private post, newer — must not count
+    order = [f["user_id"] for f in client.get("/friends?order=active", headers=mh).json()]
+    # A leads on their visible post; B has no visible post, so falls behind by friendship
+    # recency — exactly as if B had never posted.
+    assert order == [a.id, b.id]
+
+
+def test_order_active_counts_a_friends_only_post(client, make_user):
+    # The mirror of the privacy test: a "friends" post IS visible to an accepted friend,
+    # so it legitimately orders the strip.
+    _, mh = make_user()
+    a, ah = make_user()
+    b, bh = make_user()
+    _accept(client, mh, ah, a)
+    _accept(client, mh, bh, b)
+    _post(client, ah, visibility="friends")  # A older
+    _post(client, bh, visibility="friends")  # B newer → leads
+    order = [f["user_id"] for f in client.get("/friends?order=active", headers=mh).json()]
+    assert order == [b.id, a.id]
+
+
+def test_order_active_with_no_friends_is_empty(client, make_user):
+    _, mh = make_user()
+    assert client.get("/friends?order=active", headers=mh).json() == []
+
+
+def test_order_rejects_an_unknown_value(client, make_user):
+    _, mh = make_user()
+    # The Literal enum makes a bogus order a 422, not a silent fallback.
+    assert client.get("/friends?order=nonsense", headers=mh).status_code == 422
