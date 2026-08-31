@@ -13,9 +13,13 @@ frontend/dist/
 # Local visual/screenshot scratch drivers (Playwright) — not part of the suite
 frontend/tests/visual/
 
-# Claude Code tooling + instructions (kept on disk, not in the public repo)
-CLAUDE.md
-.claude/
+# Claude Code tooling + instructions. Most .claude state is machine-local (jobs,
+# worktrees, local settings) and stays out of git; the issei agents + skills ARE shared
+# so the review/docs gates work from a fresh clone. CLAUDE.md is committed too (project
+# guide). Memory files (~/.claude/projects/.../memory) stay OUT — they hold candid notes.
+.claude/*
+!.claude/agents/
+!.claude/skills/
 
 # Brainstorming visual companion + agentic scratch
 .superpowers/

@@ -1,0 +1,71 @@
+---
+name: issei-docs-check
+description: Use before pushing or deploying issei, or whenever asked to check/update the docs. Verifies README and every other doc against the actual code — test counts, endpoint/model/service inventory, shipped-but-undocumented features, and POSITIONING violations — then applies the mechanical fixes and surfaces the judgment calls. Keeping public docs true after a deploy is a hard project requirement.
+---
+
+# issei docs check
+
+Keeps issei's documentation from lying to the people who can clone the repo. The project
+rule is non-negotiable: **whenever code is pushed and deployed, the docs are brought back
+into agreement with it — the README above all.**
+
+**Core principle:** this is a *measurement* problem before it is a *writing* problem. The
+failure mode is not clumsy prose; it is a confident number the codebase contradicts, in a
+document handed to recruiters and users. So nothing is "adjusted by arithmetic" — every
+count is re-run, and the command that produced it travels with the change.
+
+## When this runs
+
+- Before any `git push`, and before/right after any deploy to prod. This is the trigger the
+  project rule names.
+- On demand ("check the docs", "is the README still true?", "update the docs").
+- After a batch of feature work, before it's summarized to the user.
+
+If a push is imminent and this hasn't run, run it first — do not push stale docs.
+
+## How to run it
+
+1. **Dispatch the `issei-docs-auditor` subagent** (`.claude/agents/issei-docs-auditor.md`).
+   It is read-only and does the measuring: it runs the exact checks, compares each doc claim
+   to the measured value, scans for POSITIONING violations, and returns a structured report
+   of stale claims with the proof for each. Let it do the counting — do not eyeball counts
+   yourself, and do not trust a number already written in a doc.
+
+2. **Read its report and split the findings in two:**
+   - **Mechanical** — a wrong count, a renamed file, a stale services list, an endpoint
+     number. Apply these directly. The measured value in the report is the correct value;
+     write exactly that, not an arithmetic guess.
+   - **Judgment** — a reworded claim, a feature to describe from scratch, a positioning call,
+     anything in POSITIONING.md's territory. Do NOT silently rewrite these. Draft the change
+     and surface it to the user with the reasoning, because a wrong call here ships a false
+     claim under the app's own name.
+
+3. **Never edit `POSITIONING.md` to make a violation "pass."** If a doc claims something
+   POSITIONING forbids, the doc is wrong, not the constitution. The one exception is a doc
+   that explicitly explains a feature's *absence* (FUTURE.md's "Not Built: Audio", the
+   shopping-list removal note) — that is correct and stays.
+
+4. **Re-measure after editing.** Apply the fixes, then re-run the same checks and confirm the
+   docs now agree. A docs change that leaves a different count wrong is not done.
+
+## What "the docs" means here
+
+`README.md` (public, highest priority) · `ARCHITECTURE.md` · `FUTURE.md` · `POSITIONING.md`
+(the ruleset — read, rarely edit) · `TECHDEBT.md` if present · both `CLAUDE.md` copies (repo
+root and `C:\Users\chissman\issei\CLAUDE.md` — they can diverge because the file is
+git-ignored) · `.env.example`, `frontend/.env.example` · `docs/**`.
+
+## Known drift to expect (as of this skill's writing — verify, don't trust)
+
+These have shipped and were often undocumented; the auditor will flag whichever are still
+missing:
+- the LLM layer: `POST /recipes/parse`, `app/services/recipe_ai.py`, `app/services/quantity.py`, the `OPENROUTER_*` env vars
+- the three add-recipe doors (paste / guided / form) and dictation
+- test counts (they have been wrong in both directions; a stray untracked `*.test.*` file has inflated the frontend count before — stash scratch files before counting)
+
+## What good looks like
+
+A push where the README's numbers match `--collect-only`, its route table matches the
+`@router` grep, every shipped surface is either documented or deliberately omitted, and the
+POSITIONING scan is clean. End by telling the user, in one line, what was stale and what you
+changed — and which judgment calls you're leaving to them.

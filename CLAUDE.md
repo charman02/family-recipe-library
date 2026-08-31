@@ -1,0 +1,126 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Working Notes
+
+- **Git flow:** `main` auto-deploys to prod (frontend → Vercel, backend → AWS ECS Fargate, DB → Neon Postgres) on every push. **Do NOT merge/push to `main` without explicit approval.** Feature work happens on branches, then a fast-forward/merge to `main` when approved.
+- **Version anchor:** `kitchen-v1` (the current sticker "kitchen" redesign, shipped) is a tag. The old seed→tree "garden" UI and its `garden-v1` tag / `docs/archive/garden/` were removed once the kitchen design was locked in — it lives in git history if ever needed.
+- **Windows/Git-Bash env:** kill stale dev servers with `taskkill //F //PID <pid>`, not `pkill`.
+- **CLAUDE.md, `.claude/agents/`, and `.claude/skills/` are committed** to the (public) repo so the project — including the review/docs ship gates — is fully workable from a fresh clone. The rest of `.claude/` (jobs, worktrees, `settings.local.json`) and the `~/.claude/projects/.../memory/` files stay out of git (the memory holds candid notes; transfer it privately).
+
+## What This Is
+
+A deployed full-stack app (FastAPI backend + React frontend) for **sending one recipe from the person who cooks it to the person who just tasted it and asked for it** — *issei* (一世) = "first generation." Someone cooked you something you'd never had before; this is how they send it to you. A recipe is attributed to a *person* (the dish is the title, the person is the byline "from Lola"); imprecise measurements like "a dash" or "3 soup spoons" are preserved verbatim as fidelity, never normalized; per-step notes carry the knowledge an ingredient list can't hold; and the recipient reads the whole thing from a capability link with no account. The signature is **that handoff** — the fuzzy-quantity model is the supporting layer that makes what arrives honest. The UI is a warm, playful "kitchen" (bold sticker / color-block design). Backend on AWS ECS Fargate, frontend on Vercel, PostgreSQL (Neon) in production, SQLite locally.
+
+> **Read `POSITIONING.md` before writing any user-facing or recruiter-facing copy.** It holds the one-liner and an explicit list of claims that are FALSE and must not appear anywhere. The three that keep resurfacing:
+> 1. **No audio, ever.** `Step.voice_note` is a `Text` column typed by whoever wrote the recipe down. Never write "voice", "recording", "audio", "listen", or "in their (own) words" in UI copy or docs. Four page tests assert this.
+> 2. **No lineage / family tree.** Removed in `8a3b734`. No ancestors, descendants, roots, branches, subtrees, or child counts.
+> 3. **A recipient cannot edit.** `patch_recipe`/`delete_recipe` filter on `user_id`. Read is not write.
+
+> **Garden → kitchen history:** an earlier UI rendered recipes as plants growing seed→sprout→sapling→tree and the Kitchen as a garden of them. That UI was removed and replaced by the current kitchen design. The backend still *computes* `growth_stage`/`growth_vitality` (`services/growth.py`) but the frontend no longer displays them. The garden UI and its docs were removed once the kitchen design was locked in; they remain in git history.
+
+## Commands
+
+```bash
+# Start dev server
+uvicorn app.main:app --reload
+
+# Run all tests
+pytest
+
+# Run a single test file
+pytest tests/test_scaling.py
+
+# Run a single test
+pytest tests/test_scaling.py::test_precise_with_unit
+
+# Run migrations
+alembic upgrade head
+
+# Create a new migration (after model changes)
+alembic revision --autogenerate -m "description"
+```
+
+Frontend (from the `frontend/` directory):
+
+```bash
+# Start the Vite dev server (on :5173)
+cd frontend && npm run dev
+
+# Build for production
+cd frontend && npm run build
+
+# Run the frontend test suite (Vitest + React Testing Library)
+cd frontend && npm test
+```
+
+Baselines as measured on this branch: **320 backend tests**, **541 frontend tests in 45 files**. Both suites are fast and safe to run — do that rather than quoting these numbers later.
+
+## Environment
+
+Requires a `.env` file in the project root:
+```
+DATABASE_URL=sqlite:///./recipes.db
+JWT_SECRET=your-secret-here
+```
+
+Production uses PostgreSQL via `DATABASE_URL` pointing to Neon. The database layer auto-detects SQLite vs Postgres and adjusts connection args accordingly.
+
+## Architecture
+
+**App entry:** `app/main.py` — mounts six routers (auth, recipes, upload, feedback, friends, posts) and a `/health` endpoint.
+
+**Routers** (`app/routers/`) — endpoint definitions. Each router handles one domain: auth (signup/login/me — `login` now also returns `profile_visibility` and `photo_url` — plus `PATCH /auth/me` to edit name/email/password/profile_visibility/photo_url (all but email+password need no password — low-risk; `photo_url` is validated to a Cloudinary HTTPS host, or blank → NULL/monogram), `DELETE /auth/me` to delete the account, and the password-reset pair `POST /auth/forgot-password` / `POST /auth/reset-password`), recipes (CRUD + scaling), upload (Cloudinary photos — `POST /upload/recipe-photo` and `POST /upload/avatar`, the latter a square 400x400 face-gravity crop into `issei/avatars`), friends (the symmetric friend graph — social feed Phase 0). Recipes also has the sharing actions: `POST /{id}/cook`, `POST /{id}/handoff`, `GET /recipes/shared`, `POST /recipes/handoffs/{id}/accept`, the invite flow (`GET /recipes/invite/{token}` — unauthenticated **full** recipe read; `POST /recipes/invite/{token}/claim`; `GET /recipes/invite/{token}/preview` — crawler-facing OpenGraph HTML so a shared link unfurls as the recipe, see `services/invite_og.py`), plus the public `GET /recipes/browse`, and `GET /recipes/ingredient-suggestions` / `GET /recipes/field-suggestions` (the caller's own past ingredients / sources+cuisines for form autosuggest, self-scoped). Friends has `POST /friends/request`, `POST /friends/{id}/accept` (addressee-only), `DELETE /friends/{id}`, `GET /friends` (accepted friends; optional `?order=active` sorts by each friend's most-recent *visible* post — the Feed presence strip #75 — vs the default `recent` = friendship recency for the Friends page), `GET /friends/requests`, `GET /friends/suggestions` (seeded from the handoff graph), `GET /friends/profile/{id}` (read-only profile — returns the target's `profile_visibility`, `photo_url`, recipe and post counts the caller may see (gated by the visibility model), and `friend_count` (a symmetric public number, NOT caller-gated)). The friends list / requests / suggestions also carry each person's `photo_url`. Posts (the presence feed — social feed Phase 1a) has `POST /posts` (share a meal: photo + dish name, optional description, optional link to a recipe you own), `GET /posts/feed` (newest first, keyset-paginated via `?before_id=`; no like button; `?scope=friends|everyone` — `friends` (default) = accepted friends' posts + your own, `everyone` = **public** posts from people you're NOT friends with (discovery, #70), scoped in SQL to `visibility == "public"` so a stranger's friends/private post can't leak), `GET /posts/browse` (public posts for Browse's Meals tab #71 — every `visibility == "public"` post, newest first, uncapped so the client can search the full set; the post counterpart of `GET /recipes/browse`, and unlike the everyone-feed it includes own+friends' public posts), `GET /posts/{id}` (author, a friend of the author, **or anyone on a public post** — that's how a public meal opens from Browse's `/posts/:id` page; else 404), `DELETE /posts/{id}` (author-only), `GET /posts/users/{id}` (a user's posts for their profile grid, friend-or-own gated). The feed/single/profile responses null a post's `recipe_id` when the viewer can't read that linked recipe (private or soft-deleted), so a "See the recipe" link never dead-ends, and carry the post author's `author_photo_url` for the avatar. Recipes also has `GET /recipes/users/{id}` — a user's recipes for their profile grid, `can_view`-gated (own → all; friend → `public` + `friends`; non-friend → `public` only), the recipe counterpart of `GET /posts/users/{id}` (both power the tabbed `ProfileContent`). `main.py` also serves `GET /health` and `GET /health/ready`. **44 routes total** — this number has changed several times; re-count with `grep -rn "^@router\.\|^@app\." app/` rather than trusting it.
+
+**Models** (`app/models/`) — **eleven** SQLAlchemy ORM models: `user` (carries `profile_visibility` — `public | private`, default private — which picks the create-form default and drives the bulk sweep, but does **not** gate reads; and `photo_url` — a nullable Cloudinary URL for the profile picture, NULL → the first-letter monogram; not gated by `profile_visibility`), `recipe`, `ingredient`, `ingredient_section`, `step`, `cook_event`, `handoff`, `feedback`, `password_reset`, `friendship` (symmetric friend graph, one row per unordered pair — social feed Phase 0), `post` (a shared meal for the presence feed — photo + dish name, optional description, optional link to a recipe the author owns, its own concrete 3-value `visibility` with `server_default "friends"`; no ingredients/steps — social feed Phase 1a). Key relationship: Recipe → IngredientSection → Ingredient, but ingredients also have a direct `recipe_id` FK (deliberate denormalization for query simplicity). Recipe also carries `visibility` (concrete: `public | friends | private`), `origin_attribution` (the byline) and `prompt_*`. **No `parent_recipe_id`, no `lineage_relation`, no `ghost_ancestor` table** — all dropped with the lineage model (migration `c1d2e3f4a5b6`).
+
+**Schemas** (`app/schemas/`) — Pydantic models for request/response validation. Separate from ORM models to control what's exposed at the API boundary.
+
+**Services** (`app/services/`) — business logic decoupled from HTTP layer. Nine: `scaling.py` handles the three-type quantity model (precise/imprecise/unmeasured), `folk_units.py` holds the folk-unit vocabulary, `quantity.py` classifies a written amount into that model (shared vocabulary with `folk_units`), `recipe_ai.py` is the OpenRouter call behind `POST /recipes/parse` (strict-schema extraction, amounts preserved verbatim, falls back to a local parser when unavailable), `growth.py` computes `soul_count`/`growth_stage`/`growth_vitality` (still computed + returned on `RecipeResponse`, but no longer surfaced in the UI since the garden redesign), `sharing.py` (formerly `lineage.py`) holds `can_view` (recipes) and `can_view_post` (posts) — the two single read-authorization rules — sharing one truth table (`_resource_is_visible`): owner OR `public` OR (`friends` AND the viewer is an accepted friend via `are_friends`) OR — recipes only, orthogonally — an accepted handoff grant; plus `effective_visibility`, which returns the recipe's own concrete `visibility` unchanged (the profile is not consulted at read time; Browse shows recipes where `visibility == "public"`), `email.py` sends the password-reset email via AWS SES, `invite_og.py` builds the crawler-facing OpenGraph card for `GET /recipes/invite/{token}/preview` (so a shared invite link unfurls as the actual recipe), and `friends.py` holds `are_friends` — the single friendship predicate (like `can_view`), for the symmetric friend graph.
+
+**Auth** (`app/auth.py`) — JWT-based stateless auth. `get_current_user` is the dependency injected into protected endpoints.
+
+**Migrations** (`alembic/`) — `alembic/env.py` imports all models and uses the app's engine directly. New models must be imported there for autogenerate to detect them.
+
+## Key Design Decisions
+
+- **Quantity model:** Ingredients have `quantity_type` of "precise", "imprecise", or "unmeasured". Scaling logic branches on this: precise scales mathematically, imprecise scales approximately, unmeasured stays unchanged.
+- **Folk units:** an amount is imprecise from hedge words ("about", "~") *or* from a folk/body/vessel unit ("3 soup spoons", "a pinch", "a good splash"). `app/services/folk_units.py` splits those into **countable** (count is real → "3 soup spoons" doubles to "6 soup spoons", pluralized) and **non-linear** (a geometry, not a quantity → "3 fingers of water" stays verbatim and the cook gets the multiplier via `scale_note`). `frontend/src/utils/quantity.js` mirrors the same vocabulary at entry time — **keep the two lists in sync.**
+- **Handoff delivers:** `POST /recipes/{id}/handoff` takes an **optional** recipient. With neither `to_email` nor `to_user_id` it is link-only: it mints a token the sender shares via `navigator.share` (copy-link fallback) from `HandoffInvite`'s share stage. Link-only handoffs are deliberately *not* deduped — each is an independent grant.
+- **The invite token is the capability:** `/recipes/invite/{token}` returns the **whole** recipe unauthenticated. This is not a soft wall (it used to be, and that inverted the product). Only the owner's private `notes` and account ids are withheld. Don't reintroduce body gating.
+- **Soft delete:** Recipes use `deleted_at` timestamp. All queries must filter `WHERE deleted_at IS NULL`.
+- **Single transaction pattern:** Recipe creation flushes mid-transaction to get auto-generated IDs for child rows before final commit.
+- **Visibility: a concrete per-item value + a profile that picks the default.** Since #68. A **recipe or post** carries its own `visibility`, one of three literal values — `public` (anyone; eligible for Browse), `friends` (the owner's accepted friends only), `private` (only the owner, + accepted handoff grantees for recipes). New items default to `friends` (schema level); `Post`'s DB `server_default` is `"friends"` and `Recipe`'s stays `"private"` as a bypass safety net. The value is **stored literally**, never a pointer to the profile — a label like "Friends only" means friends only, permanently. The create-time `VisibilityChoice` / edit-time `VisibilityControl` are 3-way ("Everyone" / "Friends only" / "Only me") — there is **no "Follows your profile" option**. A **profile** (`User.profile_visibility`, `public | private`, **private by default**) is **not consulted at read time**: it only (a) picks the default the create form auto-selects for a new item ("Everyone" on a public profile, "Friends only" on a private one) and (b) drives the bulk sweep — so flipping the profile changes **nothing** already stored. The sweep is `PATCH /auth/me` with `apply_visibility_to_all` (`public | friends | private`): it sets every one of the caller's recipes and posts to that concrete value, offered by the Profile-page confirm dialog both ways ("make everything public" / "make everything friends-only"). `can_view` (recipes) and `can_view_post` (posts) are the two read rules, sharing one truth table; `get_recipe`/`browse` gate on `effective_visibility()`, which returns the recipe's own concrete `visibility` (Browse shows `public` only). The handoff grant is **orthogonal** (a grantee reads their one recipe regardless of visibility/friendship).
+- **Read is not write.** `can_view` answers *read* only. Editing and deleting are owner-only, enforced separately by a `user_id` filter in `patch_recipe`/`delete_recipe`; `handoff_recipe` requires ownership too. A grantee can read and cook, never change someone else's record of the dish. Don't collapse these two questions into one rule.
+- **Auth input validation:** `UserCreate` (`app/schemas/user.py`) strips whitespace on names then requires ≥1 char (so `""` and `"   "` fail by the same rule), max 80; password 8–72 bytes (72 is bcrypt's own ceiling — longer is silently truncated). The rules are on the **input** model only, deliberately: tightening `UserResponse` would turn an already-stored blank name into a 500 on read.
+- **One place for error copy:** `toUserMessage` in `frontend/src/api/client.js`. A FastAPI 422 arrives as an array of objects; rendering it raw once put `[object Object]` in front of a user who had just chosen a short password. It surfaces every failing field (deduped), passes a router's deliberate `detail` string through untouched, and separates "no response at all" (offline) from "the server said no". Route new error UI through it rather than formatting inline.
+- **Step check-off is session-only.** `doneSteps` in `RecipeBody` is component state, deliberately not persisted — a half-cooked recipe isn't a document state worth storing, and stale check marks on a later cook would be worse than none.
+
+## Frontend
+
+Located in `frontend/`. React + Vite + Tailwind CSS + React Router + Axios. See `ARCHITECTURE.md` for the full component/page map.
+
+**Design system — the "kitchen" / sticker look** ("Kamala's Recipes"–inspired: bold ink outlines, hard solid offset shadows, saturated color-block fields, chunky display type). The palette source of truth is `frontend/tailwind.config.js`; shared class utilities live in `src/index.css`.
+- **Palette:** cream `#FBF3E2` (app bg) · card `#FCF8EE` · ink `#2E3A24` (outlines + primary text) · ink-soft (secondary text) · line (hairlines) · terra `#B5502A` (the action accent — buttons/links/active) · peach (hero/story color blocks) · coral (accent bars) · saffron (badges/step-note accents) · mint · periwinkle · plum `#8A3D5A`.
+- **Color roles:** `terra` = interactive intent (buttons, links, active nav); `plum` = **the person's name only** (bylines: "from Lola"); `saffron` = the person's-knowledge accents (the story card, the per-step note callout); peach/coral/mint/periwinkle = playful color blocks + sticker badges.
+- **The sticker system:** `.sticker` / `.sticker-press` = ink outline + hard `0_4px_0` offset shadow. Plus `.field`, `.btn-primary`, `.chip`, `.error-pill`, `.section-label`, `.story-callout` — compose these rather than re-deriving.
+- **Type:** TWO families loaded — Fraunces (`font-display`) for headings, titles and most UI, and Nunito Sans (`font-sans`) for body. Those are the only two in `index.html`. `font-hand` does not exist. (`font-serif`/Cormorant Garamond **does** still exist as a config key, but it is legacy and deliberately not loaded — don't use it. `tailwind.config.test.js` excludes it from the must-be-loaded invariant and comments it as legacy.)
+- **No handwritten face.** Caveat, Shantell Sans, Patrick Hand, Architects Daughter and Kalam were each tried for a person's story and their per-step notes, and all five were cut: it's body content someone cooks from, the data is typed text (so a script face implies a recording that doesn't exist), and it reads as a consumer novelty against the discipline of the rest of this design. A person's presence is signalled STRUCTURALLY instead — the saffron card, the quote stamp, the attributed heading, Fraunces italic. See the long note in `frontend/tailwind.config.js`; `tailwind.config.test.js` asserts no `hand` family exists **and** that every family the app references is actually loaded (a referenced-but-unloaded font falls back to a system face and fails silently).
+- **Logo:** the `issei.` wordmark — a `Wordmark.jsx` component rendering cream Fraunces on an ink sticker plate (the one inverted element in the app). A `bare` prop drops the plate for use on an already-colored field (e.g. the photo-less `CoverImage` placeholder). `MarkerTitle` gives section headers a highlighter-swipe.
+- **Language:** kitchen register — "Your kitchen", "Open your kitchen" (signup). Recipes are named by the **dish** ("Adobo"); the person shows as "from {source}" (from `origin_attribution`), the verb muted + the name emphasized in plum. The story card is headed "{Name}'s story" and a per-step note is headed "a note on this step" — **not** "In X's words" / "their words", which claimed a recording and verbatim speech that don't exist.
+- **Theme:** light/cream throughout — no dark theme.
+- Mobile-first, max-width 430px centered on desktop.
+- **Bottom nav** (floating sticker pill): Home · Browse · Add · Kitchen · You.
+
+**Conventions:**
+- JWT in localStorage under `issei_token`; user object under `issei_user`.
+- All API calls go through `src/api/client.js` (axios instance w/ base URL + auth header + 401 handling + `toUserMessage`); recipe/sharing calls in `src/api/sharing.js` (was `api/lineage.js`).
+- Components in `src/components/`, pages in `src/pages/`; hooks only, no class components.
+- No UI libraries (no shadcn, no MUI) — custom Tailwind only.
+- **Env:** `VITE_API_URL` (backend base URL), `VITE_APP_VERSION` (optional; stamped onto feedback so a report says which deploy it came from). `VITE_FEEDBACK_URL` is GONE — feedback is a native form at `/feedback` writing to the `feedback` table, not an external link. See `frontend/.env.example`.
+- **Don't git commit without my approval.**
+
+**Screens:** Login/Signup (`/login`), Welcome (`/welcome` — post-signup three-panel intro (two that teach + one optional profile-photo step), shown once, protected but no bottom nav), Feed (`/` — the friends' presence feed, the new Home), Browse (`/browse` — Recipes | Meals tabs; Meals = public posts, #71), MyRecipes / "Your kitchen" (`/my-recipes`), RecipePage (`/recipes/:id`), PostPage (`/posts/:id` — a single shared meal, read-only, reached from Browse's Meals tab), EditRecipe (`/recipes/:id/edit`), AddChooser (`/add` — chooser: "Share a meal" → PostComposer at `/add/meal`, "Keep a recipe" → PlantRecipe at `/add/recipe`), HandoffPage (`/recipes/:id/handoff`), SharedWithMe (`/shared`), InviteLanding (`/invite/:token` — public, full recipe, no wall), Profile / "You" (`/profile`), Friends / "Friends" (`/friends` — friend graph, reached from You), UserProfile (`/u/:userId` — read-only profile of another user, with the friend button).
+
+**Two public routes only:** `/login` (wrapped in `PublicOnlyRoute`, which bounces a signed-in user but honors an `?invite=` token) and `/invite/:token`. Everything else is behind `ProtectedRoute`.
