@@ -140,7 +140,7 @@ strangers arrive. Security/privacy first.
 
 ### Data model
 
-- **Deleting a user is a wide, untested cascade.** There's no account-delete path shipped
+- **Deleting a user is a wide, untested cascade.** `DELETE /auth/me` ships now (password-confirmed, hard delete relying on DB-level cascades); the cascade breadth is what's untested
   yet, but the FK cascades are already defined: deleting a user removes their recipes — and
   a recipe cascade-deletes its ingredients/steps/cook-events/handoffs. Concretely, **a
   grantee's "shared with me" recipe disappears if the original sender deletes their
@@ -151,7 +151,7 @@ strangers arrive. Security/privacy first.
 - **Visibility is three unconstrained string columns, and `profile_visibility` never
   gates reads.** `recipe.visibility`, `post.visibility`, `user.profile_visibility` are bare
   strings — no enum/CHECK — so a typo silently misbehaves. And `profile_visibility` does
-  NOT decide who can read anything; it only picks the create-form default and drives the
+  NOT decide who can read anything; it only picks the create-form default (except mid-post, #81, where a recipe written from the meal composer starts from the POST's visibility) and drives the
   bulk sweep. *Why flagged:* the "I made my profile private, why can people still see my
   public recipe?" report is *working as designed* — you'll hear it; also add a DB-level
   CHECK/enum before users depend on it. *Where:* `app/models/{recipe,post,user}.py`;

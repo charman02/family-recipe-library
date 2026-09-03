@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { createPost } from '../api/posts'
 import { toUserMessage } from '../api/client'
 import { createUploader, PHOTO_ACCEPT } from '../lib/photoUpload'
@@ -15,16 +15,31 @@ import RecipePicker from '../components/RecipePicker'
 // recipe cover, so HEIC handling and the race-safe uploader come for free.
 export default function PostComposer() {
   const navigate = useNavigate()
-  const [photoUrl, setPhotoUrl] = useState('')
-  const [dishName, setDishName] = useState('')
-  const [description, setDescription] = useState('')
+  const location = useLocation()
+  // A draft handed back from the write-a-recipe flow (#81). Everything on this form is a
+  // string or an already-uploaded Cloudinary URL — no File objects — so the draft survives
+  // a round trip through another route intact. Read at useState INIT time, not in an
+  // effect, so the restored form is what renders first (no empty-then-filled flash).
+  const draft = location.state?.postDraft || null
+  const returned = location.state?.attachRecipe || null
+  const [photoUrl, setPhotoUrl] = useState(draft?.photo_url || '')
+  const [dishName, setDishName] = useState(() => {
+    // Same rule as attachRecipe below, TRIM-aware to match it: a recipe fills the dish
+    // name only if the author hasn't typed one, capped to the field's own maxLength.
+    // Truthiness alone let a whitespace-only name block the fill, stranding the user on a
+    // field that looks empty with "Share it" disabled and nothing explaining why.
+    const typed = draft?.dish_name || ''
+    if (typed.trim()) return typed
+    return returned ? returned.name.slice(0, 120) : typed
+  })
+  const [description, setDescription] = useState(draft?.description || '')
   // Concrete visibility (#68). Auto-select mirrors the author's profile — "Everyone" on
   // a public profile, "Friends only" on a private one — but the value is stored literally.
   const profileVisibility =
     JSON.parse(localStorage.getItem('issei_user') || '{}').profile_visibility ||
     'private'
   const [visibility, setVisibility] = useState(
-    profileVisibility === 'public' ? 'public' : 'friends',
+    draft?.visibility || (profileVisibility === 'public' ? 'public' : 'friends'),
   )
   const [uploading, setUploading] = useState(false)
   const [photoError, setPhotoError] = useState('')
@@ -34,8 +49,32 @@ export default function PostComposer() {
   // Optionally link one of your OWN recipes (#72). We keep the whole recipe object for the
   // chip's label/byline; only its id is sent. Ownership is the backend's call — create_post
   // 404s a recipe_id that isn't the caller's — so this is a convenience link, not a grant.
-  const [recipe, setRecipe] = useState(null)
+  const [recipe, setRecipe] = useState(returned)
   const [pickerOpen, setPickerOpen] = useState(false)
+
+  // "Write one" (#81): hand the draft to the real add-a-recipe flow rather than
+  // reimplementing recipe entry in a sheet here. That flow owns paste/dictate, the LLM
+  // parse and the 1000-line form; duplicating a "quick" version would fork the folk-unit
+  // vocabulary and the validation. It saves the recipe for real and returns here with it
+  // attached — so a recipe you wrote isn't lost if you then abandon the post.
+  function writeRecipe() {
+    // Never leave mid-upload: photoUrl is still '' until the upload resolves, and the
+    // in-flight response writes to an unmounted component (a silent no-op), so the recipe
+    // would inherit no cover and the post would come back photo-less. Every other exit
+    // already waits on this — `ready` gates "Share it" the same way.
+    if (uploading) return
+    const state = {
+      postDraft: { photo_url: photoUrl, dish_name: dishName, description, visibility },
+      // Carried so a return trip can hand it back: without this, backing out of the recipe
+      // flow rebuilt the draft with no recipe and silently dropped an existing attachment.
+      attachRecipe: recipe,
+    }
+    // Stamp THIS history entry before pushing, so the phone's back gesture (which pops
+    // rather than running our handler) lands on a composer that still has the draft
+    // instead of an empty one.
+    navigate('.', { replace: true, state })
+    navigate('/add/recipe', { state })
+  }
 
   function attachRecipe(r) {
     setRecipe(r)
@@ -78,8 +117,11 @@ export default function PostComposer() {
         visibility,
         recipe_id: recipe ? recipe.id : null,
       })
-      // Land on the feed, where the new post now sits at the top.
-      navigate('/', { state: { justPosted: data.id } })
+      // REPLACE, don't push. This entry's router state still holds a complete draft, so a
+      // pushed navigation left it one back-gesture away: remounting re-seeded every field,
+      // reset `posting` to false, and re-enabled "Share it" — one tap from a duplicate post
+      // that nothing on the server dedupes.
+      navigate('/', { state: { justPosted: data.id }, replace: true })
     } catch (err) {
       setError(toUserMessage(err, 'Couldn’t share that. Try again.'))
       setPosting(false)
@@ -193,7 +235,7 @@ export default function PostComposer() {
           Attached: a chip showing the recipe (cover/pot + name) with a remove ×. The
           post is still a light meal post; this is a pointer, not the recipe itself. */}
       <div className="mt-5">
-        <span className="section-label">Attach a recipe (optional)</span>
+        <span className="section-label">Write or attach a recipe (optional)</span>
         {recipe ? (
           <div className="mt-2 flex items-center gap-3 rounded-[14px] border-2 border-ink bg-card p-2 shadow-[0_2px_0_#2E3A24]">
             {recipe.cover_photo_url ? (
@@ -227,14 +269,28 @@ export default function PostComposer() {
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-[14px] border-2 border-dashed border-ink/50 bg-card py-3 font-display font-bold text-[14px] text-ink-soft active:translate-y-[1px] transition-transform"
-          >
-            <Icon name="plus" className="w-4 h-4" />
-            Attach one of your recipes
-          </button>
+          /* Two doors. "Write one" leads, because the case that was missing is the one
+             where you just cooked something you've never written down — the whole reason
+             this exists. "Attach one" is #72's original path, unchanged. */
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={writeRecipe}
+              disabled={uploading}
+              className="disabled:opacity-50 flex flex-1 items-center justify-center gap-1.5 rounded-[14px] border-2 border-dashed border-ink/50 bg-card py-3 font-display font-bold text-[13.5px] text-ink-soft active:translate-y-[1px] transition-transform"
+            >
+              <Icon name="plus" className="w-4 h-4" />
+              Write one
+            </button>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-[14px] border-2 border-dashed border-ink/50 bg-card py-3 font-display font-bold text-[13.5px] text-ink-soft active:translate-y-[1px] transition-transform"
+            >
+              <Icon name="book" className="w-4 h-4" />
+              Attach one
+            </button>
+          </div>
         )}
       </div>
 

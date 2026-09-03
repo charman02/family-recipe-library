@@ -45,7 +45,7 @@ line, the revision wins and the older text is annotated in place.
      "Friends only" therefore means friends only, permanently — it never silently changes
      when the profile changes.
    - **The profile is NOT consulted at read time.** It does exactly two things: (a) it
-     picks the default the create form auto-selects for a new item ("Everyone" on a public
+     picks the default the create form auto-selects for a new item (mid-post, #81, the post's own visibility does instead) ("Everyone" on a public
      profile, "Friends only" on a private one), and (b) it drives the bulk sweep below. So
      **flipping the profile changes nothing already stored.**
    - **Rescoping existing items is the bulk sweep, not a profile flip.** `PATCH /auth/me`

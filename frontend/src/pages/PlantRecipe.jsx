@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import RecipeForm from '../components/RecipeForm'
 import PasteRecipe from '../components/PasteRecipe'
 import HandoffInvite from '../components/HandoffInvite'
@@ -20,6 +20,15 @@ import { plantRecipe } from '../api/sharing'
 // was broken. See PasteRecipe + lib/parseRecipeText.
 export default function PlantRecipe() {
   const navigate = useNavigate()
+  const location = useLocation()
+  // Entered mid-post from the composer (#81): "you just cooked something you've never
+  // written down". The draft rides along in router state so the post survives the detour,
+  // and on save we go BACK to it with the new recipe attached instead of running the
+  // celebrate/handoff tail — the user is in the middle of something else.
+  const postDraft = location.state?.postDraft || null
+  // A recipe already attached to the post before this detour. Carried so backing out hands
+  // it back instead of silently dropping the attachment.
+  const alreadyAttached = location.state?.attachRecipe || null
   // No doorway step any more: /add already chose "Write a recipe", so we land straight
   // on the say/paste screen (the one signature way in). The old blank-form door lives
   // on as a "Rather type it in?" link at the bottom of that screen.
@@ -37,7 +46,10 @@ export default function PlantRecipe() {
     JSON.parse(localStorage.getItem('issei_user') || '{}').profile_visibility ||
     'private'
   const [visibility, setVisibility] = useState(
-    profileVisibility === 'public' ? 'public' : 'friends',
+    // Mid-post, start from what the author already chose for the post — same dish, same
+    // moment, same audience intent. Still shown in VisibilityChoice and still stored
+    // literally, so this is a starting point, not a link to the post's value.
+    postDraft?.visibility || (profileVisibility === 'public' ? 'public' : 'friends'),
   )
   const [saved, setSaved] = useState(null)
 
@@ -47,6 +59,8 @@ export default function PlantRecipe() {
   // "Rather type it in?" goes back to the paste screen too.
   function goBack() {
     if (step === 'form') setStep('paste')
+    else if (postDraft)
+      navigate('/add/meal', { state: { postDraft, attachRecipe: alreadyAttached } })
     else navigate('/add')
   }
 
@@ -94,16 +108,53 @@ export default function PlantRecipe() {
   // Save with the dish name alone. Same endpoint and the same visibility choice as a
   // full save — this is a smaller recipe, not a different kind of thing. No origin:
   // the name-only escape hatch is offered before the source field is filled.
-  async function handleQuickSave(dishName) {
-    const { data } = await plantRecipe({ name: dishName, visibility })
-    setSaved(data)
-    setStep('celebrate')
+  async function handleQuickSave(dishName, { coverPhotoUrl } = {}) {
+    const { data } = await plantRecipe({
+      name: dishName,
+      visibility,
+      // The cover comes from the FORM's live value, which the mid-post seed pre-filled with
+      // the post's photo. Reading the draft directly here instead meant a cover the user had
+      // just removed reappeared on save.
+      ...(coverPhotoUrl ? { cover_photo_url: coverPhotoUrl } : {}),
+    })
+    finish(data)
   }
 
   // The form builds its own payload, including the optional origin from its
   // "Passed down from" field. This handler just adds visibility and posts.
   async function handleFormSubmit(formPayload) {
     const { data } = await plantRecipe({ ...formPayload, visibility })
+    finish(data)
+  }
+
+  // What the post already knows, handed to the form so nothing is typed twice — the
+  // "zero re-entry" the social-feed design specifies (docs/SOCIAL_FEED_DESIGN.md): the post's
+  // dish name becomes the recipe name, its description the description, its photo the cover.
+  // The post's description field is deliberately worded as a DISH description for exactly
+  // this reason. A parse wins over all of it: `seeded` values overwrite these, but only where
+  // the parser actually produced one — a plain spread would blank a real draft value with the
+  // parser's `undefined`.
+  const draftSeed = postDraft
+    ? {
+        name: postDraft.dish_name?.trim() || undefined,
+        description: postDraft.description?.trim() || undefined,
+        coverPhotoUrl: postDraft.photo_url || undefined,
+      }
+    : {}
+  const formInitial = { ...draftSeed }
+  for (const [k, v] of Object.entries(seeded || {})) {
+    if (v !== undefined) formInitial[k] = v
+  }
+
+  // Where a save lands. Standalone: the celebration, then the optional hand-off. Mid-post:
+  // straight back to the composer with the recipe attached — the celebration would be
+  // claiming the act is finished when the post still isn't shared. The recipe is saved
+  // either way before this runs, so abandoning the post never loses it.
+  function finish(data) {
+    if (postDraft) {
+      navigate('/add/meal', { state: { postDraft, attachRecipe: data } })
+      return
+    }
     setSaved(data)
     setStep('celebrate')
   }
@@ -115,6 +166,13 @@ export default function PlantRecipe() {
         onParsed={handleParsed}
         onBack={goBack}
         onTypeItIn={typeItIn}
+        // Said on the FIRST screen, not just the form: the live run showed you land here
+        // with no sign your meal survived the tap, which is the one thing you'd worry about.
+        note={
+          postDraft
+            ? 'Your meal is still waiting — saving brings you back to it, recipe attached.'
+            : null
+        }
       />
     )
   }
@@ -126,7 +184,7 @@ export default function PlantRecipe() {
           mode="add"
           onSubmit={handleFormSubmit}
           onQuickSave={handleQuickSave}
-          initialValues={seeded || {}}
+          initialValues={formInitial}
           topSlot={<BackButton onClick={goBack} label="Back" />}
           // Sits just above "Save this recipe" — the last thing you decide before
           // saving, and no extra step in a flow testers already found effortful.
@@ -159,6 +217,7 @@ export default function PlantRecipe() {
               <p className="font-display italic text-[14px] text-ink-soft -mt-2 mb-4">
                 Add what you&rsquo;ve got — &ldquo;a splash of vinegar&rdquo; is
                 perfect. Only the dish name is required.
+                {postDraft && ' Saving brings you back to your meal, recipe attached.'}
               </p>
             )
           }

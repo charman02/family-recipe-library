@@ -187,10 +187,13 @@ and that the text is verbatim speech from the source person.
 
 The UI has already been corrected to say **"a note on this step"**, and the story
 heading says **"{Name}'s story"** rather than "In {Name}'s words"
-(`frontend/src/components/RecipeBody.jsx`). Four test files assert no voice/audio claim
-appears in the UI: `frontend/src/pages/PlantRecipe.test.jsx`,
-`frontend/src/pages/Login.test.jsx`, `frontend/src/pages/Welcome.test.jsx`,
-`frontend/src/pages/InviteLanding.test.jsx`.
+(`frontend/src/components/RecipeBody.jsx`). SIX test files assert no voice/audio claim appears in
+the UI: `components/DictateButton.test.jsx` and `components/PasteRecipe.test.jsx` (each via a
+`BANNED = /record|recording|voice|audio|in their own words|listen/` regex over the rendered
+screen), `components/RecipeBody.test.jsx`, `pages/Login.test.jsx`, `pages/Welcome.test.jsx`
+and `pages/InviteLanding.test.jsx`. (This list previously named `pages/PlantRecipe.test.jsx`,
+which asserts nothing of the kind, and omitted three files that do — verified by reading
+each one, not by grepping for the word.)
 
 Internal identifiers (`voice_note`, `soul_count`) may keep their names; **user-facing
 and recruiter-facing text may not**.
@@ -230,7 +233,7 @@ toggle** (#70 — "everyone" shows *public* posts from non-friends); and **publi
 Browse** (#71 — the Meals tab + the `/posts/:id` post page); **keeping** a recipe you
 didn't write (#57 — the Kitchen's Kept tab); and the **app-wide people directory** (#80 —
 "Everyone on issei" on the Friends page, plus a name search and a permanent Friends button
-on Home). Note what that last one means for any privacy claim: every signed-in user can
+on Home); and **writing a recipe mid-post** (#81 — the meal composer's "Write one" door hands its draft to the add-a-recipe flow and gets the recipe back attached). Note what the directory means for any privacy claim: every signed-in user can
 enumerate every other user's name and photo, with no opt-out — so do **not** describe the
 app as private-by-default without qualifying that findability is not covered by the
 profile setting (see TECHDEBT's "Auth & permissions").
@@ -298,7 +301,7 @@ git history now.
 ### Don't inflate the numbers — measure them
 
 As measured on this branch (see `README.md` for the method): **48 routes**, **12 models**,
-**360 backend tests**, **572 frontend tests in 45 files**. Endpoint and test counts have
+**361 backend tests**, **594 frontend tests in 45 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

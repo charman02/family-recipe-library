@@ -1161,9 +1161,9 @@ describe('RecipeForm attribution is not silently dropped', () => {
     fireEvent.change(screen.getByLabelText('Dish name'), {
       target: { value: 'Adobo' },
     })
-    expect(screen.getByText(/just keep the name for now/i)).toBeInTheDocument()
+    expect(screen.getByText(/just save the name for now/i)).toBeInTheDocument()
     fireEvent.change(sourceField(), { target: { value: 'Lola' } })
-    expect(screen.queryByText(/just keep the name for now/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/just save the name for now/i)).not.toBeInTheDocument()
   })
 
   it('carries a stored place/year through when only the name is edited', async () => {

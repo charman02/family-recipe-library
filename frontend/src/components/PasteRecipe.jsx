@@ -65,7 +65,16 @@ Brown the chicken skin-side down
 Add the soy and vinegar
 Simmer until the sauce coats a spoon`
 
-export default function PasteRecipe({ onParsed, onBack, onTypeItIn, initialText = '' }) {
+export default function PasteRecipe({
+  onParsed,
+  onBack,
+  onTypeItIn,
+  initialText = '',
+  // Optional reassurance shown under the subtitle. Exists for #81: this is the screen you
+  // land on when you tap "Write one" mid-post, and without a word here the user has no way
+  // to know their half-written meal is still waiting for them.
+  note = null,
+}) {
   // Seeded from the parent so going back from the form returns the SAME text.
   const [text, setText] = useState(initialText)
   const [tooThin, setTooThin] = useState(false)
@@ -199,6 +208,9 @@ export default function PasteRecipe({ onParsed, onBack, onTypeItIn, initialText 
       <p className="font-display text-[15px] text-ink mt-2">
         Messy is fine — tell it how you make it, and we&rsquo;ll sort it into a recipe.
       </p>
+      {note && (
+        <p className="font-display italic text-[13.5px] text-ink-soft mt-2">{note}</p>
+      )}
 
       {/* Mode toggle — "Say it" first (where supported). A segmented sticker pill,
           centered on the screen so it reads as the page's primary switch rather

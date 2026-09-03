@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { buildOriginPayload } from '../lib/originPayload'
 
 vi.mock('../api/sharing', () => ({
@@ -63,8 +63,22 @@ vi.mock('../components/RecipeForm', () => ({
         >
           submit-form
         </button>
+        {/* Mirrors the real form's contract: quick-save reports the LIVE cover, and the
+            real button is hidden unless the form is otherwise empty. Two buttons so a test
+            can drive both "cover as seeded" and "cover the user removed". */}
         {onQuickSave && (
-          <button onClick={() => onQuickSave('Congee')}>quick-save</button>
+          <>
+            <button
+              onClick={() =>
+                onQuickSave('Congee', { coverPhotoUrl: initialValues.coverPhotoUrl || '' })
+              }
+            >
+              quick-save
+            </button>
+            <button onClick={() => onQuickSave('Congee', { coverPhotoUrl: '' })}>
+              quick-save-cover-removed
+            </button>
+          </>
         )}
       </div>
     )
@@ -93,11 +107,27 @@ beforeEach(() => {
   lastProps = null
 })
 
-function renderFlow() {
+function renderFlow(state) {
   render(
-    <MemoryRouter>
-      <PlantRecipe />
+    <MemoryRouter initialEntries={[{ pathname: '/add/recipe', state }]}>
+      <Routes>
+        <Route path="/add/recipe" element={<PlantRecipe />} />
+        {/* Where a mid-post save must land. Echoes what it was handed. */}
+        <Route path="/add/meal" element={<ComposerSpy />} />
+        <Route path="/add" element={<div>add chooser</div>} />
+      </Routes>
     </MemoryRouter>,
+  )
+}
+
+function ComposerSpy() {
+  const { state } = useLocation()
+  return (
+    <div>
+      <p>back at the composer</p>
+      <p>draft: {JSON.stringify(state?.postDraft)}</p>
+      <p>attached: {state?.attachRecipe ? state.attachRecipe.id : 'none'}</p>
+    </div>
   )
 }
 
@@ -310,7 +340,7 @@ describe('PlantRecipe — keeping just the name', () => {
   it('saves with the dish name alone, then celebrates', async () => {
     renderFlow()
     await enterDoor(/rather type it in/i)
-    await userEvent.click(screen.getByRole('button', { name: /quick-save/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^quick-save$/i }))
     expect(plantRecipe).toHaveBeenCalledWith({
       name: 'Congee',
       visibility: 'friends',
@@ -440,5 +470,158 @@ describe('PlantRecipe — the model reads it first', () => {
     await speak()
     await waitFor(() => expect(lastProps).not.toBeNull())
     expect(plantRecipe).not.toHaveBeenCalled()
+  })
+})
+
+// #81 — entered mid-post from the meal composer. The composer hands its draft over in
+// router state; this flow must give it back rather than stranding a half-written post.
+describe('PlantRecipe — entered from the meal composer', () => {
+  const postDraft = {
+    photo_url: 'https://img.test/meal.jpg',
+    dish_name: 'Sunday adobo',
+    description: 'the good one',
+    visibility: 'public',
+  }
+
+  it('returns to the composer with the saved recipe instead of celebrating', async () => {
+    renderFlow({ postDraft })
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
+
+    expect(await screen.findByText(/back at the composer/i)).toBeInTheDocument()
+    expect(screen.getByText(/attached: 42/)).toBeInTheDocument()
+    expect(JSON.parse(screen.getByText(/^draft:/).textContent.replace('draft: ', '')))
+      .toEqual(postDraft)
+    // The celebration would claim the act is done while the post still isn't shared.
+    expect(screen.queryByText(/celebration for/i)).not.toBeInTheDocument()
+  })
+
+  it('still celebrates when NOT entered from a post', async () => {
+    renderFlow()
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
+    expect(await screen.findByText(/celebration for congee/i)).toBeInTheDocument()
+  })
+
+  it('reassures you on the ENTRY screen that the meal is still waiting', async () => {
+    // Caught by running it: the note was only on the blank form, but the screen you
+    // actually land on after tapping "Write one" is say/paste — so the one worry the
+    // feature creates ("did I just lose my post?") went unanswered.
+    renderFlow({ postDraft })
+    expect(screen.getByText(/your meal is still waiting/i)).toBeInTheDocument()
+  })
+
+  it('says nothing about a meal when entered standalone', async () => {
+    renderFlow()
+    expect(screen.queryByText(/your meal is still waiting/i)).not.toBeInTheDocument()
+  })
+
+  it("inherits the post's photo as the recipe cover", async () => {
+    renderFlow({ postDraft })
+    await enterDoor(/rather type it in/i)
+    // You just uploaded a picture of this exact dish; asking for it twice is the friction.
+    expect(lastProps.initialValues.coverPhotoUrl).toBe('https://img.test/meal.jpg')
+  })
+
+  it('sends the cover the FORM reports on a name-only quick save', async () => {
+    renderFlow({ postDraft })
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: /^quick-save$/i }))
+    await waitFor(() =>
+      expect(plantRecipe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Congee',
+          cover_photo_url: 'https://img.test/meal.jpg',
+        }),
+      ),
+    )
+    expect(await screen.findByText(/attached: 42/)).toBeInTheDocument()
+  })
+
+  it('does NOT resurrect a cover the user removed in the form', async () => {
+    // The defect this replaced: quick-save read the post draft directly instead of the
+    // form's live value, so clearing the inherited cover and taking the name-only shortcut
+    // saved the recipe with the exact photo that had just been removed.
+    renderFlow({ postDraft })
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: /^quick-save-cover-removed$/i }))
+    await waitFor(() => expect(plantRecipe).toHaveBeenCalled())
+    expect(plantRecipe.mock.calls[0][0]).not.toHaveProperty('cover_photo_url')
+  })
+
+  it("starts from the post's visibility rather than the profile default", async () => {
+    // The profile is private here (no issei_user in localStorage → 'private'), so without
+    // the seed this would be 'friends'. Same dish, same moment, same audience intent —
+    // and it's still stored literally, not linked to the post.
+    renderFlow({ postDraft })
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
+    await waitFor(() =>
+      expect(plantRecipe).toHaveBeenCalledWith(
+        expect.objectContaining({ visibility: 'public' }),
+      ),
+    )
+  })
+
+  it('backing out returns to the composer with the draft, not to the add chooser', async () => {
+    renderFlow({ postDraft })
+    // From the say/paste entry screen, back exits the flow — which mid-post means the
+    // post, not /add. Losing the draft here is the exact failure this task removes.
+    await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(await screen.findByText(/back at the composer/i)).toBeInTheDocument()
+    expect(JSON.parse(screen.getByText(/^draft:/).textContent.replace('draft: ', '')))
+      .toEqual(postDraft)
+    expect(screen.getByText(/attached: none/)).toBeInTheDocument()
+  })
+
+  it('still exits to the add chooser when standalone', async () => {
+    renderFlow()
+    await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(await screen.findByText(/add chooser/i)).toBeInTheDocument()
+  })
+
+  it("seeds the recipe with ALL THREE things the post already knows", async () => {
+    // docs/SOCIAL_FEED_DESIGN.md's "zero re-entry": name, description and photo→cover. Only
+    // the photo was wired at first, so someone who'd just typed "Sunday adobo / the good one"
+    // was asked for both again one screen later.
+    renderFlow({ postDraft })
+    await enterDoor(/rather type it in/i)
+    expect(lastProps.initialValues).toMatchObject({
+      name: 'Sunday adobo',
+      description: 'the good one',
+      coverPhotoUrl: 'https://img.test/meal.jpg',
+    })
+  })
+
+  it('lets a parse win over the post fields, without blanking what it did not find', async () => {
+    // A parse is a deliberate re-read of the recipe, so its values take precedence — but
+    // `undefined` from the parser must not overwrite a real draft value.
+    renderFlow({ postDraft })
+    const RECIPE_TEXT = [
+      'Congee',
+      '',
+      'Ingredients',
+      '1 cup rice',
+      '',
+      'Steps',
+      'Simmer it slowly for an hour',
+    ].join('\n')
+    await userEvent.type(screen.getByRole('textbox'), RECIPE_TEXT)
+    await userEvent.click(screen.getByRole('button', { name: /sort this out/i }))
+    await waitFor(() => expect(lastProps).not.toBeNull())
+    // The parser named the dish, so that wins...
+    expect(lastProps.initialValues.name).toBe('Congee')
+    // ...but it found no description, and the post's must survive.
+    expect(lastProps.initialValues.description).toBe('the good one')
+    expect(lastProps.initialValues.coverPhotoUrl).toBe('https://img.test/meal.jpg')
+  })
+
+  it('hands back an already-attached recipe when you back out', async () => {
+    // Reachable by browser-back into this flow after a completed round trip. Rebuilding the
+    // draft without it silently dropped the attachment and the composer showed the doors again.
+    renderFlow({ postDraft, attachRecipe: { id: 7, name: 'Earlier one' } })
+    await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(await screen.findByText(/back at the composer/i)).toBeInTheDocument()
+    expect(screen.getByText(/attached: 7/)).toBeInTheDocument()
   })
 })

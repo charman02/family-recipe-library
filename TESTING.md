@@ -61,7 +61,7 @@ Each is a real, named test today (verify with the command; don't trust this list
 alone — re-run it):
 
 1. **Read authorization: a private recipe is invisible to non-owners.**
-   `can_view` is the single rule (public OR owner OR accepted grant). A stranger
+   `can_view` is the single rule (owner OR `public` OR (`friends` AND an accepted friend via `are_friends`) OR an accepted handoff grant — the `friends` branch arrived with #68). A stranger
    gets 404 on the recipe, its scale, its cook, and it never appears in `/browse`.
    → `tests/test_sharing.py`, `tests/test_visibility.py`
 
@@ -115,5 +115,5 @@ alone — re-run it):
 
 Backend routers are well covered. These frontend surfaces have **no test file** and
 are the first places a silent break can hide — add tests when you next touch them:
-`EditRecipe`, `Browse`, `HandoffPage`, `ForgotPassword`, `ResetPassword`.
+`EditRecipe`, `HandoffPage`, `ForgotPassword`, `ResetPassword`. (`Browse` has a test file now.)
 (`EditRecipe` being untested is exactly how invariant 7's bug reached prod.)

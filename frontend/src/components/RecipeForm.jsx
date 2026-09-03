@@ -567,11 +567,15 @@ export default function RecipeForm({
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => onQuickSave(name.trim())}
+                // Hand back the live cover too. The caller used to substitute a cover it
+                // had seeded (#81's inherited post photo), which meant a cover the user had
+                // just REMOVED came back on save — two sources of truth for one field, with
+                // the stale one winning. The form owns this value, so the form reports it.
+                onClick={() => onQuickSave(name.trim(), { coverPhotoUrl })}
                 className="mt-3 w-full text-left sticker sticker-press bg-sage px-4 py-3"
               >
                 <span className="block font-display font-black text-[14.5px] text-ink leading-tight">
-                  Just keep the name for now &rarr;
+                  Just save the name for now &rarr;
                 </span>
                 <span className="block font-display italic text-[12.5px] text-ink-soft mt-0.5 leading-snug">
                   Saves it as {name.trim()}. Add the rest whenever you like.
