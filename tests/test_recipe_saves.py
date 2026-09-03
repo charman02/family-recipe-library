@@ -158,6 +158,99 @@ def test_deleting_the_recipe_removes_it_from_the_shelf_and_is_counted(client, ma
     assert shelf["recipes"] == [] and shelf["unreachable_count"] == 1
 
 
+def test_losing_access_is_permanent_reopening_does_not_restore_the_bookmark(client, make_user):
+    """THE product rule: losing access removes the bookmark for good.
+
+    A cook who restricts a recipe and later re-opens it does NOT silently put it back on
+    everyone's shelf — they have to share it again. Anything else means a recipe can
+    reappear in a stranger's kitchen because of a setting they never see, and it makes
+    "I took that back" untrue."""
+    owner, oh = make_user()
+    keeper, kh = make_user()
+    rec = _recipe(client, oh, name="Taken back", visibility="public")
+    client.post(f"/recipes/{rec['id']}/save", headers=kh)
+    assert len(client.get("/recipes/kept", headers=kh).json()["recipes"]) == 1
+
+    # Restricted → drops off the shelf, reported once.
+    client.patch(f"/recipes/{rec['id']}", json={"visibility": "private"}, headers=oh)
+    first = client.get("/recipes/kept", headers=kh).json()
+    assert first["recipes"] == [] and first["unreachable_count"] == 1
+    # Reported ONCE: the bookmark is gone, so a second load is simply empty, not a
+    # standing complaint the keeper can never clear.
+    second = client.get("/recipes/kept", headers=kh).json()
+    assert second == {"recipes": [], "unreachable_count": 0}
+
+    # The cook re-opens it. It must NOT come back.
+    client.patch(f"/recipes/{rec['id']}", json={"visibility": "public"}, headers=oh)
+    assert client.get("/recipes/kept", headers=kh).json() == {
+        "recipes": [],
+        "unreachable_count": 0,
+    }
+    # It is readable again (it's public), so keeping it again is the way back — which is
+    # the same deliberate act as the first time.
+    assert client.get(f"/recipes/{rec['id']}", headers=kh).status_code == 200
+    assert client.post(f"/recipes/{rec['id']}/save", headers=kh).status_code == 201
+    assert len(client.get("/recipes/kept", headers=kh).json()["recipes"]) == 1
+
+
+def test_a_deleted_recipe_is_gone_for_everyone_forever(client, make_user):
+    """Deletion is absolute: no keeper, grantee, or anyone else reaches it again."""
+    owner, oh = make_user()
+    keeper, kh = make_user()
+    grantee, gh = make_user()
+    rec = _recipe(client, oh, name="Gone", visibility="public")
+    client.post(f"/recipes/{rec['id']}/save", headers=kh)
+    client.post(f"/recipes/{rec['id']}/handoff", json={"to_user_id": grantee.id}, headers=oh)
+    assert client.get(f"/recipes/{rec['id']}", headers=gh).status_code == 200
+
+    assert client.delete(f"/recipes/{rec['id']}", headers=oh).status_code == 204
+
+    # The keeper's bookmark is pruned; the grantee's grant survives as history but the
+    # recipe is unreachable through it, and neither can read it.
+    keeper_shelf = client.get("/recipes/kept", headers=kh).json()
+    assert keeper_shelf["recipes"] == [] and keeper_shelf["unreachable_count"] == 1
+    assert client.get("/recipes/kept", headers=kh).json()["unreachable_count"] == 0
+    assert client.get("/recipes/kept", headers=gh).json()["recipes"] == []
+    for h in (oh, kh, gh):
+        assert client.get(f"/recipes/{rec['id']}", headers=h).status_code == 404
+
+
+def test_unfriending_removes_the_bookmark_permanently(client, make_user):
+    """Re-friending doesn't restore it either — same rule, different cause."""
+    owner, oh = make_user()
+    friend, fh = make_user()
+    _befriend(client, owner, oh, friend, fh)
+    rec = _recipe(client, oh, name="Friends only", visibility="friends")
+    client.post(f"/recipes/{rec['id']}/save", headers=fh)
+    assert len(client.get("/recipes/kept", headers=fh).json()["recipes"]) == 1
+
+    _unfriend(client, owner, oh, friend)
+    assert client.get("/recipes/kept", headers=fh).json()["unreachable_count"] == 1
+
+    # Friends again — the recipe is readable, but the shelf entry does not return.
+    _befriend(client, owner, oh, friend, fh)
+    assert client.get(f"/recipes/{rec['id']}", headers=fh).status_code == 200
+    assert client.get("/recipes/kept", headers=fh).json() == {
+        "recipes": [],
+        "unreachable_count": 0,
+    }
+
+
+def test_pruning_one_keepers_shelf_never_touches_another(client, make_user):
+    """The prune is scoped to the caller's own rows — loading YOUR shelf must not delete
+    anyone else's bookmarks, even for the same recipe."""
+    owner, oh = make_user()
+    _, k1 = make_user()
+    _, k2 = make_user()
+    rec = _recipe(client, oh, name="Shared interest", visibility="public")
+    client.post(f"/recipes/{rec['id']}/save", headers=k1)
+    client.post(f"/recipes/{rec['id']}/save", headers=k2)
+
+    # k1 loads their shelf while everything is still visible: no prune should happen.
+    assert client.get("/recipes/kept", headers=k1).json()["unreachable_count"] == 0
+    assert len(client.get("/recipes/kept", headers=k2).json()["recipes"]) == 1
+
+
 def test_the_keeper_always_reads_the_cooks_current_version(client, make_user):
     """The reason a bookmark beats a copy: the cook's correction reaches the keeper."""
     _, oh = make_user()

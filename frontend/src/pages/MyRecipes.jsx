@@ -185,15 +185,20 @@ export default function MyRecipes() {
               </div>
             )}
             {/* A bare count, never a dish name: it says something you kept is gone
-                without disclosing which choice the cook made about it. */}
+                without disclosing which choice the cook made about it. PAST tense, because
+                the shelf entry is removed for good — losing access is permanent, so if the
+                cook re-opens the recipe later it does NOT come back on its own. That's why
+                the line says to ask them, rather than implying it might return. */}
             {keptShelf.unreachable_count > 0 && (
               <p className="font-display text-[13px] text-ink-soft leading-snug mt-5">
                 {keptShelf.unreachable_count}{' '}
-                {keptShelf.unreachable_count === 1 ? 'recipe isn’t' : 'recipes aren’t'}{' '}
-                available to you any more. Whoever shared{' '}
-                {keptShelf.unreachable_count === 1 ? 'it' : 'them'} may have changed who
-                can see {keptShelf.unreachable_count === 1 ? 'it' : 'them'}, or removed{' '}
-                {keptShelf.unreachable_count === 1 ? 'it' : 'them'}.
+                {keptShelf.unreachable_count === 1 ? 'recipe was' : 'recipes were'} removed
+                from your kitchen. Whoever shared{' '}
+                {keptShelf.unreachable_count === 1 ? 'it' : 'them'} changed who can see{' '}
+                {keptShelf.unreachable_count === 1 ? 'it' : 'them'}, or removed{' '}
+                {keptShelf.unreachable_count === 1 ? 'it' : 'them'}. Ask them to share{' '}
+                {keptShelf.unreachable_count === 1 ? 'it' : 'them'} again if you'd like{' '}
+                {keptShelf.unreachable_count === 1 ? 'it' : 'them'} back.
               </p>
             )}
           </>

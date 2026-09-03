@@ -422,8 +422,35 @@ def kept_recipes(
         r.shared_with_count = 0
         r.last_cooked_at = None
     # Anything wanted that isn't visible is unreachable: restricted, unfriended, soft- or
-    # hard-deleted. One number, no names.
-    return KeptShelf(recipes=visible, unreachable_count=len(wanted) - len(visible))
+    # hard-deleted. LOSING ACCESS IS PERMANENT — the bookmark is deleted here, not merely
+    # hidden, so it can never reappear if the cook later re-opens the recipe. That is the
+    # product rule: a deleted recipe is gone for everyone forever, a restricted one stops
+    # being yours, and if the cook wants you to have it again they share it again.
+    #
+    # Only the caller's OWN RecipeSave rows are pruned. Handoff grants are never touched:
+    # a grant is the cook's record that they gave you the dish (and `can_view` honours it
+    # regardless of visibility), so the only way a handed recipe leaves this shelf is the
+    # cook deleting the recipe — at which point the soft-delete filter keeps it gone
+    # without deleting anyone's history.
+    #
+    # `unreachable_count` is therefore how many bookmarks were just REMOVED, reported once
+    # so a shrinking shelf is explained rather than mysterious; the next load returns 0.
+    unreachable_ids = wanted - {r.id for r in visible}
+    pruned = 0
+    if unreachable_ids:
+        pruned = (
+            db.query(RecipeSave)
+            .filter(
+                RecipeSave.user_id == current_user.id,
+                RecipeSave.recipe_id.in_(unreachable_ids),
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+    # Count every unreachable entry, not just the pruned bookmarks: an entry that was only
+    # ever a handoff grant has no save row to delete, but the shelf still shrank by one and
+    # the person deserves to be told.
+    return KeptShelf(recipes=visible, unreachable_count=len(unreachable_ids) or pruned)
 
 
 @router.post("/{recipe_id}/save", response_model=RecipeResponse, status_code=status.HTTP_201_CREATED)

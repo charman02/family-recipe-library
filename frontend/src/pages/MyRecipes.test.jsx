@@ -270,7 +270,7 @@ describe('MyRecipes — kept tab (#57)', () => {
     })
     renderAt('/my-recipes?tab=kept')
     expect(
-      await screen.findByText(/2 recipes aren’t available to you any more/i),
+      await screen.findByText(/2 recipes were removed from your kitchen/i),
     ).toBeInTheDocument()
     // The copy must not name what went missing, nor assert which choice the cook made —
     // the same count covers restricted AND deleted, so it offers both possibilities.
@@ -281,7 +281,7 @@ describe('MyRecipes — kept tab (#57)', () => {
     getKept.mockResolvedValueOnce({ data: { recipes: [], unreachable_count: 1 } })
     renderAt('/my-recipes?tab=kept')
     expect(
-      await screen.findByText(/1 recipe isn’t available to you any more/i),
+      await screen.findByText(/1 recipe was removed from your kitchen/i),
     ).toBeInTheDocument()
   })
 

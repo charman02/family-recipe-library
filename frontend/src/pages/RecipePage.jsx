@@ -70,7 +70,7 @@ export default function RecipePage() {
         toUserMessage(
           err,
           err?.response?.status === 404
-            ? 'This recipe isn’t available any more — whoever shared it may have changed who can see it.'
+            ? 'This recipe isn’t available any more — whoever shared it changed who can see it, or removed it.'
             : 'Could not update your kitchen. Please try again.',
         ),
       )

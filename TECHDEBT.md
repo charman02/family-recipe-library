@@ -77,17 +77,19 @@ strangers arrive. Security/privacy first.
   the shelf's growth path, and the one #57 surface with no ceiling.
   *Where:* `app/routers/recipes.py` (`kept_recipes`).
 
-- **An unreachable kept recipe can never be cleared from the shelf.** By design the shelf
-  reports only a COUNT of entries you can no longer open, never which ones (naming them
-  would mean storing the dish name on the save row, and would disclose that a specific
-  recipe still exists but was closed to you). The consequence: `DELETE
-  /recipes/{id}/save` needs an id the user cannot obtain, so one deleted recipe leaves a
-  permanent "1 recipe isn't available to you any more" on that keeper's Kept tab. *Fix
-  option:* a "tidy up" action that deletes the caller's OWN unreachable save rows without
-  naming any of them — discloses nothing new, since the count is already shown. Needs a
-  product call before building. *Why flagged:* a small permanent wart on a brand-new
-  surface, and the fix is cheap but is a decision.
-  *Where:* `app/routers/recipes.py` (`kept_recipes`), `frontend/src/pages/MyRecipes.jsx`.
+- **Loading the Kept shelf WRITES — it prunes.** `GET /recipes/kept` deletes the caller's
+  own `RecipeSave` rows for recipes they can no longer view. That implements a deliberate
+  product rule (losing access is permanent: a deleted recipe is gone for everyone forever,
+  a restricted one stops being yours, and re-opening it does NOT put it back — the cook has
+  to share it again), and it's why the "unreachable" count is reported once rather than
+  standing forever. But it means a GET has a side effect, and the destructive branch keys on
+  `can_view` returning False: if a future change ever made `can_view` wrongly say no —
+  a bad `is_friend` precompute, a botched migration — that read would silently delete
+  people's bookmarks instead of merely hiding rows. *Why flagged:* the blast radius of a
+  read-path bug is now data loss, not a blank screen. Handoff grants are deliberately never
+  pruned (a grant is the cook's history), so only bookmarks are at risk.
+  *Where:* `app/routers/recipes.py` (`kept_recipes`); rule pinned by
+  `tests/test_recipe_saves.py::test_losing_access_is_permanent_reopening_does_not_restore_the_bookmark`.
 
 - **Browse loads whole tables and filters/searches in memory (recipes AND posts).** The
   recipe Browse (`browse_recipes`, unauthenticated) loads *all* non-deleted recipes then
