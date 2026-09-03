@@ -15,4 +15,10 @@ export const getFriendRequests = () => client.get('/friends/requests')
 // Seeded from the handoff graph — people you've handed a recipe to or received one
 // from, who aren't already friends. The cold-start seed for the coming feed.
 export const getFriendSuggestions = () => client.get('/friends/suggestions')
+// Everyone else on the app, so a new user can actually find someone (#80). Optional name
+// search. Excludes you, your friends, and anyone with a pending request either way — all
+// cases where "Add" would be wrong. Distinct from getFriendSuggestions, which is the
+// handoff graph (a much stronger signal, so it stays pinned above this).
+export const discoverPeople = (q) =>
+  client.get('/friends/discover', { params: q ? { q } : {} })
 export const getUserProfile = (userId) => client.get(`/friends/profile/${userId}`)

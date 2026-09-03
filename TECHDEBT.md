@@ -26,6 +26,34 @@ strangers arrive. Security/privacy first.
 
 ### Auth & permissions
 
+- **Every user is enumerable by every signed-in user, with no opt-out — and nothing in
+  the app tells them so.** `GET /friends/discover` (#80) returns any other account's first
+  name, last name and photo, searchable by name and pageable 50 at a time. The *data* isn't
+  new — `/u/{id}` and `GET /friends/profile/{id}` already gave all three to any signed-in
+  caller — what's new is that you no longer need to know an id, so the whole user table can
+  be walked (the 50-row cap is a payload limit, not an enumeration control: iterating `?q=`
+  over letter pairs reaches everyone). This was a deliberate call: the alternative was
+  leaving a real beta user unable to find anybody, and reusing `profile_visibility` as an
+  unlisted flag would both violate #68's rule that it is never consulted at read time and,
+  since it defaults to `private`, leave the directory empty and fix nothing. *The gap worth
+  fixing:* the consent side. No screen says "you are listed". The one control a user would
+  reasonably expect to govern findability — Profile's **Public profile** toggle — is
+  explicitly about *content* ("Only your friends see your recipes and posts") and doesn't
+  touch this; Welcome never mentions it either. So someone on the private default is still
+  findable by every stranger and has no way to learn that, let alone change it. *What it
+  would take:* a dedicated `User.listed` column (not `profile_visibility`), a line in the
+  Profile privacy section, and a filter in `discover_people`. Deferred consciously while the
+  user count is tiny and the failure mode is "nobody can find anybody"; revisit before any
+  real growth, and certainly before the app is described publicly as private-by-default.
+  *Where:* `app/routers/friends.py` (`discover_people`, `DISCOVER_LIMIT`),
+  `frontend/src/pages/Friends.jsx` ("Everyone on issei"), `frontend/src/pages/Profile.jsx`
+  (the toggle that does NOT cover this).
+
+- **No rate limiting anywhere.** `app/main.py` mounts only `CORSMiddleware`. Not created by
+  the directory, but the directory makes bulk name harvesting a single loop, and
+  `POST /auth/login` / `POST /auth/forgot-password` are equally unthrottled. *Why flagged:*
+  it's the cheapest thing that turns an accepted disclosure into an abuse vector.
+
 - **Authorization is application-level, not query-level — the single most important
   thing to understand.** Read endpoints fetch the row by id, THEN call `can_view` /
   `can_view_post` in Python and 404 if false. The database query does *not* filter by who

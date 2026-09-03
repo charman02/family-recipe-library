@@ -43,6 +43,23 @@ class FriendSuggestion(BaseModel):
     reason: Literal["sent", "received"]
 
 
+class DiscoverPerson(BaseModel):
+    """Someone you could add, from the app-wide directory (#80).
+
+    Deliberately NOT `FriendSuggestion`: a suggestion carries a `reason` ("you sent them
+    a recipe"), which is the whole point of that list. Directory entries have no reason —
+    they are simply other people using issei — and inventing one would be a lie.
+
+    Carries only what a row needs to be tappable: name, id, photo. No email (that would
+    make the directory a harvestable address book), no counts, no activity.
+    """
+
+    user_id: int
+    first_name: str
+    last_name: str
+    photo_url: Optional[str] = None
+
+
 class ProfileResponse(BaseModel):
     """Another user's public-facing profile: their name and a count of the recipes and
     posts of theirs the caller may see (per the profile-visibility model — public if

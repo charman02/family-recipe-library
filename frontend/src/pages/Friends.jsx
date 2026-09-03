@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   getFriends,
   getFriendRequests,
   getFriendSuggestions,
+  discoverPeople,
   acceptFriend,
   removeFriend,
   requestFriend,
@@ -12,6 +13,7 @@ import MarkerTitle from '../components/MarkerTitle'
 import BackButton from '../components/BackButton'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
+import IconField from '../components/IconField'
 import Avatar from '../components/Avatar'
 import { toUserMessage } from '../api/client'
 
@@ -24,28 +26,93 @@ function Monogram({ person }) {
   return <Avatar name={person.first_name} photoUrl={person.photo_url} size="md" />
 }
 
-// Who you cook with. Three sections: requests waiting on you, people to add
-// (seeded from who you've handed recipes to / received from), and current friends.
+// Who you cook with. Four sections: requests waiting on you, people you've shared
+// recipes with (the handoff graph — the strongest signal, so it stays first), EVERYONE
+// else on the app with a name search, and your current friends.
+//
+// The directory (#80) exists because a real user couldn't work out how to find anybody.
+// Before it, the only routes to a friend were the feed's "everyone" tab or somebody
+// having handed you a recipe — and the suggestions section was hidden when empty, so a
+// new account with no handoffs saw no find-friends surface at all.
 export default function Friends() {
   const [friends, setFriends] = useState(null)
   const [requests, setRequests] = useState([])
   const [suggestions, setSuggestions] = useState([])
+  // The app-wide directory + its search box. `people === null` means the first load
+  // hasn't landed, so the section renders nothing rather than flashing "nobody here".
+  const [people, setPeople] = useState(null)
+  const [search, setSearch] = useState('')
+  // Kept apart from `people: []` so a failed request never renders as "nobody's here".
+  const [peopleError, setPeopleError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Bumped after any friend action so the directory refetches — otherwise someone you
+  // just added would sit there with a live "Add" button.
+  const [reloadKey, setReloadKey] = useState(0)
+  // People the caller has just asked to add, so the row acknowledges the tap immediately
+  // instead of keeping a live "Add" button until the refetch lands (250ms + a round trip).
+  const [requested, setRequested] = useState(() => new Set())
+  const firstLoad = useRef(true)
+  // Generation counter for load(): three independent requests, and two rapid actions
+  // could land them out of order, leaving an older list on screen. Same bug class the
+  // directory effect guards against, so it gets the same treatment.
+  const loadGen = useRef(0)
   const navigate = useNavigate()
 
   function load() {
+    loadGen.current += 1
+    const gen = loadGen.current
+    const fresh = () => gen === loadGen.current
     getFriends()
-      .then((res) => setFriends(res.data))
-      .catch(() => setFriends([]))
+      .then((res) => fresh() && setFriends(res.data))
+      .catch(() => fresh() && setFriends([]))
     getFriendRequests()
-      .then((res) => setRequests(res.data))
-      .catch(() => setRequests([]))
+      .then((res) => fresh() && setRequests(res.data))
+      .catch(() => fresh() && setRequests([]))
     getFriendSuggestions()
-      .then((res) => setSuggestions(res.data))
-      .catch(() => setSuggestions([]))
+      .then((res) => fresh() && setSuggestions(res.data))
+      .catch(() => fresh() && setSuggestions([]))
   }
   useEffect(load, [])
+
+  // The directory reloads on every search change (and after any friend action, since
+  // adding someone must drop them out of the list). Debounced so typing doesn't fire a
+  // request per keystroke; the search runs SERVER-side so it covers everyone, not just
+  // the capped page already on screen.
+  useEffect(() => {
+    // `stale` is the guard that matters: clearTimeout only cancels a request that hasn't
+    // FIRED yet. Once one is in flight, a slower earlier response can land after a faster
+    // later one and overwrite the newer list — the classic search-box race, where you end
+    // up looking at results for a term you already finished typing past. Ignoring any
+    // response whose effect has been superseded is the fix.
+    let stale = false
+    // The FIRST load fires immediately: there is nothing to debounce on mount, and the
+    // 250ms floor was long enough for the page to paint "No one here yet" before the
+    // directory landed — the exact false message #80 exists to remove, shown to the exact
+    // user it targets. Only subsequent (typing-driven) loads are debounced.
+    const t = setTimeout(() => {
+      discoverPeople(search.trim() || undefined)
+        .then((res) => {
+          if (!stale) {
+            setPeople(res.data)
+            setPeopleError(false)
+          }
+        })
+        .catch(() => {
+          // NOT an empty list: "nobody else yet" would be a flat lie about the app when
+          // the truth is the request failed. Distinguished so the copy can say so.
+          if (!stale) {
+            setPeople([])
+            setPeopleError(true)
+          }
+        })
+    }, firstLoad.current ? 0 : 250)
+    firstLoad.current = false
+    return () => {
+      stale = true
+      clearTimeout(t)
+    }
+  }, [search, reloadKey])
 
   // One guarded runner for every friend action: blocks a double-tap (busy), and
   // surfaces a failure through the app's single error-copy path instead of
@@ -62,16 +129,33 @@ export default function Friends() {
     } finally {
       setBusy(false)
       load()
+      setReloadKey((k) => k + 1)
     }
   }
   const onAccept = (id) => act(() => acceptFriend(id))
   const onRemove = (id) => act(() => removeFriend(id))
-  const onAdd = (userId) => act(() => requestFriend(userId))
+  const onAdd = (userId) => {
+    // Optimistic only for the label — the request still has to succeed, and a failure
+    // surfaces through `error` while the refetch restores the true state either way.
+    setRequested((prev) => new Set(prev).add(userId))
+    return act(() => requestFriend(userId))
+  }
 
   if (friends === null) return <Loader />
 
+  // The directory is always offered, so "nothing anywhere" now only means the app itself
+  // is empty of other people — which is the one case where the warm empty state is true.
   const nothingAnywhere =
-    friends.length === 0 && requests.length === 0 && suggestions.length === 0
+    friends.length === 0 &&
+    requests.length === 0 &&
+    suggestions.length === 0 &&
+    // `people !== null` is load-bearing: while the first directory load is still in
+    // flight, "nobody anywhere" is not yet known — and asserting it renders the very
+    // "No one here yet" message this task exists to stop showing.
+    people !== null &&
+    people.length === 0 &&
+    !peopleError &&
+    !search.trim()
 
   return (
     <div className="min-h-screen bg-cream px-5 pt-5 pb-10">
@@ -99,7 +183,7 @@ export default function Friends() {
           icon="🧑‍🍳"
           badge="bg-peach"
           title="No one here yet"
-          sub="When you hand someone a recipe — or they hand you one — they’ll show up here to add."
+          sub="You’re the first one in the kitchen. When other people join, they’ll show up here to add — and anyone you hand a recipe to lands here too."
           className="mt-6"
         />
       )}
@@ -175,6 +259,66 @@ export default function Friends() {
           </div>
         </section>
       )}
+
+      {/* EVERYONE ELSE (#80) — the app-wide directory, always offered, with a name search.
+          Deliberately BELOW the handoff suggestions: someone who has actually cooked for
+          you is a far stronger candidate than a stranger, so that list keeps the top slot.
+          The search runs server-side, so it reaches past the capped page on screen. */}
+      <section className="mb-7">
+        <h2 className="section-label mb-2.5">Everyone on issei</h2>
+        <IconField
+          icon="search"
+          iconClassName="text-ink-soft"
+          type="text"
+          placeholder="Search by name"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          wrapperClassName="mb-3"
+        />
+        {people === null ? null : peopleError ? (
+          <p className="font-display italic text-[13px] text-ink-soft">
+            Couldn’t load people just now. Check your connection.
+          </p>
+        ) : people.length === 0 ? (
+          <p className="font-display italic text-[13px] text-ink-soft">
+            {search.trim()
+              ? `Nobody here called “${search.trim()}”.`
+              : 'Nobody else yet — you’re early.'}
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {people.map((p) => (
+              <div
+                key={p.user_id}
+                className="sticker bg-card flex items-center gap-3 p-3"
+              >
+                <Monogram person={p} />
+                <button
+                  onClick={() => navigate(`/u/${p.user_id}`)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="block font-display font-bold text-[15px] text-ink truncate">
+                    {fullName(p)}
+                  </span>
+                </button>
+                {requested.has(p.user_id) ? (
+                  <span className="flex-none font-display font-bold text-[13px] text-ink-soft px-3 py-1.5">
+                    Requested
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => onAdd(p.user_id)}
+                    disabled={busy}
+                    className="flex-none rounded-full bg-cream text-ink border-2 border-ink px-4 py-1.5 font-display font-bold text-[13px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Current friends. */}
       {friends.length > 0 && (

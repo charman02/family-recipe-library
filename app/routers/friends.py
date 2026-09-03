@@ -13,6 +13,7 @@ from app.models.post import Post
 from app.models.handoff import Handoff
 from app.models.friendship import Friendship
 from app.schemas.friend import (
+    DiscoverPerson,
     FriendRequestIn,
     FriendResponse,
     FriendSuggestion,
@@ -22,6 +23,11 @@ from app.services.friends import existing_friendship, friend_ids
 from app.services.sharing import can_view, can_view_post
 
 router = APIRouter(prefix="/friends", tags=["friends"])
+
+# Cap on the app-wide directory (GET /friends/discover). Generous at today's scale and a
+# hard ceiling on the response either way; the search box is what makes a longer list
+# navigable, so this never needs to grow into "return everyone".
+DISCOVER_LIMIT = 50
 
 
 def _to_friend_response(f: Friendship, me_id: int, users_by_id: dict) -> FriendResponse:
@@ -310,6 +316,83 @@ def friend_suggestions(
             )
         )
     return out
+
+
+@router.get("/discover", response_model=list[DiscoverPerson])
+def discover_people(
+    q: str | None = Query(
+        default=None,
+        # 80 = UserCreate's name ceiling, so a term longer than the longest storable name
+        # can never match anything. Validated at the boundary like `order` on GET /friends.
+        max_length=80,
+        description="Optional name search (case-insensitive, matches first or last name).",
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Everyone else on issei, so a new user can actually find someone (#80).
+
+    Reported by a real user: she couldn't work out how to find people. Before this the
+    only routes to a friend were the feed's "everyone" tab or somebody having handed you
+    a recipe, and `/friends/suggestions` — the "People you've shared recipes with" list —
+    is seeded purely from the handoff graph, so a user with no handoffs was shown nothing
+    at all. A directory is the blunt fix that works at this scale.
+
+    WHAT THIS DISCLOSES, stated plainly: a first name, last name and photo, to any signed
+    -in user. That is not new information — the same three already appear on posts, on
+    recipe bylines, on `/u/{id}`, and on `GET /friends/profile/{id}`, all of which any
+    signed-in user can already reach. What IS new is that they become ENUMERABLE: you no
+    longer need to know an id to see who exists. That was an explicit owner decision, with
+    no opt-out for now.
+
+    Deliberately NOT gated on `profile_visibility`. That field is `private` by DEFAULT and
+    #68 established it is never consulted at read time; using it here would both break
+    that rule and leave the directory empty, fixing nothing. If an opt-out is ever wanted
+    it needs its own column.
+
+    Excludes yourself, your accepted friends, and anyone with a pending request in either
+    direction — for all of whom an "Add" button would be wrong or a no-op. Newest accounts
+    first (the people most likely to be looking for someone too), capped.
+
+    Declared BEFORE /profile/{user_id} so the literal path isn't captured as a user id.
+    """
+    # Anyone already entangled with the caller — friend or pending, either direction.
+    entangled = {current_user.id}
+    for r_id, a_id in db.query(Friendship.requester_id, Friendship.addressee_id).filter(
+        or_(
+            Friendship.requester_id == current_user.id,
+            Friendship.addressee_id == current_user.id,
+        )
+    ):
+        entangled.add(a_id if r_id == current_user.id else r_id)
+
+    query = db.query(User).filter(User.id.notin_(entangled))
+    if q and q.strip():
+        # Match either name part, so "ana" finds "Ana Cruz" and "Cruz" does too. ilike is
+        # the portable case-insensitive contains (SQLite LIKE is already case-insensitive
+        # for ASCII; Postgres ilike is explicitly so). Email is NOT searchable — letting
+        # anyone probe addresses would turn the directory into an address-book oracle.
+        #
+        # The user's text is ESCAPED before it becomes a LIKE pattern: unescaped, a typed
+        # `%` or `_` would be read as a wildcard, so searching for someone whose name has
+        # an underscore silently matches any single character, and a lone `%` reads as
+        # "everyone". This is a correctness fix, not an injection one — the value is still
+        # a bound parameter either way, so nothing here is interpolated into SQL.
+        term = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{term}%"
+        query = query.filter(
+            or_(
+                User.first_name.ilike(pattern, escape="\\"),
+                User.last_name.ilike(pattern, escape="\\"),
+            )
+        )
+    people = query.order_by(User.created_at.desc(), User.id.desc()).limit(DISCOVER_LIMIT).all()
+    return [
+        DiscoverPerson(
+            user_id=u.id, first_name=u.first_name, last_name=u.last_name, photo_url=u.photo_url
+        )
+        for u in people
+    ]
 
 
 @router.get("/profile/{user_id}", response_model=ProfileResponse)

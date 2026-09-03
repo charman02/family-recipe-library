@@ -227,8 +227,13 @@ Shipped so far: posts + a friends feed (Phase 1a); the public/private profile se
 with concrete per-item visibility (Phase 1b, #68 — a profile is public or private, and a
 recipe or post is public, friends-only, or private); the feed's **friends/everyone
 toggle** (#70 — "everyone" shows *public* posts from non-friends); and **public posts in
-Browse** (#71 — the Meals tab + the `/posts/:id` post page); and **keeping** a recipe you
-didn't write (#57 — the Kitchen's Kept tab).
+Browse** (#71 — the Meals tab + the `/posts/:id` post page); **keeping** a recipe you
+didn't write (#57 — the Kitchen's Kept tab); and the **app-wide people directory** (#80 —
+"Everyone on issei" on the Friends page, plus a name search and a permanent Friends button
+on Home). Note what that last one means for any privacy claim: every signed-in user can
+enumerate every other user's name and photo, with no opt-out — so do **not** describe the
+app as private-by-default without qualifying that findability is not covered by the
+profile setting (see TECHDEBT's "Auth & permissions").
 
 What has **not** shipped: the **recipe-request action** (Phase 2 — the "ask the cook for
 the recipe" loop and its notification center), and **re-sharing a recipe you don't own**.
@@ -292,8 +297,8 @@ git history now.
 
 ### Don't inflate the numbers — measure them
 
-As measured on this branch (see `README.md` for the method): **47 routes**, **12 models**,
-**349 backend tests**, **557 frontend tests in 45 files**. Endpoint and test counts have
+As measured on this branch (see `README.md` for the method): **48 routes**, **12 models**,
+**360 backend tests**, **572 frontend tests in 45 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

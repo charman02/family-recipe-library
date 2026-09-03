@@ -332,3 +332,140 @@ def test_order_rejects_an_unknown_value(client, make_user):
     _, mh = make_user()
     # The Literal enum makes a bogus order a 422, not a silent fallback.
     assert client.get("/friends?order=nonsense", headers=mh).status_code == 422
+
+
+# --- the app-wide directory (#80) ---
+#
+# The find-friends fix for a real user who couldn't work out how to add anyone. The
+# suggestions list above is the HANDOFF graph, so a user with no handoffs saw nothing;
+# this endpoint answers "who else is here?". What matters in tests: it excludes exactly
+# the people an Add button would be wrong for, the search reaches past the on-screen
+# page, and it never becomes an address book.
+
+
+def test_discover_lists_everyone_else(client, make_user):
+    a, ah = make_user(first_name="Ana")
+    b, _ = make_user(first_name="Ben")
+    c, _ = make_user(first_name="Cruz")
+    rows = client.get("/friends/discover", headers=ah).json()
+    # Literal path, not swallowed by /profile/{user_id} (which would 422 on "discover").
+    assert {p["user_id"] for p in rows} == {b.id, c.id}
+    # Never yourself — an Add button pointing at you is a 400 waiting to happen.
+    assert a.id not in {p["user_id"] for p in rows}
+
+
+def test_discover_never_returns_email(client, make_user):
+    _, ah = make_user()
+    make_user()
+    rows = client.get("/friends/discover", headers=ah).json()
+    assert rows and all("email" not in p for p in rows)
+    assert set(rows[0]) == {"user_id", "first_name", "last_name", "photo_url"}
+
+
+def test_discover_excludes_accepted_friends(client, make_user):
+    a, ah = make_user()
+    b, bh = make_user()
+    c, _ = make_user()
+    fid = client.post("/friends/request", json={"to_user_id": b.id}, headers=ah).json()["id"]
+    client.post(f"/friends/{fid}/accept", headers=bh)
+    rows = client.get("/friends/discover", headers=ah).json()
+    assert {p["user_id"] for p in rows} == {c.id}  # b is already a friend
+
+
+def test_discover_excludes_pending_in_either_direction(client, make_user):
+    a, ah = make_user()
+    b, _ = make_user()
+    c, ch = make_user()
+    d, _ = make_user()
+    client.post("/friends/request", json={"to_user_id": b.id}, headers=ah)  # a → b (outgoing)
+    client.post("/friends/request", json={"to_user_id": a.id}, headers=ch)  # c → a (incoming)
+    rows = client.get("/friends/discover", headers=ah).json()
+    # b would show "Requested" and c belongs in the requests list — neither is addable.
+    assert {p["user_id"] for p in rows} == {d.id}
+
+
+def test_discover_search_matches_either_name_part_case_insensitively(client, make_user):
+    _, ah = make_user(first_name="Zed")
+    ana, _ = make_user(first_name="Ana", last_name="Cruz")
+    ben, _ = make_user(first_name="Ben", last_name="Tan")
+
+    for term in ("ana", "ANA", "Ana ", "cruz", "CRUZ"):
+        rows = client.get("/friends/discover", params={"q": term}, headers=ah).json()
+        assert [p["user_id"] for p in rows] == [ana.id], term
+
+    # It's a CONTAINS match, not a prefix one, and it spans both name parts — so "an"
+    # legitimately finds Ana AND Ben Tan. That's the right behaviour for a directory
+    # search box (you type what you half-remember); pinned so nobody "fixes" it into
+    # startswith and breaks searching by surname.
+    loose = client.get("/friends/discover", params={"q": "an"}, headers=ah).json()
+    assert {p["user_id"] for p in loose} == {ana.id, ben.id}
+
+
+def test_discover_search_does_not_match_email(client, make_user):
+    """Email is deliberately unsearchable: a directory you can probe by address is an
+    address-book oracle ("is bob@corp.com on here?"). make_user emails are
+    user{n}@example.com, so these terms would match if email were included."""
+    _, ah = make_user(first_name="Zed")
+    make_user(first_name="Ana")
+    for term in ("example.com", "user2", "@example"):
+        assert client.get("/friends/discover", params={"q": term}, headers=ah).json() == [], term
+
+
+def test_discover_blank_search_is_the_full_list(client, make_user):
+    _, ah = make_user()
+    b, _ = make_user()
+    for term in ("", "   "):
+        rows = client.get("/friends/discover", params={"q": term}, headers=ah).json()
+        assert [p["user_id"] for p in rows] == [b.id], repr(term)
+
+
+def test_discover_newest_accounts_first(client, make_user):
+    _, ah = make_user()
+    b, _ = make_user()
+    c, _ = make_user()
+    rows = client.get("/friends/discover", headers=ah).json()
+    # created_at can tie at SQLite's one-second granularity, so id desc is the tiebreak
+    # that makes this deterministic — newest signup leads either way.
+    assert [p["user_id"] for p in rows] == [c.id, b.id]
+
+
+def test_discover_is_capped(client, make_user, monkeypatch):
+    """The cap is a real ceiling, not decoration — pinned by shrinking it rather than
+    creating 50+ users. The search box is what makes a longer list navigable."""
+    from app.routers import friends as friends_router
+
+    monkeypatch.setattr(friends_router, "DISCOVER_LIMIT", 2)
+    _, ah = make_user()
+    for _ in range(4):
+        make_user()
+    rows = client.get("/friends/discover", headers=ah).json()
+    assert len(rows) == 2
+
+
+def test_discover_requires_auth(client):
+    assert client.get("/friends/discover").status_code == 401
+
+
+def test_discover_search_treats_like_wildcards_as_literal_text(client, make_user):
+    """A typed % or _ is TEXT, not a pattern. Unescaped, `%` would read as "match
+    everything" (so a stray keystroke looks like the box ignoring you) and `_` would match
+    any single character. Not an injection issue — the term is a bound parameter either
+    way — but it makes search behave unpredictably."""
+    _, ah = make_user(first_name="Zed")
+    make_user(first_name="Ana", last_name="Cruz")
+    odd, _ = make_user(first_name="A_B", last_name="Percent%")
+
+    def ids(term):
+        return [p["user_id"] for p in
+                client.get("/friends/discover", params={"q": term}, headers=ah).json()]
+
+    # `%` matches only the person whose name literally CONTAINS one — not everybody.
+    assert ids("%") == [odd.id]
+    # `_` doesn't stand in for the "n" in "Ana": it matches the literal underscore.
+    assert ids("A_") == [odd.id]
+    assert ids("A_B") == [odd.id]
+    # A backslash is literal too — it's the escape character we introduce, so a naive
+    # implementation would either match everything or raise.
+    assert ids("\\") == []
+    # Sanity: ordinary text still searches normally alongside all of the above.
+    assert ids("Cruz") and ids("percent") == [odd.id]

@@ -5,6 +5,7 @@ import PostCard from '../components/PostCard'
 import FriendsStrip from '../components/FriendsStrip'
 import Wordmark from '../components/Wordmark'
 import Loader from '../components/Loader'
+import Icon from '../components/Icon'
 
 // HOME is the feed now: what your friends are making, newest first. This replaced
 // the old hero-deck/kitchen Home entirely — a scroll feed has no natural footer, and
@@ -14,13 +15,33 @@ import Loader from '../components/Loader'
 
 const PAGE = 30 // must match the backend FEED_PAGE; a short page means "maybe more"
 
-function Masthead() {
+// The masthead carries the app's ONE permanent route to Friends. It has to live here,
+// not only in the empty state: the "Find friends" button below is inside the
+// nothing-cooking box, so it vanishes the moment a single post lands — and FriendsStrip
+// self-hides when you have no friends, which is exactly the person who needs the door.
+// Without this, a friendless user with a populated feed (easy: the 'everyone' tab fills
+// with strangers' public meals) had no way to Friends from Home at all, only You →
+// Friends. Reported by a real user who couldn't find how to add anyone (#80).
+function Masthead({ onFindFriends }) {
   return (
-    <div className="flex items-center gap-2.5 px-5 pt-6 pb-5">
-      <h1 className="flex-none">
-        <Wordmark size="sm" />
-      </h1>
-      <p className="font-display italic text-[12.5px] leading-tight text-ink-soft">
+    // Two rows, not one: at 375px a single row left the tagline about 104px for a phrase
+    // that needs ~180px, so it wrapped mid-sentence. Wordmark + button share the top row
+    // (both fixed-width, always room), tagline gets its own line.
+    <div className="px-5 pt-6 pb-5">
+      <div className="flex items-center gap-2.5">
+        <h1 className="flex-none">
+          <Wordmark size="sm" />
+        </h1>
+        <button
+          onClick={onFindFriends}
+          aria-label="Find friends"
+          className="flex-none ml-auto inline-flex items-center gap-1 rounded-full bg-cream text-ink border-2 border-ink pl-2.5 pr-3 py-1.5 font-display font-bold text-[12.5px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform"
+        >
+          <Icon name="user" className="w-[14px] h-[14px]" />
+          Friends
+        </button>
+      </div>
+      <p className="mt-2 font-display italic text-[12.5px] leading-tight text-ink-soft">
         What your friends are making.
       </p>
     </div>
@@ -122,7 +143,7 @@ export default function Feed() {
   if (posts === null)
     return (
       <div className="min-h-screen bg-cream pb-6">
-        <Masthead />
+        <Masthead onFindFriends={() => navigate('/friends')} />
         {scopeToggle}
         <Loader />
       </div>
@@ -130,7 +151,7 @@ export default function Feed() {
 
   return (
     <div className="min-h-screen bg-cream pb-6">
-      <Masthead />
+      <Masthead onFindFriends={() => navigate('/friends')} />
       {scopeToggle}
 
       {/* The friends presence strip (#75) — friends' faces, most-recently-active first,

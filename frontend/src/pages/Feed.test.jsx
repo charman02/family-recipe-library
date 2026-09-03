@@ -127,10 +127,16 @@ describe('Feed (Home)', () => {
     // Friends empty first.
     expect(await screen.findByText(/nothing cooking yet/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: /everyone/i }))
-    // Everyone empty: no "share a meal / find friends" prompt.
-    expect(await screen.findByText(/nothing public yet/i)).toBeInTheDocument()
+    // Everyone empty: no "share a meal / find friends" cold-start prompt IN THE BOX.
+    // Scoped to the box on purpose — the masthead's permanent Friends button is a
+    // different thing and must stay (see the #80 describe block below).
+    await screen.findByText(/nothing public yet/i)
     expect(screen.queryByRole('button', { name: /share a meal/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /find friends/i })).toBeNull()
+    // Global reach, not scoped to the box: the masthead's permanent Friends button is a
+    // different thing and must stay, so the guard is "there is EXACTLY ONE" — that still
+    // fails if a second find-friends prompt is added anywhere on this screen, and it
+    // can't be silently defeated by wrapping the empty state in another div.
+    expect(screen.getAllByRole('button', { name: /find friends/i })).toHaveLength(1)
   })
 
   it('drops a load-more page whose scope was switched away before it resolved', async () => {
@@ -174,5 +180,64 @@ describe('Feed (Home)', () => {
     // Gone in everyone scope (discovery isn't about your circle).
     await waitFor(() => expect(getFeed).toHaveBeenCalledWith(undefined, 'everyone'))
     expect(screen.queryByRole('button', { name: /ana/i })).toBeNull()
+  })
+})
+
+// #80 follow-up, user-reported: "once there's a post on the home page the 'nothing
+// cooking yet' box disappears, which means the 'find friends' button disappears" — and
+// then the only route to Friends was You → Friends. So Home carries a PERMANENT one.
+describe('Feed — the permanent route to Friends', () => {
+  const findFriends = () => screen.getByRole('button', { name: /find friends/i })
+
+  it('is in the masthead even when the feed is full', async () => {
+    getFeed.mockResolvedValue({ data: [post(1)] })
+    renderFeed()
+    await screen.findByText('Dish 1')
+    expect(findFriends()).toBeInTheDocument()
+    await userEvent.click(findFriends())
+    expect(await screen.findByText('friends page')).toBeInTheDocument()
+  })
+
+  it('is there in the everyone scope too, where no empty-state button exists', async () => {
+    getFeed.mockResolvedValue({ data: [] })
+    renderFeed()
+    await screen.findByText(/nothing cooking yet/i)
+    await userEvent.click(screen.getByRole('tab', { name: /^everyone$/i }))
+    // The everyone empty state deliberately has no find-friends prompt (it's a
+    // discovery tab), so the masthead is the ONLY door here.
+    await screen.findByText(/nothing public yet/i)
+    expect(findFriends()).toBeInTheDocument()
+  })
+
+  it('is there while the feed is still loading', async () => {
+    getFeed.mockReturnValue(new Promise(() => {}))
+    renderFeed()
+    expect(findFriends()).toBeInTheDocument()
+  })
+
+  it('is the only find-friends door even once FriendsStrip renders', async () => {
+    // Every other test in this block already runs with zero friends (the module mock
+    // defaults to an empty list), so the uncovered case is the opposite one: friends
+    // EXIST, the strip renders its avatars, and the masthead button must still be the
+    // single unambiguous route to the Friends page rather than being crowded out.
+    getFriends.mockResolvedValue({
+      data: [
+        {
+          id: 1,
+          user_id: 42,
+          first_name: 'Lola',
+          last_name: 'Cook',
+          state: 'accepted',
+          outgoing: false,
+          created_at: '2026-08-18T00:00:00Z',
+        },
+      ],
+    })
+    getFeed.mockResolvedValue({ data: [post(1)] })
+    renderFeed()
+    await screen.findByText('Dish 1')
+    expect(screen.getAllByRole('button', { name: /find friends/i })).toHaveLength(1)
+    await userEvent.click(findFriends())
+    expect(await screen.findByText('friends page')).toBeInTheDocument()
   })
 })

@@ -150,6 +150,13 @@ nothing social-feeling on its own, but everything else needs it. Ship it quietly
   and suggestions ("People you've cooked for"). Entry from the "You" tab.
 - Tests for both pages (new pages — no coverage gap).
 
+**Superseded by #80:** Phase 0's discovery was handoff-only, and that turned out to be the
+plan's one real usability failure — a beta user with no handoffs had no find-friends surface
+at all, because the suggestions section self-hides when empty. #80 added `GET
+/friends/discover` (the app-wide directory + name search), the "Everyone on issei" section,
+and a permanent Friends button in the Feed masthead. `GET /friends/suggestions` is unchanged
+and still handoff-only — it just no longer stands alone.
+
 **Phase 0 ships:** you can find people you've exchanged recipes with, friend them, and
 see their profile. No feed yet.
 
