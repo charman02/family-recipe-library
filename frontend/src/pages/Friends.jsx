@@ -168,8 +168,10 @@ export default function Friends() {
       >
         Friends<span className="text-terra">.</span>
       </MarkerTitle>
+      {/* Was "The people you share recipes with." — true when the handoff graph was the
+          only source, false now that the page's main content is everyone on the app. */}
       <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-6">
-        The people you share recipes with.
+        The people you cook with — and everyone else here.
       </p>
 
       {error && (
