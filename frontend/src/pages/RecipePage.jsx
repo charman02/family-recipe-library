@@ -38,7 +38,11 @@ export default function RecipePage() {
   }, [id])
 
   const currentUser = JSON.parse(localStorage.getItem('issei_user') || '{}')
-  const isOwner = recipe && currentUser.id === recipe.user_id
+  // String-compare the ids, matching PostCard / PostPage / UserProfile. The cached
+  // issei_user is JSON from localStorage, so a stored id could be a string while the
+  // API's is a number — an uncoerced === would then hide the owner's own edit,
+  // visibility, handoff and delete controls from them.
+  const isOwner = recipe && String(currentUser.id) === String(recipe.user_id)
 
   async function handleDelete() {
     if (deleting) return

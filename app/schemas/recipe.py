@@ -189,7 +189,18 @@ class RecipeResponse(BaseModel):
     cuisine: Optional[str] = None
     diet: Optional[str] = None
     source: Optional[str] = None
-    notes: Optional[str] = None
+    # `notes` is DELIBERATELY ABSENT. It is the owner's private scratchpad, and
+    # InvitePreview already documents that the recipient gets the dish, not the
+    # account. But RecipeResponse is what EVERY reader receives — a friend on a
+    # friends-visibility recipe, an accepted handoff grantee, the unauthenticated
+    # GET /recipes/browse feed, and GET /recipes/{id}/scale (gated on read
+    # permission, not ownership) — so leaving it here leaked the scratchpad to all
+    # of them while the invite path carefully withheld it. Removed from the read
+    # surface entirely rather than nulled per-handler: five handlers each
+    # remembering to blank a field is how the inconsistency arose. The column and
+    # its write path (RecipeCreate/RecipeUpdate, owner-only) are unchanged, and
+    # services/growth.py still reads it server-side. If an owner-facing notes UI is
+    # ever built, give it its OWN owner-gated response rather than restoring this.
     language: str
     cook_count: int = 0
     owner_cook_count: int = 0
@@ -246,7 +257,9 @@ class InvitePreview(BaseModel):
     # Still deliberately NOT exposed — the recipient gets the dish, not the
     # account: the owner's private `notes` scratchpad, user_id/author ids, and
     # anything else that isn't the recipe as cooked. Signing up is what unlocks
-    # keeping, cooking, and adding to it.
+    # KEEPING and COOKING it — never editing or adding to it. A recipient cannot
+    # change someone else's record of the dish (patch_recipe/delete_recipe filter on
+    # user_id); "add to it" was a false claim and POSITIONING.md forbids it.
     recipe_id: int
     name: str
     from_name: Optional[str] = None

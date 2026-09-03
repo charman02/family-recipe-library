@@ -517,10 +517,21 @@ def accept_handoff(
     h = db.query(Handoff).filter(Handoff.id == handoff_id).first()
     if h is None:
         raise HTTPException(status_code=404, detail="Invite not found")
-    # Only the intended recipient may accept (by user id or matching email).
-    is_recipient = (h.to_user_id == current_user.id) or (
-        h.to_email is not None and h.to_email == current_user.email
-    )
+    # Only the intended recipient may accept. Two ways to be that person: the grant
+    # already names your user id, or it was addressed to your email and has NOT yet
+    # been bound to a user.
+    #
+    # The email branch is deliberately narrower than "the email matches": once
+    # to_user_id is set the grant belongs to that user, and an email match must not be
+    # able to re-point it. The previous form OR'd the two checks and then overwrote
+    # to_user_id unconditionally, so a second person whose address matched to_email
+    # could take over an already-claimed grant and silently revoke the first
+    # recipient's access — the same grant-stealing shape claim_invite was rewritten to
+    # avoid (see the comment there).
+    if h.to_user_id is not None:
+        is_recipient = h.to_user_id == current_user.id
+    else:
+        is_recipient = h.to_email is not None and h.to_email == current_user.email
     if not is_recipient:
         raise HTTPException(status_code=404, detail="Invite not found")
     h.to_user_id = current_user.id
@@ -801,7 +812,10 @@ def get_scaled_recipe(
         "cuisine": recipe.cuisine,
         "diet": recipe.diet,
         "source": recipe.source,
-        "notes": recipe.notes,
+        # No "notes": it is the owner's private scratchpad and is no longer on
+        # RecipeResponse at all. This handler is gated on READ permission, not
+        # ownership, so hand-copying it here shipped the scratchpad to every friend
+        # and grantee who scaled a recipe. See the note on RecipeResponse.
         "language": recipe.language,
         "created_at": recipe.created_at,
         "deleted_at": recipe.deleted_at,
