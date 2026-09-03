@@ -72,7 +72,7 @@ export default function RecipePicker({ onPick, onClose }) {
             <EmptyState
               icon="🍲"
               title="No recipes yet"
-              sub="Keep a recipe first, then you can attach it to a meal."
+              sub="Write a recipe first, then you can attach it to a meal."
             />
           ) : filtered.length === 0 ? (
             <EmptyState

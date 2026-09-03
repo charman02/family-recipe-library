@@ -191,7 +191,7 @@ export default function Welcome() {
             </h1>
 
             <ul className="list-none m-0 p-0 mt-6 space-y-6">
-              <HowToStep n="1" title="Keep a recipe">
+              <HowToStep n="1" title="Write a recipe">
                 Tap the <span className="font-bold text-terra">&#65291;</span>{' '}
                 in the bar at the bottom and write a dish down the way
                 it&rsquo;s really made.

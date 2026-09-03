@@ -38,7 +38,11 @@ export default function AddChooser() {
         </span>
       </button>
 
-      {/* Keep a recipe — the deliberate act, demoted below but still a full card. */}
+      {/* Write a recipe — the deliberate act, demoted below but still a full card.
+          Called "Write", not "Keep": "Keep" now means bookmarking SOMEONE ELSE'S recipe
+          (#57), and one verb for both acts had people reading this as "make my own copy"
+          — which is the removed Remix model reached by wording. Three verbs, three acts:
+          Share a meal · Write a recipe · Keep (someone else's). */}
       <button
         onClick={() => navigate('/add/recipe')}
         className="flex w-full items-center gap-3.5 text-left sticker sticker-press bg-card p-4"
@@ -48,7 +52,7 @@ export default function AddChooser() {
         </span>
         <span className="min-w-0">
           <span className="font-display font-black text-[18px] text-ink">
-            Keep a recipe
+            Write a recipe
           </span>
           <span className="block font-display text-[13px] text-ink-soft mt-0.5">
             Write down a dish the way it&rsquo;s really made — to cook again or hand on.

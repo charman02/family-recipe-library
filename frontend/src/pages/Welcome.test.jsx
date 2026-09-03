@@ -47,7 +47,7 @@ describe('Welcome — what it teaches', () => {
   it('covers the second half — how to actually use it', async () => {
     renderWelcome()
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    expect(screen.getByText('Keep a recipe')).toBeInTheDocument()
+    expect(screen.getByText('Write a recipe')).toBeInTheDocument()
     expect(screen.getByText('Send it to someone')).toBeInTheDocument()
     // The instruction names the control the user will actually find on the
     // recipe page, verbatim — a paraphrase would send them hunting.

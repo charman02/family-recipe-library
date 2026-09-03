@@ -195,9 +195,9 @@ export default function RecipeForm({
   // Asking "who taught you this?" of a dish you invented was one of the things
   // testers said made the app feel like it wasn't listening.
   const storyCopy = sourceName.trim() ? STORY_COPY.inherited : STORY_COPY.own
-  const heading = mode === 'edit' ? 'Edit recipe' : 'Keep a recipe'
+  const heading = mode === 'edit' ? 'Edit recipe' : 'Write a recipe'
   const defaultSubmitLabel =
-    mode === 'edit' ? 'Save changes' : 'Keep this recipe'
+    mode === 'edit' ? 'Save changes' : 'Save this recipe'
   // Has the user put in anything BEYOND the dish name? Drives the "just keep the
   // name" escape: once there's real content, offering to discard it isn't a shortcut.
   // Reads the same fields the payload does, so it can't drift out of agreement with
@@ -219,7 +219,7 @@ export default function RecipeForm({
     steps.some((s) => s.content.trim() || s.voice_note?.trim() || s.photo_url)
 
   const submitText = submitLabel || defaultSubmitLabel
-  const loadingLabel = mode === 'edit' ? 'Saving…' : 'Keeping…'
+  const loadingLabel = 'Saving…'
 
   function handlePhotoSelect(e) {
     return uploadPhotoFor({

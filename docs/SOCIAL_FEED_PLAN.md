@@ -172,7 +172,7 @@ alone delivers the "see what your friends are making / stay connected from afar"
   driving the two cold-start actions ("Share a meal" + "Find friends" → the Phase-0
   suggestions). The empty state IS the cold-start fix — no own-content tail.
 - **The + (Add) nav slot becomes a chooser**: "📸 Share a meal" (photo post) and
-  "📖 Keep a recipe" (existing add flow). One slot, both creation paths; posting is
+  "📖 Write a recipe" (existing add flow). One slot, both creation paths; posting is
   framed as the light everyday act, recipe-keeping as the deliberate one.
 - **Re-surface the Friends entry** on the You page (hidden in Phase 0) as part of
   this — and it's also reachable from the feed's empty state.

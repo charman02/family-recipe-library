@@ -20,11 +20,11 @@ describe('AddChooser', () => {
   it('offers both creation paths, meal first', () => {
     renderChooser()
     const share = screen.getByRole('button', { name: /share a meal/i })
-    const keep = screen.getByRole('button', { name: /keep a recipe/i })
+    const write = screen.getByRole('button', { name: /write a recipe/i })
     expect(share).toBeInTheDocument()
-    expect(keep).toBeInTheDocument()
+    expect(write).toBeInTheDocument()
     // Meal (the light everyday act) is offered above recipe.
-    expect(share.compareDocumentPosition(keep) & 4).toBeTruthy()
+    expect(share.compareDocumentPosition(write) & 4).toBeTruthy()
   })
 
   it('routes to the meal composer', async () => {
@@ -35,7 +35,7 @@ describe('AddChooser', () => {
 
   it('routes to the recipe form', async () => {
     renderChooser()
-    await userEvent.click(screen.getByRole('button', { name: /keep a recipe/i }))
+    await userEvent.click(screen.getByRole('button', { name: /write a recipe/i }))
     expect(await screen.findByText('recipe form')).toBeInTheDocument()
   })
 })

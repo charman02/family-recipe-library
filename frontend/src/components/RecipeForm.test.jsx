@@ -63,7 +63,7 @@ describe('RecipeForm slots', () => {
   it('uses the add-mode default label when no submitLabel and mode is add', () => {
     render(<RecipeForm mode="add" onSubmit={() => {}} />)
     expect(
-      screen.getByRole('button', { name: /keep this recipe/i }),
+      screen.getByRole('button', { name: /save this recipe/i }),
     ).toBeInTheDocument()
   })
 })
@@ -84,7 +84,7 @@ describe('RecipeForm voice-notes', () => {
       { target: { value: "don't rush the onions" } },
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /keep this recipe/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save this recipe/i }))
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
     const payload = onSubmit.mock.calls[0][0]
@@ -105,7 +105,7 @@ describe('RecipeForm voice-notes', () => {
       target: { value: 'Brown the meat' },
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /keep this recipe/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save this recipe/i }))
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
     const payload = onSubmit.mock.calls[0][0]
@@ -319,7 +319,7 @@ describe('RecipeForm capture friction', () => {
     fireEvent.change(screen.getAllByPlaceholderText(/e\.g\. soy sauce/i)[0], {
       target: { value: 'soy sauce' },
     })
-    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    fireEvent.submit(screen.getByRole('button', { name: /save this recipe/i }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     const payload = onSubmit.mock.calls[0][0]
@@ -490,7 +490,7 @@ describe('RecipeForm ingredient autosuggest', () => {
     // <select> also renders <option>s (role option), so a bare option query would
     // find those even when the ingredient strip is closed.
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    fireEvent.submit(screen.getByRole('button', { name: /save this recipe/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0].ingredients[0].name).toBe('kadyos')
   })
@@ -562,7 +562,7 @@ describe('RecipeForm amount unit chips', () => {
     })
     fireEvent.change(amounts()[0], { target: { value: '3' } })
     fireEvent.click(screen.getByRole('button', { name: 'soup spoon' }))
-    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    fireEvent.submit(screen.getByRole('button', { name: /save this recipe/i }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0].ingredients[0]).toMatchObject({
@@ -693,7 +693,7 @@ describe('RecipeForm step photos', () => {
       expect(screen.getByAltText('Photo for step 1')).toBeInTheDocument(),
     )
 
-    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    fireEvent.submit(screen.getByRole('button', { name: /save this recipe/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     const { steps } = onSubmit.mock.calls[0][0]
     expect(steps[0]).toMatchObject({
@@ -887,7 +887,7 @@ describe('RecipeForm step photos — per-step upload isolation', () => {
     fireEvent.change(screen.getByPlaceholderText('e.g. “Adobo”'), {
       target: { value: 'Dumplings' },
     })
-    fireEvent.submit(screen.getByRole('button', { name: /keep this recipe/i }))
+    fireEvent.submit(screen.getByRole('button', { name: /save this recipe/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     const { steps } = onSubmit.mock.calls[0][0]
     expect(steps[0].content).toBe('Steam it.')

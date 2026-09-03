@@ -20,7 +20,7 @@ import { plantRecipe } from '../api/sharing'
 // was broken. See PasteRecipe + lib/parseRecipeText.
 export default function PlantRecipe() {
   const navigate = useNavigate()
-  // No doorway step any more: /add already chose "Keep a recipe", so we land straight
+  // No doorway step any more: /add already chose "Write a recipe", so we land straight
   // on the say/paste screen (the one signature way in). The old blank-form door lives
   // on as a "Rather type it in?" link at the bottom of that screen.
   const [step, setStep] = useState('paste') // paste|form|celebrate|saved|handoff
@@ -128,7 +128,7 @@ export default function PlantRecipe() {
           onQuickSave={handleQuickSave}
           initialValues={seeded || {}}
           topSlot={<BackButton onClick={goBack} label="Back" />}
-          // Sits just above "Keep this recipe" — the last thing you decide before
+          // Sits just above "Save this recipe" — the last thing you decide before
           // saving, and no extra step in a flow testers already found effortful.
           beforeSubmitSlot={
             <VisibilityChoice value={visibility} onChange={setVisibility} />

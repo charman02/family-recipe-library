@@ -2,12 +2,12 @@
 
 A living map of **what to understand, learn, and revisit** — not only classic tech
 debt, but concepts used, decisions made fast, and shortcuts with a tradeoff attached.
-For a non-SWE owner scaling issei (and a multi-user social feature) with AI-directed
-development.
+Kept as issei grows into a multi-user social product, so the cost of every shortcut is
+written down where the next person reading this code will find it.
 
 **How this file is organized:** bucketed by **urgency** first, then **by area** inside
-each bucket, so you can see *where your knowledge gaps cluster*. Each entry says what it
-is, why it's flagged, and where it lives.
+each bucket, so the clusters are visible at a glance. Each entry says what it is, why
+it's flagged, and where it lives.
 
 > Rebuilt from scratch 2026-08-20 by a fresh pass over the current code (the previous
 > ledger was stale). Add to it continuously; move entries between buckets as urgency
