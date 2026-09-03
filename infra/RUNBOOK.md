@@ -176,7 +176,7 @@ Point the Vercel frontend at `https://api.issei.app` so the real app uses AWS.
    `VITE_API_URL = https://api.issei.app` (Production). Then **redeploy** the
    frontend (Deployments → ⋯ → Redeploy, or push a trivial commit) — Vite inlines
    the var at build time, so it only takes effect on a fresh build.
-2. Verify end to end in a browser at `https://issei-delta.vercel.app`: sign in,
+2. Verify end to end in a browser at `https://issei.app` (the canonical site; `issei-delta.vercel.app` is Vercel's alias for the same deployment): sign in,
    open a recipe, add one. Watch the **Network tab** — calls should go to
    `api.issei.app` and succeed (no CORS error; the stack already allows the Vercel
    origin). If you see CORS failures, confirm `CORS_ORIGINS` on the task includes

@@ -24,7 +24,11 @@ export interface IsseiStackProps extends cdk.StackProps {
   githubOrg: string;       // e.g. "charman02"
   githubRepo: string;      // e.g. "issei"
   // The deployed frontend origin, always allowed in CORS regardless of domain.
-  frontendOrigin?: string; // default: the Vercel app
+  // Defaults to the CANONICAL site. It used to default to the Vercel auto-alias
+  // (issei-delta.vercel.app), which is the same deployment under a different name —
+  // harmless for CORS, but APP_URL below builds password-reset links from this, so the
+  // default sent users to a URL that isn't the product's address.
+  frontendOrigin?: string; // default: https://issei.app
 }
 
 export class IsseiStack extends cdk.Stack {
@@ -35,8 +39,7 @@ export class IsseiStack extends cdk.Stack {
     const apiDomain = useDomain
       ? `${props.apiSubdomain}.${props.domainName}`
       : undefined;
-    const frontendOrigin =
-      props.frontendOrigin || 'https://issei-delta.vercel.app';
+    const frontendOrigin = props.frontendOrigin || 'https://issei.app';
 
     // ─── VPC: public subnets only, no NAT Gateway ($0/mo) ──────────────
     // Neon, Cloudinary, OpenRouter, ECR, SSM, CW are all public-internet
@@ -132,14 +135,19 @@ export class IsseiStack extends cdk.Stack {
         OPENROUTER_REFERER: useDomain
           ? `https://${props.domainName}`
           : frontendOrigin,
-        // The Vercel frontend must always be allowed; add the custom site when set.
+        // The configured frontend origin is always allowed; with a custom domain, apex
+        // and www are added too. (The live prod value additionally lists the Vercel alias
+        // so that URL keeps working — see .aws/task-definition.json, which is what the
+        // deploy workflow actually ships; this stack is the from-scratch definition.)
         CORS_ORIGINS: useDomain
           ? `https://${props.domainName},https://www.${props.domainName},${frontendOrigin}`
           : frontendOrigin,
         // SES sender address — must be a verified SES identity in us-west-2.
         SENDER_EMAIL: 'noreply@issei.app',
-        // Frontend URL used to build the password-reset link in the email.
-        APP_URL: frontendOrigin,
+        // Frontend URL used to build the password-reset link in the email. Follows the
+        // custom domain when set, like OPENROUTER_REFERER above: a link a real person
+        // clicks out of their inbox should be the product's address, not a deploy alias.
+        APP_URL: useDomain ? `https://${props.domainName}` : frontendOrigin,
       },
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'ecs' }),
       healthCheck: {

@@ -74,6 +74,30 @@ pass and it built" up to "it works."
 
 Run both suites (`<venv-python> -m pytest -q` and `cd frontend && npx vitest run`) and the
 production build (`npx vite build`), then — for prod — verify against the LIVE URL after the
-deploy lands, not just locally: the frontend is Vercel (`issei-delta.vercel.app`), the API
-is Render (`family-recipe-library.onrender.com`), and Render's free tier cold-starts, so the
-first request after idle is slow. Confirm the new surface actually responds in prod.
+deploy lands, not just locally.
+
+**The canonical URLs are `https://issei.app` (frontend, Vercel) and `https://api.issei.app`
+(API, AWS ECS Fargate).** Use those and no others. `issei-delta.vercel.app` is only Vercel's
+auto-generated alias for the same deployment — reporting it reads as "we shipped to the wrong
+place." Render is **decommissioned**; `family-recipe-library.onrender.com` is dead, and there
+is no cold-start to wait for.
+
+**A green push does not mean a deployed backend.** `main` triggers `.github/workflows/deploy.yml`,
+whose test jobs gate the ECS deploy — but **Vercel does not gate on CI**. So a red backend
+suite ships the frontend alone and prod ends up calling endpoints that don't exist. This
+happened for two consecutive pushes. After any push, confirm BOTH halves:
+
+```bash
+curl -s https://api.issei.app/health                     # API alive
+curl -s -o /dev/null -w '%{http_code}\n' https://api.issei.app/<new-endpoint>   # 401, not 404/405
+curl -s https://issei.app/ | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js'        # then grep the
+                                                                                # bundle for a
+                                                                                # string you added
+curl -s "https://api.github.com/repos/charman02/issei/actions/runs?per_page=1"  # conclusion
+```
+
+A **405** on a brand-new `GET /x` path is the signature of an undeployed backend where an
+existing `/{id}` route is catching the path — not a routing bug in your new code.
+
+Do **not** create accounts in prod to test: since #80 every user is enumerable in every other
+user's find-friends directory, so a junk account is visible to real people.
