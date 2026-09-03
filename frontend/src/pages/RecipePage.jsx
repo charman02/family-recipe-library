@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import client from '../api/client'
-import { deleteRecipe } from '../api/sharing'
+import client, { toUserMessage } from '../api/client'
+import { deleteRecipe, keepRecipe, unkeepRecipe } from '../api/sharing'
 import VisibilityControl from '../components/VisibilityControl'
 import RecipeBody from '../components/RecipeBody'
 import Icon from '../components/Icon'
@@ -29,13 +29,55 @@ export default function RecipePage() {
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // Keeping a recipe that isn't yours (#57). Seeded from the recipe's own kept_by_me,
+  // which the single-recipe read populates for the caller only.
+  const [kept, setKept] = useState(false)
+  const [keeping, setKeeping] = useState(false)
+  // Its own error slot: `error` swaps the whole page for a not-found screen, which would
+  // be a wild overreaction to a failed bookmark.
+  const [keepError, setKeepError] = useState('')
 
   useEffect(() => {
     client
       .get(`/recipes/${id}`)
-      .then((res) => setRecipe(res.data))
+      .then((res) => {
+        setRecipe(res.data)
+        setKept(Boolean(res.data.kept_by_me))
+      })
       .catch(() => setError('Recipe not found'))
   }, [id])
+
+  // Keep / stop keeping. Optimistic-free on purpose: the button reflects the server's
+  // answer, because "is this on my shelf" is the one thing the user is asking about.
+  async function toggleKeep() {
+    if (keeping) return
+    setKeeping(true)
+    setKeepError('')
+    try {
+      if (kept) {
+        await unkeepRecipe(id)
+        setKept(false)
+      } else {
+        await keepRecipe(id)
+        setKept(true)
+      }
+    } catch (err) {
+      // Through toUserMessage, per CLAUDE.md — a router's deliberate `detail` passes
+      // through untouched. A flat "try again" was wrong twice over: the 404 you get when
+      // the cook made the recipe private mid-page invites a retry that can never succeed,
+      // and the router's "This one is already yours" was never shown.
+      setKeepError(
+        toUserMessage(
+          err,
+          err?.response?.status === 404
+            ? 'This recipe isn’t available any more — whoever shared it may have changed who can see it.'
+            : 'Could not update your kitchen. Please try again.',
+        ),
+      )
+    } finally {
+      setKeeping(false)
+    }
+  }
 
   const currentUser = JSON.parse(localStorage.getItem('issei_user') || '{}')
   // String-compare the ids, matching PostCard / PostPage / UserProfile. The cached
@@ -106,6 +148,35 @@ export default function RecipePage() {
       {/* BODY — cover, byline, story, ingredients + steps (with cooking mode). */}
       <div className="px-5 pb-8">
         <RecipeBody recipe={recipe} scalable />
+
+        {/* KEEPING SOMEONE ELSE'S RECIPE (#57). Only for a non-owner — your own recipes
+            are already in your kitchen. It's a bookmark: this stays the cook's recipe,
+            so there is no "edit" or "pass it on" here. Kept recipes live in the
+            Kitchen's Kept tab. */}
+        {!isOwner && (
+          <div className="mt-8">
+            <button
+              onClick={toggleKeep}
+              disabled={keeping}
+              aria-pressed={kept}
+              className={`w-full inline-flex items-center justify-center gap-2 font-display font-bold text-[15px] rounded-full px-3.5 py-3 border-[2.5px] border-ink shadow-[0_4px_0_#2E3A24] active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24] transition-transform disabled:opacity-50 ${
+                kept ? 'bg-sage text-ink' : 'bg-terra text-cream'
+              }`}
+            >
+              {keeping ? '…' : kept ? 'Kept ✓' : 'Keep this recipe'}
+            </button>
+            <p className="font-display italic text-[12.5px] text-ink-soft text-center mt-2">
+              {kept
+                ? 'It’s in your kitchen, under Kept.'
+                : 'Keeps it in your kitchen. It stays their recipe.'}
+            </p>
+            {keepError && (
+              <p className="mt-2 text-center">
+                <span className="error-pill">{keepError}</span>
+              </p>
+            )}
+          </div>
+        )}
 
         {/* OWNER SURFACES — who can see it, and passing it on to the next hand. */}
         {isOwner && (

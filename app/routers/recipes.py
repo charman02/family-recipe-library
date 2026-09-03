@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
@@ -15,10 +16,12 @@ from app.models.ingredient import Ingredient
 from app.models.step import Step
 from app.models.cook_event import CookEvent
 from app.models.handoff import Handoff
+from app.models.recipe_save import RecipeSave
 from app.schemas.recipe import (
     RecipeCreate,
     RecipeResponse,
     RecipeUpdate,
+    KeptShelf,
     IngredientResponse,
     IngredientSectionResponse,
     IngredientSuggestions,
@@ -322,6 +325,191 @@ def shared_with_me(
     for r in recipes:
         _attach_growth_fields(r, db)
     return recipes
+
+
+@router.get("/kept", response_model=KeptShelf)
+def kept_recipes(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The "Kept" shelf (#57): recipes in your kitchen that are not yours.
+
+    Declared BEFORE get_recipe so the literal "/kept" path is matched first; otherwise
+    GET /recipes/{recipe_id} would capture recipe_id="kept".
+
+    ONE shelf, merging two independent sources on the server:
+      - recipes someone HANDED you (an accepted handoff grant), and
+      - recipes you KEPT yourself (a RecipeSave bookmark).
+    Merging here rather than in the client is what makes un-keeping a bookmark unable to
+    hide a recipe somebody actually sent you: the grant stands on its own.
+
+    A save is NOT a permission. Every row is re-checked through `can_view` on every read,
+    so if the cook has since made the recipe private, unfriended the keeper, or deleted
+    it, it drops out — and is counted in `unreachable_count` instead. That count is a
+    bare number on purpose (see KeptShelf).
+
+    Your OWN recipes are excluded even if an id reaches this set (e.g. a handoff to
+    yourself): they live in the Recipes tab, and showing them here would double-count
+    your kitchen.
+    """
+    # Keep each source's timestamp: the shelf is ordered by when a recipe landed on YOUR
+    # shelf, not when the cook wrote it. Keeping a dish someone wrote two years ago must
+    # put it at the TOP — sorting by Recipe.created_at would bury it under everything
+    # authored more recently, which reads as "keeping didn't work" on first use.
+    granted_at = {}
+    for rid, ts in db.query(Handoff.recipe_id, Handoff.created_at).filter(
+        Handoff.to_user_id == current_user.id, Handoff.state == "accepted"
+    ):
+        # Several grants can exist for one recipe; the most recent one is when it
+        # (re)arrived.
+        if ts is not None and (granted_at.get(rid) is None or ts > granted_at[rid]):
+            granted_at[rid] = ts
+    saved_at = {
+        rid: ts
+        for rid, ts in db.query(RecipeSave.recipe_id, RecipeSave.created_at).filter(
+            RecipeSave.user_id == current_user.id
+        )
+    }
+    granted_ids = set(granted_at) | {
+        row.recipe_id
+        for row in db.query(Handoff.recipe_id).filter(
+            Handoff.to_user_id == current_user.id, Handoff.state == "accepted"
+        )
+    }
+    saved_ids = set(saved_at)
+    wanted = granted_ids | saved_ids
+    if not wanted:
+        return KeptShelf(recipes=[], unreachable_count=0)
+
+    # Fetch WITHOUT the soft-delete filter so a deleted recipe still counts as
+    # unreachable rather than silently vanishing from the total.
+    rows = (
+        db.query(Recipe)
+        .filter(Recipe.id.in_(wanted))
+        .options(
+            selectinload(Recipe.ingredient_sections).selectinload(IngredientSection.ingredients),
+            selectinload(Recipe.ingredients),
+            selectinload(Recipe.steps),
+            selectinload(Recipe.user),
+        )
+        .all()
+    )
+    # Drop the caller's own recipes from the shelf AND from the denominator.
+    own_ids = {r.id for r in rows if r.user_id == current_user.id}
+    wanted -= own_ids
+
+    visible = [
+        r
+        for r in rows
+        if r.id in wanted and r.deleted_at is None and can_view(r, current_user, db)
+    ]
+    def _shelved_at(r):
+        """When this recipe landed on the caller's shelf — the later of "you kept it" and
+        "someone handed it to you". Falls back to the recipe's own date only if neither
+        timestamp survived (an old row with a NULL created_at)."""
+        stamps = [t for t in (saved_at.get(r.id), granted_at.get(r.id)) if t is not None]
+        return max(stamps) if stamps else r.created_at
+
+    visible.sort(key=_shelved_at, reverse=True)
+    for r in visible:
+        _attach_growth_fields(r, db)
+        # Every row here belongs to someone ELSE, so blank the owner-only activity
+        # numbers, mirroring what browse_recipes does for anonymous callers. Left in,
+        # `shared_with_count` would tell a keeper how many people the cook handed this
+        # recipe to — and on a shelf labelled "Kept" that reads as "how many people keep
+        # this", which is the removed child_count wearing a new noun.
+        r.owner_cook_count = 0
+        r.shared_with_count = 0
+        r.last_cooked_at = None
+    # Anything wanted that isn't visible is unreachable: restricted, unfriended, soft- or
+    # hard-deleted. One number, no names.
+    return KeptShelf(recipes=visible, unreachable_count=len(wanted) - len(visible))
+
+
+@router.post("/{recipe_id}/save", response_model=RecipeResponse, status_code=status.HTTP_201_CREATED)
+def save_recipe(
+    recipe_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Keep a recipe you did not write (#57) — a bookmark, never a copy.
+
+    You may only keep what you can already READ: this gates on `can_view`, the single
+    read rule, and 404s otherwise. That direction matters — the save row is created by
+    the READER, so it must never be able to widen access. `can_view` does not consult
+    saves (services/sharing.py must never import RecipeSave), which is what stops
+    "bookmark a private recipe to grant yourself read" from working.
+
+    Idempotent: keeping twice returns the same shelf entry rather than erroring, and the
+    UNIQUE(user_id, recipe_id) constraint backs that at the database for a double POST.
+    """
+    recipe = (
+        db.query(Recipe)
+        .options(selectinload(Recipe.user))
+        .filter(Recipe.id == recipe_id, Recipe.deleted_at == None)
+        .first()
+    )
+    if recipe is None or not can_view(recipe, current_user, db):
+        # 404, not 403 — don't confirm a recipe exists to someone who can't read it.
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    if recipe.user_id == current_user.id:
+        raise HTTPException(
+            status_code=400, detail="This one is already yours — it's in your recipes."
+        )
+
+    existing = (
+        db.query(RecipeSave)
+        .filter(RecipeSave.user_id == current_user.id, RecipeSave.recipe_id == recipe.id)
+        .first()
+    )
+    if existing is None:
+        db.add(RecipeSave(user_id=current_user.id, recipe_id=recipe.id))
+        try:
+            db.commit()
+        except IntegrityError:
+            # A concurrent keep for the same (user, recipe) won the race and tripped
+            # uq_recipe_save_user_recipe. The check above only avoids a round-trip; the
+            # DB constraint is the real guard, so absorb its error and treat the winner's
+            # row as ours — otherwise a slow POST that the user retries (or a second tab)
+            # 500s while the recipe IS in fact kept. Same shape as request_friend's
+            # handler in app/routers/friends.py.
+            db.rollback()
+            if (
+                db.query(RecipeSave.id)
+                .filter(RecipeSave.user_id == current_user.id, RecipeSave.recipe_id == recipe.id)
+                .first()
+                is None
+            ):
+                raise  # genuinely unexpected — don't swallow it
+    _attach_growth_fields(recipe, db)
+    recipe.kept_by_me = True
+    return recipe
+
+
+@router.delete("/{recipe_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+def unsave_recipe(
+    recipe_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stop keeping a recipe. Only ever touches the CALLER's own shelf row — a keeper can
+    remove their bookmark and nothing else; the cook's recipe is untouched, and one
+    keeper un-keeping cannot affect another's shelf.
+
+    Note this deliberately does NOT remove a handoff grant: if someone handed you the
+    recipe, it stays on your shelf because they gave it to you. Un-keeping is only about
+    the bookmark you added yourself.
+    """
+    row = (
+        db.query(RecipeSave)
+        .filter(RecipeSave.user_id == current_user.id, RecipeSave.recipe_id == recipe_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not kept")
+    db.delete(row)
+    db.commit()
+    return None
 
 
 @router.get("/users/{user_id}", response_model=list[RecipeResponse])
@@ -744,6 +932,17 @@ def get_recipe(
     if not can_view(recipe, current_user, db):
         raise HTTPException(status_code=404, detail="Recipe not found")
     _attach_growth_fields(recipe, db)
+    # Whether the CALLER keeps this one (#57), so the page can draw Keep vs Kept. Only
+    # here — the single-recipe read — because this is the one screen with that control;
+    # list endpoints leave it False rather than firing a query per row. It says nothing
+    # about anyone else: no keeper names, no keeper count, ever.
+    if recipe.user_id != current_user.id:
+        recipe.kept_by_me = (
+            db.query(RecipeSave.id)
+            .filter(RecipeSave.user_id == current_user.id, RecipeSave.recipe_id == recipe.id)
+            .first()
+            is not None
+        )
     return recipe
 
 

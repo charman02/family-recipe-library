@@ -26,6 +26,17 @@ export const scaleRecipe = (id, servings) =>
   client.get(`/recipes/${id}/scale`, { params: { servings } })
 
 export const getSharedWithMe = () => client.get('/recipes/shared')
+
+// Keeping a recipe you did not write (#57) — a bookmark, not a copy. There is still one
+// recipe (the cook's), so keeping stores only that you keep it: the byline stays theirs,
+// their later corrections reach you, and if they restrict or delete it your access ends.
+// You can only keep what you can already read; the server 404s otherwise.
+export const keepRecipe = (id) => client.post(`/recipes/${id}/save`)
+export const unkeepRecipe = (id) => client.delete(`/recipes/${id}/save`)
+// The Kept shelf: recipes handed to you AND ones you kept, merged server-side (so
+// un-keeping can never hide a gift). Returns { recipes, unreachable_count } — the count
+// is how many you can no longer open, as a bare number, never a name.
+export const getKept = () => client.get('/recipes/kept')
 // A user's recipes for their profile grid (#69). Visibility-gated server-side by
 // can_view: own → all; friend → public + friends; stranger → public only. Never a
 // private or individually-handed-off recipe. Pairs with getUserPosts in api/posts.js.

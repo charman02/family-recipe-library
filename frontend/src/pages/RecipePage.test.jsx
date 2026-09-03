@@ -2,10 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-vi.mock('../api/client', () => ({
+// Stub only the axios instance; keep the REAL toUserMessage, so the keep-failure tests
+// exercise the actual error formatter (offline vs a router's own `detail`) instead of a
+// stand-in that could drift from it.
+vi.mock('../api/client', async () => ({
   default: { get: vi.fn() },
+  toUserMessage: (await vi.importActual('../api/client')).toUserMessage,
+}))
+// #57: keeping a recipe that isn't yours.
+vi.mock('../api/sharing', () => ({
+  deleteRecipe: vi.fn(),
+  keepRecipe: vi.fn(() => Promise.resolve({ data: {} })),
+  unkeepRecipe: vi.fn(() => Promise.resolve({})),
 }))
 import client from '../api/client'
+import { keepRecipe, unkeepRecipe } from '../api/sharing'
+import userEvent from '@testing-library/user-event'
 
 const recipe = {
   id: 1, user_id: 9, name: 'Adobo',
@@ -27,8 +39,11 @@ function renderAt() {
 import RecipePageDefault from './RecipePage'
 
 beforeEach(() => {
+  vi.clearAllMocks()
   localStorage.setItem('issei_user', JSON.stringify({ id: 1 }))
   client.get.mockResolvedValue({ data: recipe })
+  keepRecipe.mockResolvedValue({ data: {} })
+  unkeepRecipe.mockResolvedValue({})
 })
 
 describe('RecipePage', () => {
@@ -71,5 +86,92 @@ describe('RecipePage', () => {
     expect(screen.queryByText(/doesn’t change who else can see it/i)).toBeNull()
     expect(screen.queryByText(/they get a link/i)).toBeNull()
     expect(screen.queryByText(/don’t have to go looking/i)).toBeNull()
+  })
+})
+
+// #57 — keeping a recipe you did not write. A bookmark: it stays the cook's recipe, so
+// there is no edit and no pass-it-on here, only "keep" and "kept".
+describe('RecipePage — keeping someone else’s recipe (#57)', () => {
+  it('offers Keep to a non-owner who can read it', async () => {
+    renderAt() // cached user id 1, recipe owned by 9
+    await waitFor(() => screen.getByText('Adobo'))
+    const btn = screen.getByRole('button', { name: /keep this recipe/i })
+    expect(btn).toHaveAttribute('aria-pressed', 'false')
+    // The promise is explicit about what keeping does and does not do.
+    expect(screen.getByText(/it stays their recipe/i)).toBeInTheDocument()
+  })
+
+  it('does NOT offer Keep on your own recipe — it is already in your kitchen', async () => {
+    localStorage.setItem('issei_user', JSON.stringify({ id: 9 })) // the owner
+    renderAt()
+    await waitFor(() => screen.getByText('Adobo'))
+    expect(screen.queryByRole('button', { name: /keep this recipe/i })).toBeNull()
+  })
+
+  it('keeping calls the API and flips to Kept', async () => {
+    renderAt()
+    await waitFor(() => screen.getByText('Adobo'))
+    await userEvent.click(screen.getByRole('button', { name: /keep this recipe/i }))
+    expect(keepRecipe).toHaveBeenCalledWith('1')
+    const kept = await screen.findByRole('button', { name: /kept/i })
+    expect(kept).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/in your kitchen, under Kept/i)).toBeInTheDocument()
+  })
+
+  it('starts as Kept when the server says the caller already keeps it', async () => {
+    client.get.mockResolvedValue({ data: { ...recipe, kept_by_me: true } })
+    renderAt()
+    const kept = await screen.findByRole('button', { name: /kept/i })
+    expect(kept).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('un-keeping calls the API and flips back', async () => {
+    client.get.mockResolvedValue({ data: { ...recipe, kept_by_me: true } })
+    renderAt()
+    await userEvent.click(await screen.findByRole('button', { name: /kept/i }))
+    expect(unkeepRecipe).toHaveBeenCalledWith('1')
+    expect(await screen.findByRole('button', { name: /keep this recipe/i })).toBeInTheDocument()
+  })
+
+  it('a keep that 404s says the recipe is gone, not "try again"', async () => {
+    // The cook made it private while the page was open. Retrying can never succeed, so
+    // the message must not invite one — and it comes through toUserMessage.
+    keepRecipe.mockRejectedValue({ response: { status: 404, data: {} } })
+    renderAt()
+    await waitFor(() => screen.getByText('Adobo'))
+    await userEvent.click(screen.getByRole('button', { name: /keep this recipe/i }))
+    expect(await screen.findByText(/isn’t available any more/i)).toBeInTheDocument()
+    expect(screen.queryByText(/please try again/i)).toBeNull()
+    // Still an INLINE error — a failed bookmark must not swap in the not-found page.
+    expect(screen.getByText('Adobo')).toBeInTheDocument()
+  })
+
+  it('a keep that fails with no response reports the connection, inline', async () => {
+    keepRecipe.mockRejectedValue(new Error('network down'))
+    renderAt()
+    await waitFor(() => screen.getByText('Adobo'))
+    await userEvent.click(screen.getByRole('button', { name: /keep this recipe/i }))
+    // toUserMessage's offline branch — telling someone on a dead connection that
+    // something went wrong with their keep would point at the wrong thing.
+    expect(await screen.findByText(/couldn't reach issei/i)).toBeInTheDocument()
+    expect(screen.getByText('Adobo')).toBeInTheDocument()
+  })
+
+  it('surfaces the router’s own message when it sends one', async () => {
+    keepRecipe.mockRejectedValue({
+      response: { status: 400, data: { detail: 'This one is already yours — it’s in your recipes.' } },
+    })
+    renderAt()
+    await waitFor(() => screen.getByText('Adobo'))
+    await userEvent.click(screen.getByRole('button', { name: /keep this recipe/i }))
+    expect(await screen.findByText(/already yours/i)).toBeInTheDocument()
+  })
+
+  it('never offers a keeper an edit or a pass-it-on', async () => {
+    renderAt()
+    await waitFor(() => screen.getByText('Adobo'))
+    expect(screen.queryByRole('button', { name: /edit recipe/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /send this to someone/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /delete recipe/i })).toBeNull()
   })
 })

@@ -227,12 +227,22 @@ Shipped so far: posts + a friends feed (Phase 1a); the public/private profile se
 with concrete per-item visibility (Phase 1b, #68 — a profile is public or private, and a
 recipe or post is public, friends-only, or private); the feed's **friends/everyone
 toggle** (#70 — "everyone" shows *public* posts from non-friends); and **public posts in
-Browse** (#71 — the Meals tab + the `/posts/:id` post page). What has **not** shipped is
-the **recipe-request action** (Phase 2 — the "ask the cook for the recipe" loop and its
-notification center); write that as direction, never as a present feature. Two invariants
-still hold everywhere and must not be contradicted: the "everyone"/Browse surfaces show
-**public** posts only (a friends-only or private post never leaks into them — enforced in
-SQL), and there is still **no like button** anywhere. Check the code before describing any
+Browse** (#71 — the Meals tab + the `/posts/:id` post page); and **keeping** a recipe you
+didn't write (#57 — the Kitchen's Kept tab).
+
+What has **not** shipped: the **recipe-request action** (Phase 2 — the "ask the cook for
+the recipe" loop and its notification center), and **re-sharing a recipe you don't own**.
+Write both as direction, never as present features. On #57 specifically, two things are
+easy to overclaim and are false: keeping is a **bookmark, not a copy** (there is still one
+recipe, the cook's — so their later corrections reach the keeper, and if they make it
+private or delete it the keeper genuinely loses access), and **only the cook can hand a
+recipe on** — a keeper has no re-share, no edit, and no delete.
+
+Three invariants still hold everywhere and must not be contradicted: the
+"everyone"/Browse surfaces show **public** posts only (a friends-only or private post never
+leaks into them — enforced in SQL); there is still **no like button** anywhere; and there
+is **no count or list of who kept a recipe** — that would be the removed `child_count`
+wearing a new noun. Check the code before describing any
 social capability — this is the area moving fastest (see `docs/SOCIAL_FEED_PLAN.md`).
 
 ### Never claim a recipient can edit, add to, or contribute to a recipe they were sent
@@ -282,8 +292,8 @@ git history now.
 
 ### Don't inflate the numbers — measure them
 
-As measured on this branch (see `README.md` for the method): **44 routes**, **11 models**,
-**320 backend tests**, **541 frontend tests in 45 files**. Endpoint and test counts have
+As measured on this branch (see `README.md` for the method): **47 routes**, **12 models**,
+**345 backend tests**, **557 frontend tests in 45 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

@@ -66,6 +66,29 @@ strangers arrive. Security/privacy first.
   flagged:* it's a performance optimization that can become a leak if used carelessly.
   *Where:* `app/services/sharing.py`; callers in `app/routers/posts.py`, `friends.py`.
 
+- **The Kept shelf is uncapped and does ~4 queries per row.** `GET /recipes/kept` (#57)
+  has no LIMIT, and per visible row runs `can_view` (1–2 queries) plus
+  `_attach_growth_fields` (2). It also eagerly loads the full ingredient/step graph for
+  rows it then discards as unreachable. Consistent with `GET /recipes` and `/browse`
+  (also uncapped) — but Kept is the one list a user can grow without bound from Browse,
+  so 100 kept recipes is ~400 sequential round-trips to Neon in one request. *Fix:*
+  keyset pagination like the feed's `?before_id=`, resolve the friendship once instead of
+  per row, and skip the child-graph load for rows that fail `can_view`. *Why flagged:*
+  the shelf's growth path, and the one #57 surface with no ceiling.
+  *Where:* `app/routers/recipes.py` (`kept_recipes`).
+
+- **An unreachable kept recipe can never be cleared from the shelf.** By design the shelf
+  reports only a COUNT of entries you can no longer open, never which ones (naming them
+  would mean storing the dish name on the save row, and would disclose that a specific
+  recipe still exists but was closed to you). The consequence: `DELETE
+  /recipes/{id}/save` needs an id the user cannot obtain, so one deleted recipe leaves a
+  permanent "1 recipe isn't available to you any more" on that keeper's Kept tab. *Fix
+  option:* a "tidy up" action that deletes the caller's OWN unreachable save rows without
+  naming any of them — discloses nothing new, since the count is already shown. Needs a
+  product call before building. *Why flagged:* a small permanent wart on a brand-new
+  surface, and the fix is cheap but is a decision.
+  *Where:* `app/routers/recipes.py` (`kept_recipes`), `frontend/src/pages/MyRecipes.jsx`.
+
 - **Browse loads whole tables and filters/searches in memory (recipes AND posts).** The
   recipe Browse (`browse_recipes`, unauthenticated) loads *all* non-deleted recipes then
   drops non-public ones with one Python line — mis-edit that line and every private recipe

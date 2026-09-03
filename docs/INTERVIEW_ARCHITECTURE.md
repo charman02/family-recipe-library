@@ -3,7 +3,7 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 44 endpoints · 11 tables · 17 migrations · 320 backend tests · 541 frontend
+**Scale:** 47 endpoints · 12 tables · 18 migrations · 345 backend tests · 557 frontend
 tests · ~2,200 lines of Python, deployed (AWS ECS Fargate + Vercel + Neon Postgres).
 
 ---
@@ -27,7 +27,7 @@ downstream of one product decision.
 | API | FastAPI | Pydantic gives request/response validation at the boundary for free; async for the LLM call |
 | ORM | SQLAlchemy 2.0 (`Mapped[]` typed style) | Types are checkable; the models double as documentation |
 | DB | Postgres (Neon) in prod, SQLite locally | Same ORM either way; `database.py` branches on the URL |
-| Migrations | Alembic | 17 versioned migrations, forward-only in practice |
+| Migrations | Alembic | 18 versioned migrations, forward-only in practice |
 | Auth | JWT, stateless, bcrypt | No session store to run; the token carries `sub` = user id |
 | Frontend | React + Vite + Tailwind | — |
 | Hosting | AWS ECS Fargate (API) · Vercel (web) · Neon (DB) | Push to `main` auto-deploys via GitHub Actions OIDC pipeline |
@@ -45,7 +45,7 @@ data engineer will respect:
 
 ---
 
-## 3. Data model (11 tables)
+## 3. Data model (12 tables)
 
 ```
 users
@@ -58,7 +58,8 @@ users
         ├── ingredients          (recipe_id FK, CASCADE)   ← also direct
         ├── steps                (recipe_id FK, CASCADE)
         ├── cook_events          (recipe_id FK)
-        └── handoffs             (recipe_id, from_user_id, to_user_id)
+        ├── handoffs             (recipe_id, from_user_id, to_user_id)
+        └── recipe_saves         (user_id, recipe_id — a bookmark; UNIQUE(user,recipe), one recipe FK)
 feedback                          (standalone)
 ```
 

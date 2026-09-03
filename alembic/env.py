@@ -29,6 +29,7 @@ from app.models.handoff import Handoff  # noqa: F401
 from app.models.feedback import Feedback  # noqa: F401
 from app.models.friendship import Friendship  # noqa: F401
 from app.models.post import Post  # noqa: F401
+from app.models.recipe_save import RecipeSave  # noqa: F401
 
 target_metadata = Base.metadata
 

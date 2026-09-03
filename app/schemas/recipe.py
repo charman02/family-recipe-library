@@ -198,9 +198,12 @@ class RecipeResponse(BaseModel):
     # of them while the invite path carefully withheld it. Removed from the read
     # surface entirely rather than nulled per-handler: five handlers each
     # remembering to blank a field is how the inconsistency arose. The column and
-    # its write path (RecipeCreate/RecipeUpdate, owner-only) are unchanged, and
-    # services/growth.py still reads it server-side. If an owner-facing notes UI is
-    # ever built, give it its OWN owner-gated response rather than restoring this.
+    # its write path (RecipeCreate/RecipeUpdate, owner-only) are unchanged — it is
+    # owner-written data, still stored, just no longer returned on a read. (It is NOT read
+    # by services/growth.py, which deliberately excludes the generic recipe-level notes
+    # from soul_count — do not conclude from that the column is dead and drop it.)
+    # If an owner-facing notes UI is ever built, give it its OWN owner-gated response
+    # rather than restoring this field here.
     language: str
     cook_count: int = 0
     owner_cook_count: int = 0
@@ -215,11 +218,37 @@ class RecipeResponse(BaseModel):
     prompt_answer: Optional[str] = None
     created_at: datetime
     deleted_at: Optional[datetime] = None
+    # Whether the CALLER has kept this recipe (#57) — a fact about the viewer's own
+    # shelf, not about the recipe or anyone else, so it discloses nothing across users
+    # and defaults False. Populated only by the single-recipe read, which is the one
+    # place a "Keep"/"Kept" control is drawn; every list endpoint leaves it False
+    # rather than firing a query per row.
+    kept_by_me: bool = False
     ingredient_sections: list[IngredientSectionResponse] = []
     ingredients: list[IngredientResponse] = []
     steps: list[StepResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class KeptShelf(BaseModel):
+    """The "Kept" tab: recipes that are in your kitchen but are not yours (#57).
+
+    ONE shelf merging two independent things — recipes someone handed you (an accepted
+    handoff grant) and recipes you kept yourself (a bookmark) — merged on the SERVER so
+    un-keeping a bookmark can never hide a recipe somebody actually sent you.
+
+    `unreachable_count` is how many shelf entries the caller can no longer open, because
+    the cook made the recipe private, unfriended them, or deleted it. Deliberately a bare
+    NUMBER: naming the dish would mean storing its name on the save row (content
+    duplication — the first inch of the copy design) and would tell the keeper that a
+    specific recipe still exists but was closed to them, which is more than the app
+    discloses anywhere else. The count says "something you kept is gone" without saying
+    which choice the cook made.
+    """
+
+    recipes: list[RecipeResponse] = []
+    unreachable_count: int = 0
 
 
 class HandoffIn(BaseModel):

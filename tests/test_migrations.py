@@ -95,12 +95,34 @@ def test_migrated_schema_matches_models(migrated):
     with migrated.connect() as conn:
         diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
 
+    # compare_metadata returns TWO shapes: a plain tuple for a simple diff
+    # (`('add_table', Table)`) and a LIST of tuples for grouped modify_* diffs
+    # (`[('modify_nullable', None, 'tbl', 'col', {...}, True, False)]`). Flatten before
+    # filtering — reading `d[0]` on the list shape yields a tuple that CONTAINS a dict,
+    # and testing that for set membership raises "unhashable type: 'dict'". That made any
+    # nullability drift blow up with a TypeError instead of reporting the drift this test
+    # was written to catch (it did exactly that when recipe_saves.created_at was declared
+    # nullable in the migration but NOT NULL on the model).
+    flat = []
+    for d in diff:
+        flat.extend(d if isinstance(d, list) else [d])
+
     # Only structural differences matter. Server-default and type comparison are
     # off by default in compare_metadata and deliberately left off: SQLite
     # round-trips defaults and types too loosely for that to be signal, and this
     # test should fail on real drift (a missing table or column), not on
     # dialect noise.
-    structural = [d for d in diff if d[0] in {
+    structural = [d for d in flat if d[0] in {
         "add_table", "remove_table", "add_column", "remove_column",
     }]
     assert structural == [], f"migrations drifted from models: {structural}"
+
+    # Nullability drift is reported separately: it is real (a column NOT NULL on one side
+    # and nullable on the other will accept a row locally and reject it in Postgres), but
+    # it is listed rather than folded into `structural` so the failure message names the
+    # exact column instead of dumping a Table repr.
+    nullable_drift = [d for d in flat if d[0] == "modify_nullable"]
+    assert nullable_drift == [], (
+        "migration/model nullability drift: "
+        + "; ".join(f"{d[2]}.{d[3]} migration={d[5]!r} model={d[6]!r}" for d in nullable_drift)
+    )

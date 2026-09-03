@@ -22,7 +22,7 @@ def soul_count(recipe) -> int:
       • story               — the framing narrative / their words
       • cover_photo_url      — a photo (presence)
       • origin_attribution   — who it came from
-      • their words on steps — ≥1 step with a voice_note (the person's voice)
+      • their notes on steps — ≥1 step with a voice_note (typed text, never audio)
 
     Deliberately NOT counted: the generic recipe-level `notes` field (practical
     detail, not necessarily soul — 2026-07-18 growth decision), and cooking

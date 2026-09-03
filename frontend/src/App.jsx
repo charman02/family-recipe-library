@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicOnlyRoute from './components/PublicOnlyRoute'
 import BottomNav from './components/BottomNav'
@@ -16,7 +16,6 @@ import PostComposer from './pages/PostComposer'
 import PlantRecipe from './pages/PlantRecipe'
 import EditRecipe from './pages/EditRecipe'
 import HandoffPage from './pages/HandoffPage'
-import SharedWithMe from './pages/SharedWithMe'
 import Friends from './pages/Friends'
 import UserProfile from './pages/UserProfile'
 import Profile from './pages/Profile'
@@ -130,16 +129,10 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/shared"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <SharedWithMe />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+      {/* /shared is retired (#57): recipes people sent you now sit beside the ones you
+          kept, in the Kitchen's Kept tab. Kept as a REDIRECT rather than deleted because
+          PublicOnlyRoute sends a just-claimed invite here, and older links exist. */}
+      <Route path="/shared" element={<Navigate to="/my-recipes?tab=kept" replace />} />
       <Route
         path="/friends"
         element={

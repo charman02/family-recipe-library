@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import client from '../api/client'
-import { getSharedWithMe } from '../api/sharing'
+import { getSharedWithMe, getKept } from '../api/sharing'
 import { getUserPosts } from '../api/posts'
 import RecipeCard from '../components/RecipeCard'
 import PostCard from '../components/PostCard'
@@ -15,6 +15,8 @@ export default function MyRecipes() {
   const [mine, setMine] = useState([])
   const [handed, setHanded] = useState([])
   const [myPosts, setMyPosts] = useState(null) // null = not loaded (lazy, posts tab only)
+  // The Kept shelf (#57): { recipes, unreachable_count }. null = not loaded (lazy).
+  const [keptShelf, setKeptShelf] = useState(null)
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -23,11 +25,15 @@ export default function MyRecipes() {
   // tab shows is driven by ?tab=posts so the "You" page's Posts count can deep-link
   // straight here. Default (no param) = recipes, the primary content.
   const me = JSON.parse(localStorage.getItem('issei_user') || '{}')
-  const tab = params.get('tab') === 'posts' ? 'posts' : 'recipes'
+  // Three tabs (#57 added Kept): recipes you wrote | recipes that are in your kitchen but
+  // aren't yours | meals you shared. `recipes` is the default and carries no param, so
+  // existing links to /my-recipes and /my-recipes?tab=posts keep working unchanged.
+  const rawTab = params.get('tab')
+  const tab = rawTab === 'posts' ? 'posts' : rawTab === 'kept' ? 'kept' : 'recipes'
   function setTab(next) {
     const p = new URLSearchParams(params)
-    if (next === 'posts') p.set('tab', 'posts')
-    else p.delete('tab')
+    if (next === 'recipes') p.delete('tab')
+    else p.set('tab', next)
     setParams(p, { replace: true })
   }
 
@@ -60,6 +66,16 @@ export default function MyRecipes() {
 
   // Your own posts, loaded lazily the first time the Posts tab is opened (self id →
   // GET /posts/users/{me}, which returns all your own posts).
+  // The Kept shelf, loaded the first time that tab is opened. The server merges recipes
+  // handed to you with ones you kept and re-checks can_view on every read, so anything
+  // the cook has since restricted or deleted arrives only as a count.
+  useEffect(() => {
+    if (tab !== 'kept' || keptShelf !== null) return
+    getKept()
+      .then((res) => setKeptShelf(res.data))
+      .catch(() => setKeptShelf({ recipes: [], unreachable_count: 0 }))
+  }, [tab, keptShelf])
+
   useEffect(() => {
     if (tab !== 'posts' || myPosts !== null || !me.id) return
     getUserPosts(me.id)
@@ -90,15 +106,23 @@ export default function MyRecipes() {
           ? `Everything from ${person}.`
           : tab === 'posts'
             ? 'Meals you’ve shared.'
-            : 'Everything you’ve kept.'}
+            : tab === 'kept'
+              ? 'Sent to you, and ones you kept.'
+              : // Was "Everything you've kept" over a grid that only ever held recipes
+                // you wrote — false before the Kept tab existed, and doubly so now.
+                'Recipes you’ve written down.'}
       </p>
 
-      {/* Recipes | Posts tabs — your kitchen holds both now. Hidden while filtering by a
-          person (that view is recipe-specific). */}
+      {/* Recipes | Kept | Posts tabs. "Kept" (#57) is where recipes that aren't yours
+          live — ones people handed you and ones you kept from Browse — which is what
+          makes the invite page's promise ("keeps this recipe in your kitchen") literally
+          true and retires the separate "Shared with you" page. Hidden while filtering by
+          a person (that view is recipe-specific). Narrower padding than two tabs so three
+          still fit the 430px column. */}
       {!person && (
-        <div role="tablist" aria-label="Recipes or posts" className="flex justify-center mt-4">
-          <div className="inline-flex rounded-full border-2 border-ink bg-cream p-0.5 text-[13.5px] font-display font-bold">
-            {['recipes', 'posts'].map((t) => (
+        <div role="tablist" aria-label="Recipes, kept, or posts" className="flex justify-center mt-4">
+          <div className="inline-flex rounded-full border-2 border-ink bg-cream p-0.5 text-[13px] font-display font-bold">
+            {['recipes', 'kept', 'posts'].map((t) => (
               <button
                 key={t}
                 role="tab"
@@ -133,6 +157,47 @@ export default function MyRecipes() {
             ))}
           </div>
         )
+      ) : tab === 'kept' && !person ? (
+        /* KEPT TAB (#57) — recipes in your kitchen that aren't yours: handed to you, or
+           kept by you. Each is still the cook's single recipe, so tapping one opens
+           their page (with the byline and the Kept button), not a copy of yours. */
+        keptShelf === null ? (
+          <Loader />
+        ) : (
+          <>
+            {keptShelf.recipes.length === 0 ? (
+              <EmptyState
+                icon="🍲"
+                title="Nothing kept yet"
+                sub="Recipes people send you land here — and you can keep any recipe you find in Browse."
+                className="mt-8"
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-6 mt-5">
+                {keptShelf.recipes.map((recipe) => (
+                  <RecipeCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    variant="grid"
+                    onClick={() => navigate(`/recipes/${recipe.id}`)}
+                  />
+                ))}
+              </div>
+            )}
+            {/* A bare count, never a dish name: it says something you kept is gone
+                without disclosing which choice the cook made about it. */}
+            {keptShelf.unreachable_count > 0 && (
+              <p className="font-display text-[13px] text-ink-soft leading-snug mt-5">
+                {keptShelf.unreachable_count}{' '}
+                {keptShelf.unreachable_count === 1 ? 'recipe isn’t' : 'recipes aren’t'}{' '}
+                available to you any more. Whoever shared{' '}
+                {keptShelf.unreachable_count === 1 ? 'it' : 'them'} may have changed who
+                can see {keptShelf.unreachable_count === 1 ? 'it' : 'them'}, or removed{' '}
+                {keptShelf.unreachable_count === 1 ? 'it' : 'them'}.
+              </p>
+            )}
+          </>
+        )
       ) : (
       <>
       {person && (
@@ -148,12 +213,8 @@ export default function MyRecipes() {
         </button>
       )}
 
-      <button
-        onClick={() => navigate('/shared')}
-        className="mt-3 inline-block font-display font-bold text-[12px] text-ink bg-sage border-2 border-ink rounded-full px-3 py-1 shadow-[0_2px_0_#2E3A24] transition-transform active:translate-y-[2px] active:shadow-none"
-      >
-        Shared with you →
-      </button>
+      {/* The "Shared with you →" chip is gone: recipes people sent you now live in the
+          Kept tab above, beside the ones you kept yourself. One shelf, one place to look. */}
 
       <IconField
         icon="search"
