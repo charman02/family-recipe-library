@@ -49,9 +49,21 @@ strangers arrive. Security/privacy first.
   `frontend/src/pages/Friends.jsx` ("Everyone on issei"), `frontend/src/pages/Profile.jsx`
   (the toggle that does NOT cover this).
 
+- **`notify()` deliberately does not commit, and nothing catches a producer that forgets.**
+  Notifications are a side effect of some other act, so they must land in that act's
+  transaction — but a future producer that calls `notify()` and never commits drops the
+  notification silently, with no error and no test that would notice. *Where:*
+  `app/services/notifications.py`.
+
+- **The inbox has no retention or pruning policy, and the client can't page it.**
+  `GET /notifications` keysets at 30 per page, but `Notifications.jsx` never passes
+  `before_id`, so anything past the first 30 is unreachable in the UI, and rows accumulate
+  forever. Also `ix_notifications_created_at` is unused (the inbox orders by `id`), and there
+  is no composite `(user_id, id)` index for the query it actually runs.
+
 - **No rate limiting anywhere.** `app/main.py` mounts only `CORSMiddleware`. Not created by
   the directory, but the directory makes bulk name harvesting a single loop, and
-  `POST /auth/login` / `POST /auth/forgot-password` are equally unthrottled. *Why flagged:*
+  `POST /auth/login`, `POST /auth/forgot-password` and **`POST /posts/{id}/request`** are equally unthrottled — the last one is a write into someone else's inbox, which is why its notification is deduped while unread. *Why flagged:*
   it's the cheapest thing that turns an accepted disclosure into an abuse vector.
 
 - **Authorization is application-level, not query-level — the single most important

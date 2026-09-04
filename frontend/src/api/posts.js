@@ -22,3 +22,16 @@ export const getPost = (id) => client.get(`/posts/${id}`)
 export const browsePosts = () => client.get('/posts/browse')
 export const deletePost = (id) => client.delete(`/posts/${id}`)
 export const getUserPosts = (userId) => client.get(`/posts/users/${userId}`)
+// Recipe requests (#79) — the app's premise as a mechanic: you tasted it and asked for it.
+// Allowed for anyone who can already SEE the post (not friends-only), and only where the
+// caller can't currently read a recipe for it. Each returns the updated post, so the button
+// re-renders from the server's answer rather than a guess.
+export const requestRecipe = (postId) => client.post(`/posts/${postId}/request`)
+export const retractRequest = (postId) => client.delete(`/posts/${postId}/request`)
+// The COOK's surface: their own posts that have pending asks, plus who asked. Nobody else
+// can see either the names or the count (PostResponse.request_count is null for non-authors).
+export const getIncomingRequests = () => client.get('/posts/requests/incoming')
+// Answer the asks on your own post with one of your recipes. Mints a handoff grant per
+// requester, so a PRIVATE recipe is delivered without its visibility changing.
+export const fulfillPost = (postId, recipeId) =>
+  client.post(`/posts/${postId}/fulfill`, { recipe_id: recipeId })

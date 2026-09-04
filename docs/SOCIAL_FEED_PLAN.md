@@ -1,7 +1,7 @@
 # Implementation plan: the social presence feed (issei #62)
 
 > Phased build plan derived from `SOCIAL_FEED_DESIGN.md` (design + locked decisions).
-> **Phase 0 shipped** (friend graph + minimal profiles) and **Phase 1a is built/staged**
+> **Phases 0, 1a, 1b and 2 have shipped** (friend graph + minimal profiles; posts + the friends feed
 > (posts + the friends feed, which became Home); later phases remain **planned, not
 > built**. Each phase is independently shippable, gets its own ship-review + docs gate,
 > and is a "stop and ask" item (new feature + data model + positioning) per the autonomy
@@ -224,7 +224,18 @@ core bet here.
 
 ---
 
-## Phase 2 — recipe requests → the fulfill loop + notification center
+## Phase 2 — recipe requests → the fulfill loop + notification center  *(BUILT — #79)*
+
+> **Shipped, with three deliberate departures from the spec below. The spec text is kept for
+> its reasoning, but where they conflict the CODE and POSITIONING.md win:**
+> 1. **Not friends-only.** The guard is `can_view_post` — anyone who can see the post may ask,
+>    including a stranger on a public one. #71 put public meals in Browse precisely so a
+>    stranger could find your dish; a dead end there would undo it.
+> 2. **The count is the COOK'S ALONE**, not "count to all, names to the author".
+>    `request_count` is `None` for every non-author and no surface renders a zero. A public
+>    tally is a like count with a different noun — see POSITIONING's fourth invariant.
+> 3. **No fulfil confirmation dialog.** The intent is met by surface instead: `/requests` lists
+>    the requesters' names before you act, then both doors call fulfil directly.
 
 **Goal:** the demand engine. Request a recipe on a post; the poster is nudged; adding
 the recipe auto-delivers it to everyone who asked. Requires a notification center
@@ -244,12 +255,12 @@ the recipe auto-delivers it to everyone who asked. Requires a notification cente
   place notifications are created, so every producer routes through it.
 - **Endpoints:**
   - `POST /posts/{id}/request` — idempotent; creates a `RecipeRequest` and a
-    `recipe_request` notification to the post's author. Guard: friends-only, not your
-    own post.
+    `recipe_request` notification to the post's author. Guard: **`can_view_post`** (NOT friends-only — see the note at the top of this phase), and
+    not your own post.
   - `DELETE /posts/{id}/request` — retract.
   - `GET /posts/{id}` now returns **request count + whether you've requested** (like
-    `shared_with_count` on recipes — count only, or names if the design wants "N
-    friends want this": show count to all, names to the author).
+    `shared_with_count` on recipes — **count to the AUTHOR ONLY** (`None` for everyone else), names only on the cook's own
+    requests endpoint. The "N friends want this" framing was rejected).
   - **The fulfill loop:** when a recipe is created/edited with a link to a post that
     has pending requests — OR a dedicated `POST /posts/{id}/fulfill {recipe_id}` —
     for each pending `RecipeRequest`, mint a **handoff grant** (reuse
@@ -261,15 +272,16 @@ the recipe auto-delivers it to everyone who asked. Requires a notification cente
   - `GET /notifications` — the caller's, newest first, paginated.
   - `POST /notifications/read` (or `/{id}/read`) — mark read; unread-count endpoint or
     include in `/notifications`.
-- **Scope tests:** can't request your own post; can't request as a non-friend; fulfill
+- **Scope tests:** can't request your own post; a viewer who fails `can_view_post` gets 404, but a stranger who CAN see a public post may
+  ask; `request_count` is `None` for every non-author; fulfill
   grants exactly the requesters (not all friends) and is idempotent; a requester can
   now `can_view` the recipe; notifications are per-recipient only (invariant 1/3).
 
 ### Frontend
 - **`api/notifications.js`**, extend `api/posts.js` with request/fulfill.
 - **PostCard**: a **"Request recipe" button** (the primary action — replaces where a
-  like would be). Shows "Requested ✓" / "N friends want this" (count to all; the
-  author sees it as a prompt).
+  like would be). Shows **"Ask for the recipe" / "Asked ✓"**; the count appears only on the
+  author's own card, never as a zero, and never to anyone else.
 - **Post→recipe conversion**: from a post you own with requests, a "Add the recipe"
   CTA opens the existing add flow **pre-seeded** (dish name → name, description →
   description, photo → cover — the locked auto-seed), and on save runs fulfill. This
@@ -285,7 +297,7 @@ the recipe auto-delivers it to everyone who asked. Requires a notification cente
   (e.g. on the You page or the notification bell). Backend: `GET /posts/{id}` already
   plans to return the per-post count; add a caller-scoped aggregate (total pending
   across own posts) + a list endpoint of own posts-with-requests. This is the demand
-  dashboard that makes "6 friends are waiting" visible — build it with the request loop,
+  surface that makes "6 people asked" visible TO THE COOK (never publicly — the "N friends want this" framing here was rejected; see the note on Phase 2) — build it with the request loop,
   not after.
 - Tests: request button states, the seeded add flow, notification list + read state,
   the per-post + total request counts.
@@ -354,8 +366,8 @@ docs-auditor's POSITIONING scan is green against the new text.
    is folded into/replaced by the friends feed; "your kitchen" already has its own
    tab. Revisit where the current Home's first-run/empty-handed pitch goes.
 2. **Own posts in your own feed?** (Rec: yes — avoids an empty feed for active posters.)
-3. **Request count visibility**: count to everyone, requester names to the author only? (Rec: yes.)
-4. **Fulfill trigger**: automatic when a recipe links a requested post, or an explicit
+3. **Request count visibility — **RESOLVED THE OTHER WAY: cook-only.****: count to everyone, requester names to the author only? (Rec: yes.)
+4. **Fulfill trigger — **RESOLVED: no confirm dialog; /requests shows who it goes to first.****: automatic when a recipe links a requested post, or an explicit
    "share with the N who asked" confirmation? (Rec: explicit confirm — sending to
    people is outward-facing; the user should see who it goes to.)
 5. **Notification retention/pagination** shape.

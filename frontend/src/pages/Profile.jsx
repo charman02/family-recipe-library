@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
 import { getUserProfile, getFriendRequests } from '../api/friends'
+import { getIncomingRequests } from '../api/posts'
 import { PHOTO_ACCEPT } from '../lib/photoUpload'
 import { useAvatarUpload } from '../lib/useAvatarUpload'
 import MarkerTitle from '../components/MarkerTitle'
@@ -105,6 +106,10 @@ export default function Profile() {
   // Reusing it keeps one definition of "the counts", rather than a second self-only path.
   const [stats, setStats] = useState(null) // { recipe_count, post_count, friend_count }
   const [requestCount, setRequestCount] = useState(0)
+  // Pending recipe-asks across ALL your posts (#79). Deliberately separate from the bell's
+  // unread badge: reading the notification clears that, but the ask itself is still waiting
+  // on you, and an obligation shouldn't disappear because you glanced at it.
+  const [askCount, setAskCount] = useState(0)
   useEffect(() => {
     if (!user.id) return
     getUserProfile(user.id)
@@ -113,6 +118,11 @@ export default function Profile() {
     getFriendRequests()
       .then((r) => setRequestCount(r.data.length))
       .catch(() => setRequestCount(0))
+    getIncomingRequests()
+      .then((r) =>
+        setAskCount(r.data.reduce((n, row) => n + row.requesters.length, 0)),
+      )
+      .catch(() => setAskCount(0))
   }, [user.id])
 
   // Avatar upload (#33) via the shared hook — it uploads (square face-crop), PATCHes
@@ -358,6 +368,15 @@ export default function Profile() {
       {/* Friend requests — its own button below the box, because a pending request is
           an action waiting on you, not a stat. Shows a count badge only when there are
           any. Routes to the Friends page, which lists incoming requests at the top. */}
+      {askCount > 0 && (
+        <button
+          onClick={() => navigate('/requests')}
+          className="w-full mt-3 inline-flex items-center justify-center gap-2 py-2.5 rounded-full bg-saffron text-ink border-[2.5px] border-ink font-display font-bold text-[14px] shadow-[0_4px_0_#2E3A24] transition-transform active:translate-y-[3px] active:shadow-[0_1px_0_#2E3A24]"
+        >
+          {askCount === 1 ? '1 person asked for a recipe' : `${askCount} people asked for a recipe`} &rarr;
+        </button>
+      )}
+
       {requestCount > 0 && (
         <button
           onClick={() => navigate('/friends')}

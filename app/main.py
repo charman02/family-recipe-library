@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import SessionLocal
-from app.routers import auth, feedback, friends, posts, recipes, upload
+from app.routers import auth, feedback, friends, posts, recipes, upload, notifications
 
 app = FastAPI()
 
@@ -24,6 +24,7 @@ app.include_router(upload.router)
 app.include_router(feedback.router)
 app.include_router(friends.router)
 app.include_router(posts.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")

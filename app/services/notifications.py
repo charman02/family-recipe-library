@@ -1,0 +1,116 @@
+"""The one place a notification is created (#79).
+
+Like `can_view` for reads and `are_friends` for friendship, this is deliberately the single
+producer. Every caller goes through `notify()`, so the self-notify guard, the type vocabulary
+and the flush discipline exist once instead of being re-derived at each call site.
+"""
+
+from datetime import datetime, timezone
+from typing import Optional
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.models.notification import Notification
+
+# The vocabulary. A plain string on the model (see the docstring there), validated here so a
+# typo is a loud failure at the producer rather than a row nobody can render.
+NOTIFICATION_TYPES = {
+    # Someone asked you for the recipe behind one of your meals.
+    "recipe_request",
+    # A recipe you asked for has arrived (you now hold a grant for it).
+    "request_fulfilled",
+    # Someone sent you a friend request / accepted the one you sent.
+    "friend_request",
+    "friend_accept",
+}
+
+
+def notify(
+    db: Session,
+    *,
+    user_id: int,
+    type: str,
+    actor_id: Optional[int] = None,
+    post_id: Optional[int] = None,
+    recipe_id: Optional[int] = None,
+    dedupe: bool = False,
+) -> Optional[Notification]:
+    """Address one notification to one person. Returns the row, or None if suppressed.
+
+    Deliberately does NOT commit. Notifications are always a side effect of some other act
+    (a request created, a grant minted), and they must land in that act's transaction — a
+    separate commit here could leave a notification for something that then rolled back, or
+    a completed act nobody was told about.
+
+    Suppressed rather than raised:
+    - **notifying yourself.** Every producer would otherwise need the same guard, and the one
+      that forgot would tell you about your own action. There is no case where it is right.
+    - **`dedupe=True` and an identical UNREAD row already exists.** For a repeatable act this
+      is what keeps an inbox from being weaponised: asking and retracting is deliberately
+      free (you may change your mind), and retracting deliberately does NOT delete the
+      cook's notification (they were told something true), so without this a loop of
+      ask/retract mints one notification per cycle — from any signed-in stranger, on any
+      public post, with no rate limiting anywhere in the app. Once the cook has an unread
+      "Ana asked for your Adobo", saying it again adds nothing. A READ row does not
+      suppress: if they've seen and cleared it, a fresh ask is news again.
+    """
+    if type not in NOTIFICATION_TYPES:
+        raise ValueError(f"unknown notification type {type!r}")
+    if actor_id is not None and actor_id == user_id:
+        return None
+    if dedupe:
+        already = (
+            db.query(Notification.id)
+            .filter(
+                Notification.user_id == user_id,
+                Notification.type == type,
+                Notification.actor_id == actor_id,
+                Notification.post_id == post_id,
+                Notification.read_at.is_(None),
+            )
+            .first()
+        )
+        if already is not None:
+            return None
+    row = Notification(
+        user_id=user_id,
+        type=type,
+        actor_id=actor_id,
+        post_id=post_id,
+        recipe_id=recipe_id,
+    )
+    db.add(row)
+    return row
+
+
+def unread_count(db: Session, user_id: int) -> int:
+    """How many of this person's notifications are unread. Derived, never stored — a cached
+    counter is the classic thing to drift out of sync with the rows it counts."""
+    return (
+        db.query(func.count(Notification.id))
+        .filter(Notification.user_id == user_id, Notification.read_at.is_(None))
+        .scalar()
+        or 0
+    )
+
+
+def mark_read(db: Session, user_id: int, ids: Optional[list[int]] = None) -> int:
+    """Mark the caller's notifications read; returns how many changed.
+
+    Always scoped to `user_id`, so passing someone else's ids marks nothing rather than
+    reaching across accounts. Idempotent: already-read rows are excluded, so a double tap
+    reports 0 instead of rewriting timestamps.
+    """
+    q = db.query(Notification).filter(
+        Notification.user_id == user_id, Notification.read_at.is_(None)
+    )
+    if ids is not None:
+        if not ids:
+            return 0
+        q = q.filter(Notification.id.in_(ids))
+    changed = q.update(
+        {Notification.read_at: datetime.now(timezone.utc)}, synchronize_session=False
+    )
+    db.commit()
+    return changed

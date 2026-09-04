@@ -43,8 +43,11 @@ built to carry. A post is deliberately thin — a photo and a dish name, no ingr
 no steps (`app/models/post.py`) — because a post is not a recipe. It's the "I made
 this" that earns the "can I have it?"
 
-**Status (check before claiming):** the friends feed + posts ship in Phase 1a. The
-request-the-recipe action that closes the loop is **Phase 2, not built**. A post can
+**Status (check before claiming):** the friends feed + posts ship in Phase 1a, and **the
+request-the-recipe action that closes the loop now ships too** (#79) — ask on a meal, the cook
+is notified in an in-app inbox, and answering it mints a handoff grant to everyone who asked,
+so a private recipe reaches them without becoming public. What remains unbuilt is **comments**
+(Phase 3) and **re-sharing a recipe you don't own**. A post can
 *link* a recipe the author owns; the card links through only when the viewer can read
 that recipe.
 
@@ -233,25 +236,47 @@ toggle** (#70 — "everyone" shows *public* posts from non-friends); and **publi
 Browse** (#71 — the Meals tab + the `/posts/:id` post page); **keeping** a recipe you
 didn't write (#57 — the Kitchen's Kept tab); and the **app-wide people directory** (#80 —
 "Everyone on issei" on the Friends page, plus a name search and a permanent Friends button
-on Home); and **writing a recipe mid-post** (#81 — the meal composer's "Write one" door hands its draft to the add-a-recipe flow and gets the recipe back attached). Note what the directory means for any privacy claim: every signed-in user can
+on Home); **writing a recipe mid-post** (#81 — the meal composer's "Write one" door hands its
+draft to the add-a-recipe flow and gets the recipe back attached); and **the recipe-request loop
+with an in-app inbox** (#79 — anyone who can see a meal may ask the cook for the recipe; the
+cook answers by writing or attaching one; delivery is a handoff grant per requester, so a
+PRIVATE recipe reaches the people who asked without its visibility changing). Note what the directory means for any privacy claim: every signed-in user can
 enumerate every other user's name and photo, with no opt-out — so do **not** describe the
 app as private-by-default without qualifying that findability is not covered by the
 profile setting (see TECHDEBT's "Auth & permissions").
 
-What has **not** shipped: the **recipe-request action** (Phase 2 — the "ask the cook for
-the recipe" loop and its notification center), and **re-sharing a recipe you don't own**.
+What has **not** shipped: **comments** on a meal (Phase 3), and **re-sharing a recipe you
+don't own**.
 Write both as direction, never as present features. On #57 specifically, two things are
 easy to overclaim and are false: keeping is a **bookmark, not a copy** (there is still one
 recipe, the cook's — so their later corrections reach the keeper, and if they make it
 private or delete it the keeper genuinely loses access), and **only the cook can hand a
 recipe on** — a keeper has no re-share, no edit, and no delete.
 
-Three invariants still hold everywhere and must not be contradicted: the
+Four invariants still hold everywhere and must not be contradicted: the
 "everyone"/Browse surfaces show **public** posts only (a friends-only or private post never
-leaks into them — enforced in SQL); there is still **no like button** anywhere; and there
+leaks into them — enforced in SQL); there is still **no like button** anywhere; there
 is **no count or list of who kept a recipe** — that would be the removed `child_count`
-wearing a new noun. Check the code before describing any
-social capability — this is the area moving fastest (see `docs/SOCIAL_FEED_PLAN.md`).
+wearing a new noun; and **a recipe-request count is the cook's alone**.
+
+That fourth one is new with #79 and is the easiest of the four to break by being helpful.
+`PostResponse.request_count` is populated only for the post's author and is `None` for every
+other viewer (`app/schemas/post.py`); the requesters' names appear only on
+`GET /posts/requests/incoming` (filtered on `Post.user_id`) and the `/requests` page it feeds;
+and no surface ever renders a zero. **Do not make the count public.** A visible "N people want
+this" is a like count wearing a different noun, and printing "0 asked" under an ordinary
+Tuesday meal is the exact discouragement this app exists to remove — the cook's number is a
+private nudge, not a score. It is not the keep rule inverted: keeps have no count for *anyone*,
+the cook included, whereas an ask count exists for exactly one person. Asking itself is open to
+**anyone who can see the post** (`can_view_post`, deliberately not friends-only) — the guard is
+on *seeing*, not on *counting*. Two earlier specs recommended the public version
+(`docs/SOCIAL_FEED_PLAN.md`, `docs/SOCIAL_FEED_DESIGN.md`); both were corrected, and this file
+outranks them. A future "most asked for" surface is permitted only as a **rank** — a Browse row
+of dishes that HAVE demand, which never renders an absence and never attaches a number to a
+person's post; a per-post tally is not covered by that allowance.
+
+Check the code before describing any social capability — this is the area moving fastest
+(see `docs/SOCIAL_FEED_PLAN.md`).
 
 ### Never claim a recipient can edit, add to, or contribute to a recipe they were sent
 
@@ -300,8 +325,8 @@ git history now.
 
 ### Don't inflate the numbers — measure them
 
-As measured on this branch (see `README.md` for the method): **48 routes**, **12 models**,
-**361 backend tests**, **594 frontend tests in 45 files**. Endpoint and test counts have
+As measured on this branch (see `README.md` for the method): **54 routes**, **14 models**,
+**395 backend tests**, **648 frontend tests in 47 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

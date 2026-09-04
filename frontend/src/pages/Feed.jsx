@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getFeed } from '../api/posts'
+import { getNotifications } from '../api/notifications'
 import PostCard from '../components/PostCard'
 import FriendsStrip from '../components/FriendsStrip'
 import Wordmark from '../components/Wordmark'
@@ -22,7 +23,7 @@ const PAGE = 30 // must match the backend FEED_PAGE; a short page means "maybe m
 // Without this, a friendless user with a populated feed (easy: the 'everyone' tab fills
 // with strangers' public meals) had no way to Friends from Home at all, only You →
 // Friends. Reported by a real user who couldn't find how to add anyone (#80).
-function Masthead({ onFindFriends }) {
+function Masthead({ onFindFriends, onOpenInbox, unread }) {
   return (
     // Two rows, not one: at 375px a single row left the tagline about 104px for a phrase
     // that needs ~180px, so it wrapped mid-sentence. Wordmark + button share the top row
@@ -32,10 +33,25 @@ function Masthead({ onFindFriends }) {
         <h1 className="flex-none">
           <Wordmark size="sm" />
         </h1>
+        {/* The inbox (#79). Sits left of Friends because an unread ask is time-sensitive
+            and Friends is a permanent door. Badge only when there IS something — an
+            always-present "0" is the kind of empty scoreboard this app avoids. */}
+        <button
+          onClick={onOpenInbox}
+          aria-label={unread > 0 ? `What's new (${unread} unread)` : "What's new"}
+          className="relative flex-none ml-auto inline-flex items-center justify-center w-9 h-9 rounded-full bg-cream text-ink border-2 border-ink shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform"
+        >
+          <Icon name="bell" className="w-[17px] h-[17px]" />
+          {unread > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-terra text-cream border-2 border-ink font-display font-bold text-[10px] leading-[14px]">
+              {unread > 9 ? '9+' : unread}
+            </span>
+          )}
+        </button>
         <button
           onClick={onFindFriends}
           aria-label="Find friends"
-          className="flex-none ml-auto inline-flex items-center gap-1 rounded-full bg-cream text-ink border-2 border-ink pl-2.5 pr-3 py-1.5 font-display font-bold text-[12.5px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform"
+          className="flex-none inline-flex items-center gap-1 rounded-full bg-cream text-ink border-2 border-ink pl-2.5 pr-3 py-1.5 font-display font-bold text-[12.5px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform"
         >
           <Icon name="user" className="w-[14px] h-[14px]" />
           Friends
@@ -58,6 +74,18 @@ export default function Feed() {
   // deliberate peek, not a mode you get stuck in.
   const [scope, setScope] = useState('friends')
   const navigate = useNavigate()
+  // Unread count for the masthead badge (#79). One cheap call; the inbox itself marks
+  // everything read, so coming back shows no badge without extra bookkeeping here.
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    let stale = false
+    getNotifications()
+      .then((res) => !stale && setUnread(res.data.unread_count || 0))
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [])
   // The scope a request was fired under, as a ref so an in-flight loadMore can compare it
   // against the CURRENT scope when it resolves — a state read in the async callback would
   // see the closed-over value, not the latest. This is what lets a page that overlaps a
@@ -143,7 +171,11 @@ export default function Feed() {
   if (posts === null)
     return (
       <div className="min-h-screen bg-cream pb-6">
-        <Masthead onFindFriends={() => navigate('/friends')} />
+        <Masthead
+          onFindFriends={() => navigate('/friends')}
+          onOpenInbox={() => navigate('/notifications')}
+          unread={unread}
+        />
         {scopeToggle}
         <Loader />
       </div>
@@ -151,7 +183,11 @@ export default function Feed() {
 
   return (
     <div className="min-h-screen bg-cream pb-6">
-      <Masthead onFindFriends={() => navigate('/friends')} />
+      <Masthead
+        onFindFriends={() => navigate('/friends')}
+        onOpenInbox={() => navigate('/notifications')}
+        unread={unread}
+      />
       {scopeToggle}
 
       {/* The friends presence strip (#75) — friends' faces, most-recently-active first,

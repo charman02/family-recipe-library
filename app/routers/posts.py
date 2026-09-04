@@ -1,6 +1,8 @@
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -8,8 +10,12 @@ from app.auth import get_current_user
 from app.models.user import User
 from app.models.recipe import Recipe
 from app.models.post import Post
-from app.schemas.post import PostCreate, PostResponse
+from app.models.handoff import Handoff
+from app.models.recipe_request import RecipeRequest
+from app.schemas.post import PostCreate, PostResponse, PostWithRequesters
+from app.schemas.notification import FulfillRequest, RequesterSummary
 from app.services.friends import are_friends, friend_ids
+from app.services.notifications import notify
 from app.services.sharing import can_view, can_view_post
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -18,7 +24,15 @@ router = APIRouter(prefix="/posts", tags=["posts"])
 FEED_PAGE = 30
 
 
-def _to_response(post: Post, author: User, viewable_recipe_ids: set) -> PostResponse:
+def _to_response(
+    post: Post,
+    author: User,
+    viewable_recipe_ids: set,
+    *,
+    viewer_id: Optional[int] = None,
+    request_counts: Optional[dict] = None,
+    my_requested_post_ids=frozenset(),
+) -> PostResponse:
     # Expose the recipe link ONLY when the viewer can actually open it. A post links
     # a recipe the AUTHOR owns, but the viewer is usually a friend — and the author
     # may have made that recipe private, or soft-deleted it, after posting. Surfacing
@@ -37,6 +51,14 @@ def _to_response(post: Post, author: User, viewable_recipe_ids: set) -> PostResp
         description=post.description,
         recipe_id=recipe_id,
         visibility=post.visibility,
+        requested_by_me=post.id in my_requested_post_ids,
+        # The count is the AUTHOR'S alone (see PostResponse.request_count). Not "0 for
+        # others" — None, so the client can't render a zero it was never given.
+        request_count=(
+            (request_counts or {}).get(post.id, 0)
+            if viewer_id is not None and post.user_id == viewer_id
+            else None
+        ),
         created_at=post.created_at,
     )
 
@@ -61,6 +83,40 @@ def _viewable_recipe_ids(posts, viewer: User, db: Session) -> set:
         .all()
     )
     return {r.id for r in recipes if can_view(r, viewer, db)}
+
+
+def _request_context(posts, viewer: User, db: Session):
+    """Two bulk lookups for a page of posts (#79), so neither field costs a query per card:
+
+    - `counts`: pending-request counts, computed ONLY for posts the viewer authored. Asking
+      for anyone else's would be building the public tally the product rule forbids.
+    - `mine`: the post ids the viewer has themself asked about, so the button can show
+      "Asked ✓" without leaking anything about other people's asks.
+    """
+    ids = [p.id for p in posts]
+    if not ids:
+        return {}, frozenset()
+    own_ids = [p.id for p in posts if p.user_id == viewer.id]
+    counts = {}
+    if own_ids:
+        counts = dict(
+            db.query(RecipeRequest.post_id, func.count(RecipeRequest.id))
+            .filter(
+                RecipeRequest.post_id.in_(own_ids),
+                RecipeRequest.state == "pending",
+            )
+            .group_by(RecipeRequest.post_id)
+            .all()
+        )
+    mine = {
+        row.post_id
+        for row in db.query(RecipeRequest.post_id).filter(
+            RecipeRequest.post_id.in_(ids),
+            RecipeRequest.requester_id == viewer.id,
+            RecipeRequest.state == "pending",
+        )
+    }
+    return counts, frozenset(mine)
 
 
 @router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
@@ -100,7 +156,9 @@ def create_post(
     db.commit()
     db.refresh(post)
     # The author owns any linked recipe (verified above), so it's viewable to them.
-    return _to_response(post, current_user, {recipe_id} if recipe_id else set())
+    return _to_response(
+        post, current_user, {recipe_id} if recipe_id else set(), viewer_id=current_user.id
+    )
 
 
 @router.get("/feed", response_model=list[PostResponse])
@@ -169,7 +227,14 @@ def feed(
         if can_view_post(p, current_user, db, is_friend=p.user_id in friends)
     ]
     viewable = _viewable_recipe_ids(posts, current_user, db)
-    return [_to_response(p, p.user, viewable) for p in posts]
+    counts, mine = _request_context(posts, current_user, db)
+    return [
+        _to_response(
+            p, p.user, viewable,
+            viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+        )
+        for p in posts
+    ]
 
 
 @router.get("/browse", response_model=list[PostResponse])
@@ -205,7 +270,277 @@ def browse_posts(
     # reads through one rule keeps "who can see a post" defined in exactly one place.
     posts = [p for p in posts if can_view_post(p, current_user, db)]
     viewable = _viewable_recipe_ids(posts, current_user, db)
-    return [_to_response(p, p.user, viewable) for p in posts]
+    counts, mine = _request_context(posts, current_user, db)
+    return [
+        _to_response(
+            p, p.user, viewable,
+            viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+        )
+        for p in posts
+    ]
+
+
+@router.get("/requests/incoming", response_model=list[PostWithRequesters])
+def incoming_requests(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The cook's asks: every post of THEIRS with at least one pending request, and who asked.
+
+    Scoped to `Post.user_id == current_user.id`, which is what makes returning requester
+    names here consistent with keeping the count private everywhere else — the cook is the
+    one audience entitled to it.
+
+    Declared BEFORE `/{post_id}` so the literal path isn't parsed as a post id.
+    """
+    rows = (
+        db.query(RecipeRequest, Post, User)
+        .join(Post, Post.id == RecipeRequest.post_id)
+        .join(User, User.id == RecipeRequest.requester_id)
+        .filter(Post.user_id == current_user.id, RecipeRequest.state == "pending")
+        .order_by(RecipeRequest.created_at.desc(), RecipeRequest.id.desc())
+        .all()
+    )
+    by_post: dict = {}
+    for req, post, requester in rows:
+        entry = by_post.setdefault(post.id, {"post": post, "requesters": []})
+        entry["requesters"].append(
+            RequesterSummary(
+                user_id=requester.id,
+                first_name=requester.first_name,
+                last_name=requester.last_name,
+                photo_url=requester.photo_url,
+                created_at=req.created_at,
+            )
+        )
+    if not by_post:
+        return []
+    posts = [e["post"] for e in by_post.values()]
+    viewable = _viewable_recipe_ids(posts, current_user, db)
+    counts, mine = _request_context(posts, current_user, db)
+    return [
+        PostWithRequesters(
+            post=_to_response(
+                e["post"], current_user, viewable,
+                viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+            ),
+            requesters=e["requesters"],
+        )
+        for e in by_post.values()
+    ]
+
+
+@router.post(
+    "/{post_id}/request", response_model=PostResponse, status_code=status.HTTP_201_CREATED
+)
+def request_recipe(
+    post_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ask the cook for the recipe behind this meal (#79) — the app's premise as a mechanic.
+
+    WHO MAY ASK: anyone who can already SEE the post (`can_view_post`). Deliberately not
+    friends-only: #71 put public meals in Browse precisely so a stranger could find your
+    dish, and a dead end there would undo that. So the guard is "can you see it", not a
+    second rule.
+
+    WHAT MAY BE ASKED FOR: any post where the CALLER cannot currently read a recipe for it.
+    That is one state, not two — the post response nulls `recipe_id` for a recipe the caller
+    may not read, so "the cook never wrote it down" and "the cook wrote it and kept it
+    private" are indistinguishable from outside, and the button carries no information
+    either way. No copy anywhere says a recipe exists but is withheld; that sentence is the
+    social pressure this design avoids. The cook keeps control: ignore the ask, or fulfil it
+    — and fulfilling a private recipe mints grants WITHOUT changing its visibility.
+
+    Rejected when the caller can already read the linked recipe: there is nothing to ask
+    for, and the request could never be satisfied by fulfilment.
+
+    Idempotent — asking twice returns the post unchanged rather than adding a row (unique on
+    the pair), and the IntegrityError branch covers two taps racing.
+    """
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None or not can_view_post(post, current_user, db):
+        # 404 not 403 — never confirm a post exists to someone not entitled to it.
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="It's your own recipe to write.")
+
+    viewable = _viewable_recipe_ids([post], current_user, db)
+    if post.recipe_id is not None and post.recipe_id in viewable:
+        raise HTTPException(status_code=400, detail="The recipe for this is already here.")
+
+    existing = (
+        db.query(RecipeRequest)
+        .filter(
+            RecipeRequest.post_id == post.id,
+            RecipeRequest.requester_id == current_user.id,
+        )
+        .first()
+    )
+    # Three states, not two. The unique (post, requester) pair means a FULFILLED row is
+    # still there after delivery — and treating that as "already asked" left the button
+    # permanently dead: `_request_context` counts only pending rows, so the card re-rendered
+    # as "Ask for the recipe" while this endpoint returned 201 and did nothing, forever,
+    # with no error and no notification to the cook. Reachable purely through the UI: ask →
+    # cook fulfils → the cook later fulfils the same post with a DIFFERENT recipe you can't
+    # read → your card offers the ask again. Re-opening the existing row is the fix (a second
+    # row is impossible), and it is also the correct meaning: you are asking again.
+    if existing is None:
+        db.add(RecipeRequest(post_id=post.id, requester_id=current_user.id))
+        notify(
+            db,
+            user_id=post.user_id,
+            type="recipe_request",
+            actor_id=current_user.id,
+            post_id=post.id,
+            # An unread "X asked for your Y" already in the inbox says everything a second
+            # one would. Without this, ask/retract/ask is an unbounded inbox flood.
+            dedupe=True,
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two taps raced the unique pair constraint. One request is the right outcome.
+            db.rollback()
+    elif existing.state == "fulfilled":
+        existing.state = "pending"
+        notify(
+            db,
+            user_id=post.user_id,
+            type="recipe_request",
+            actor_id=current_user.id,
+            post_id=post.id,
+            # An unread "X asked for your Y" already in the inbox says everything a second
+            # one would. Without this, ask/retract/ask is an unbounded inbox flood.
+            dedupe=True,
+        )
+        db.commit()
+    counts, mine = _request_context([post], current_user, db)
+    return _to_response(
+        post, post.user, viewable,
+        viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+    )
+
+
+@router.delete("/{post_id}/request", response_model=PostResponse)
+def retract_request(
+    post_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Take back your ask. Only ever removes the CALLER'S OWN row, and only a pending one —
+    a fulfilled request is the record that a recipe was handed over, not a live ask.
+
+    Deliberately does NOT delete the cook's notification: they were told something true, and
+    un-telling it would be rewriting history inside someone else's inbox.
+    """
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None or not can_view_post(post, current_user, db):
+        raise HTTPException(status_code=404, detail="Post not found")
+    db.query(RecipeRequest).filter(
+        RecipeRequest.post_id == post.id,
+        RecipeRequest.requester_id == current_user.id,
+        RecipeRequest.state == "pending",
+    ).delete(synchronize_session=False)
+    db.commit()
+    viewable = _viewable_recipe_ids([post], current_user, db)
+    counts, mine = _request_context([post], current_user, db)
+    return _to_response(
+        post, post.user, viewable,
+        viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+    )
+
+
+@router.post("/{post_id}/fulfill", response_model=PostResponse)
+def fulfill_post(
+    post_id: int,
+    body: FulfillRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Answer the asks on your own post with one of your recipes (#79).
+
+    The delivery mechanism is the EXISTING handoff grant: for each pending requester, mint
+    `Handoff(recipe_id, from_user_id=author, to_user_id=requester, state='accepted')`. That
+    is why this works on a private recipe without touching its visibility — a grant is
+    orthogonal to `visibility` in `can_view`, exactly as a hand-off has always been. The
+    recipe also lands at the top of each requester's Kept shelf (which sorts by when it was
+    shelved), so delivery is visible even before the notification is read.
+
+    Author-only, and the recipe must be the author's own — a `user_id` filter, not
+    `can_view`: read is not write, and you can only hand over what's yours.
+
+    Idempotent: an existing accepted grant is never duplicated, and already-fulfilled
+    requests are skipped.
+
+    Attaching the recipe to the post is part of the same act, so later viewers who CAN read
+    it get the "See the recipe" link rather than a request button. Nothing here widens the
+    recipe's own visibility.
+
+    A post links ONE recipe while grants are per-person, so fulfilling the same post twice
+    with different recipes repoints the link: the first requester keeps their grant and finds
+    the dish on their Kept shelf, but the post's link now names the newer recipe, which they
+    may not be able to read. Deliberate — the link should show the cook's latest answer — and
+    survivable, because the grant, not the link, is what carries access.
+    """
+    post = db.query(Post).filter(Post.id == post_id, Post.user_id == current_user.id).first()
+    if post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    recipe = (
+        db.query(Recipe)
+        .filter(
+            Recipe.id == body.recipe_id,
+            Recipe.user_id == current_user.id,
+            Recipe.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    pending = (
+        db.query(RecipeRequest)
+        .filter(RecipeRequest.post_id == post.id, RecipeRequest.state == "pending")
+        .all()
+    )
+    # Who already holds a grant for this recipe, so a re-run can't stack duplicates.
+    already = {
+        row.to_user_id
+        for row in db.query(Handoff.to_user_id).filter(
+            Handoff.recipe_id == recipe.id,
+            Handoff.state == "accepted",
+            Handoff.to_user_id.isnot(None),
+        )
+    }
+    for req in pending:
+        if req.requester_id != current_user.id and req.requester_id not in already:
+            db.add(
+                Handoff(
+                    recipe_id=recipe.id,
+                    from_user_id=current_user.id,
+                    to_user_id=req.requester_id,
+                    state="accepted",
+                )
+            )
+            already.add(req.requester_id)
+        req.state = "fulfilled"
+        notify(
+            db,
+            user_id=req.requester_id,
+            type="request_fulfilled",
+            actor_id=current_user.id,
+            post_id=post.id,
+            recipe_id=recipe.id,
+        )
+    post.recipe_id = recipe.id
+    db.commit()
+    db.refresh(post)
+    counts, mine = _request_context([post], current_user, db)
+    return _to_response(
+        post, current_user, {recipe.id},
+        viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+    )
 
 
 @router.get("/{post_id}", response_model=PostResponse)
@@ -230,7 +565,11 @@ def get_post(
     if not can_view_post(post, current_user, db):
         raise HTTPException(status_code=404, detail="Post not found")
     viewable = _viewable_recipe_ids([post], current_user, db)
-    return _to_response(post, post.user, viewable)
+    counts, mine = _request_context([post], current_user, db)
+    return _to_response(
+        post, post.user, viewable,
+        viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+    )
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -277,4 +616,11 @@ def user_posts(
     is_friend = user_id == current_user.id or are_friends(current_user.id, user_id, db)
     posts = [p for p in posts if can_view_post(p, current_user, db, is_friend=is_friend)]
     viewable = _viewable_recipe_ids(posts, current_user, db)
-    return [_to_response(p, p.user, viewable) for p in posts]
+    counts, mine = _request_context(posts, current_user, db)
+    return [
+        _to_response(
+            p, p.user, viewable,
+            viewer_id=current_user.id, request_counts=counts, my_requested_post_ids=mine,
+        )
+        for p in posts
+    ]

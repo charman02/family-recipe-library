@@ -1,8 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import PostCard from './PostCard'
+
+vi.mock('../api/posts', () => ({
+  requestRecipe: vi.fn(),
+  retractRequest: vi.fn(),
+}))
+vi.mock('../api/client', () => ({
+  default: {},
+  toUserMessage: (err, fallback) => fallback,
+}))
+import { requestRecipe, retractRequest } from '../api/posts'
+
 
 const post = (over = {}) => ({
   id: 1,
@@ -114,5 +125,120 @@ describe('PostCard', () => {
       renderCard(post({ created_at: '2026-08-18T11:59:30Z' })) // explicit Z, 30s ago
       expect(screen.getByText('just now')).toBeInTheDocument()
     })
+  })
+})
+
+// The ask (#79) — the app's premise as a mechanic, sitting deliberately where a like button
+// would have gone. There isn't one, and there is no public tally either.
+describe('PostCard — asking for the recipe', () => {
+  const ME = { id: 1, first_name: 'Me' }
+  const setMe = () => localStorage.setItem('issei_user', JSON.stringify(ME))
+
+  const somebodyElses = (over = {}) => ({
+    id: 5,
+    user_id: 99,
+    author_first_name: 'Lola',
+    author_last_name: 'Cook',
+    author_photo_url: null,
+    photo_url: 'https://img.test/a.jpg',
+    dish_name: 'Sinigang',
+    description: null,
+    recipe_id: null,
+    requested_by_me: false,
+    request_count: null,
+    created_at: '2026-09-04T10:00:00Z',
+    ...over,
+  })
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  it('offers the ask on someone else’s post with no readable recipe', () => {
+    setMe()
+    renderCard(somebodyElses())
+    expect(screen.getByRole('button', { name: /ask for the recipe/i })).toBeInTheDocument()
+  })
+
+  it('renders from recipe_id ALONE, so a hidden recipe is indistinguishable', () => {
+    // The privacy property, stated as the thing that actually makes it true: the card branches
+    // on `recipe_id` and nothing else, so it cannot tell "never written" from "written but
+    // private" — the API nulls the field in both cases. (The previous version of this test
+    // compared two identical objects and could not fail; this asserts the mechanism.)
+    setMe()
+    renderCard(somebodyElses({ recipe_id: null }))
+    const ask = screen.getByRole('button', { name: /ask for the recipe/i })
+    expect(ask).toBeInTheDocument()
+    // Nothing anywhere hints that a recipe might exist.
+    expect(document.body.textContent).not.toMatch(/private|hidden|not shared|withheld/i)
+  })
+
+  it('links to the recipe instead of asking, once you can read it', () => {
+    setMe()
+    renderCard(somebodyElses({ recipe_id: 12 }))
+    expect(screen.getByRole('button', { name: /see the recipe/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /ask for the recipe/i })).not.toBeInTheDocument()
+  })
+
+  it('never offers you the ask on your OWN post', () => {
+    setMe()
+    renderCard(somebodyElses({ user_id: ME.id }))
+    expect(screen.queryByRole('button', { name: /ask for the recipe/i })).not.toBeInTheDocument()
+  })
+
+  it('asks, and reflects the server’s answer', async () => {
+    setMe()
+    requestRecipe.mockResolvedValue({ data: somebodyElses({ requested_by_me: true }) })
+    renderCard(somebodyElses())
+    await userEvent.click(screen.getByRole('button', { name: /ask for the recipe/i }))
+    await waitFor(() => expect(requestRecipe).toHaveBeenCalledWith(5))
+    expect(await screen.findByRole('button', { name: /asked ✓/i })).toBeInTheDocument()
+  })
+
+  it('taps again to take it back', async () => {
+    setMe()
+    retractRequest.mockResolvedValue({ data: somebodyElses({ requested_by_me: false }) })
+    renderCard(somebodyElses({ requested_by_me: true }))
+    await userEvent.click(screen.getByRole('button', { name: /asked ✓/i }))
+    await waitFor(() => expect(retractRequest).toHaveBeenCalledWith(5))
+    expect(await screen.findByRole('button', { name: /ask for the recipe/i })).toBeInTheDocument()
+  })
+
+  it('puts the button back and says so when the ask fails', async () => {
+    setMe()
+    requestRecipe.mockRejectedValue(new Error('offline'))
+    renderCard(somebodyElses())
+    await userEvent.click(screen.getByRole('button', { name: /ask for the recipe/i }))
+    // Never leave an optimistic lie on screen.
+    expect(await screen.findByRole('button', { name: /ask for the recipe/i })).toBeInTheDocument()
+    expect(screen.getByText(/couldn.t ask just now/i)).toBeInTheDocument()
+  })
+
+  it('shows the count to the COOK only, and never as a zero', () => {
+    setMe()
+    // The cook's own post, with asks: a private nudge.
+    const { unmount } = renderCard(somebodyElses({ user_id: ME.id, request_count: 3 }))
+    expect(screen.getByText(/3 people asked for this/i)).toBeInTheDocument()
+    unmount()
+    // The cook's own post with none: nothing at all — no "0 asked".
+    const second = renderCard(somebodyElses({ user_id: ME.id, request_count: 0 }))
+    expect(screen.queryByText(/asked for this/i)).not.toBeInTheDocument()
+    second.unmount()
+    // A viewer is handed null, so there is nothing it could print.
+    renderCard(somebodyElses({ request_count: null, requested_by_me: true }))
+    expect(screen.queryByText(/asked for this/i)).not.toBeInTheDocument()
+  })
+
+  it('reads "1 person", not "1 people"', () => {
+    setMe()
+    renderCard(somebodyElses({ user_id: ME.id, request_count: 1 }))
+    expect(screen.getByText(/1 person asked for this/i)).toBeInTheDocument()
+  })
+
+  it('still has no like button', () => {
+    setMe()
+    renderCard(somebodyElses())
+    expect(document.body.textContent).not.toMatch(/\blike\b|\bheart\b|favourite|favorite/i)
   })
 })

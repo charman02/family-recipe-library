@@ -7,6 +7,7 @@ import SaveCelebration from '../components/SaveCelebration'
 import BackButton from '../components/BackButton'
 import VisibilityChoice from '../components/VisibilityChoice'
 import { plantRecipe } from '../api/sharing'
+import { fulfillPost } from '../api/posts'
 
 // The add-a-recipe flow (route /add): choose a door (fill it in, or paste the
 // whole thing) → the form → a "saved" confirmation → an optional hand-off.
@@ -29,6 +30,10 @@ export default function PlantRecipe() {
   // A recipe already attached to the post before this detour. Carried so backing out hands
   // it back instead of silently dropping the attachment.
   const alreadyAttached = location.state?.attachRecipe || null
+  // Set when the flow was entered from the cook's requests page (#79): the post whose asks
+  // this recipe answers. On save we fulfil it, which mints a handoff grant per requester —
+  // so a recipe saved as PRIVATE still reaches the people who asked, without going public.
+  const fulfillPostId = location.state?.fulfillPostId || null
   // No doorway step any more: /add already chose "Write a recipe", so we land straight
   // on the say/paste screen (the one signature way in). The old blank-form door lives
   // on as a "Rather type it in?" link at the bottom of that screen.
@@ -59,6 +64,10 @@ export default function PlantRecipe() {
   // "Rather type it in?" goes back to the paste screen too.
   function goBack() {
     if (step === 'form') setStep('paste')
+    // Answering an ask came from /requests, not from a composer. Sending this draft to
+    // /add/meal would pre-fill a NEW post with the photo, name, description and visibility
+    // of the meal that is already published — one tap from a duplicate.
+    else if (fulfillPostId) navigate('/requests')
     else if (postDraft)
       navigate('/add/meal', { state: { postDraft, attachRecipe: alreadyAttached } })
     else navigate('/add')
@@ -150,7 +159,25 @@ export default function PlantRecipe() {
   // straight back to the composer with the recipe attached — the celebration would be
   // claiming the act is finished when the post still isn't shared. The recipe is saved
   // either way before this runs, so abandoning the post never loses it.
-  function finish(data) {
+  async function finish(data) {
+    if (fulfillPostId) {
+      // Deliver to everyone who asked, then show them on the requests page. A failure here
+      // must not look like the recipe wasn't saved — it was; only the delivery didn't land,
+      // and the cook can retry with "Attach one".
+      let delivered = true
+      try {
+        await fulfillPost(fulfillPostId, data.id)
+      } catch {
+        // The recipe IS saved, so this must not read as data loss — but silence was worse:
+        // the cook landed on an unchanged list with no error, which reads as "the save
+        // didn't take", and the obvious recovery is to write the whole recipe again. Say it.
+        delivered = false
+      }
+      navigate('/requests', {
+        state: delivered ? undefined : { deliveryFailed: data.name || true },
+      })
+      return
+    }
     if (postDraft) {
       navigate('/add/meal', { state: { postDraft, attachRecipe: data } })
       return
@@ -169,9 +196,13 @@ export default function PlantRecipe() {
         // Said on the FIRST screen, not just the form: the live run showed you land here
         // with no sign your meal survived the tap, which is the one thing you'd worry about.
         note={
-          postDraft
+          // Only for the mid-post flow (#81). In the fulfil flow (#79) the meal is already
+          // shared and saving returns to /requests, so both halves of this would be false.
+          postDraft && !fulfillPostId
             ? 'Your meal is still waiting — saving brings you back to it, recipe attached.'
-            : null
+            : fulfillPostId
+              ? 'Saving sends this to everyone who asked.'
+              : null
         }
       />
     )
@@ -217,7 +248,10 @@ export default function PlantRecipe() {
               <p className="font-display italic text-[14px] text-ink-soft -mt-2 mb-4">
                 Add what you&rsquo;ve got — &ldquo;a splash of vinegar&rdquo; is
                 perfect. Only the dish name is required.
-                {postDraft && ' Saving brings you back to your meal, recipe attached.'}
+                {postDraft &&
+                  !fulfillPostId &&
+                  ' Saving brings you back to your meal, recipe attached.'}
+                {fulfillPostId && ' Saving sends it to everyone who asked.'}
               </p>
             )
           }

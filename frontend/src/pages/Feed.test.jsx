@@ -12,8 +12,13 @@ vi.mock('../api/posts', () => ({
 vi.mock('../api/friends', () => ({
   getFriends: vi.fn(() => Promise.resolve({ data: [] })),
 }))
+// The masthead now reads the unread count for its bell badge (#79).
+vi.mock('../api/notifications', () => ({
+  getNotifications: vi.fn(() => Promise.resolve({ data: { notifications: [], unread_count: 0 } })),
+}))
 import { getFeed } from '../api/posts'
 import { getFriends } from '../api/friends'
+import { getNotifications } from '../api/notifications'
 import Feed from './Feed'
 
 const post = (id, over = {}) => ({
@@ -36,6 +41,7 @@ function renderFeed() {
         <Route path="/" element={<Feed />} />
         <Route path="/add/meal" element={<div>compose meal</div>} />
         <Route path="/friends" element={<div>friends page</div>} />
+        <Route path="/notifications" element={<div>inbox page</div>} />
         <Route path="/u/:userId" element={<div>user profile</div>} />
       </Routes>
     </MemoryRouter>,
@@ -239,5 +245,44 @@ describe('Feed — the permanent route to Friends', () => {
     expect(screen.getAllByRole('button', { name: /find friends/i })).toHaveLength(1)
     await userEvent.click(findFriends())
     expect(await screen.findByText('friends page')).toBeInTheDocument()
+  })
+})
+
+// The inbox door (#79). issei's first notification surface, so the badge is also the first
+// unread indicator anywhere — and it must not become an always-on scoreboard.
+describe('Feed — the inbox bell', () => {
+  it('is always there, and opens the inbox', async () => {
+    getFeed.mockResolvedValue({ data: [post(1)] })
+    renderFeed()
+    await screen.findByText('Dish 1')
+    await userEvent.click(screen.getByRole('button', { name: /what's new/i }))
+    expect(await screen.findByText('inbox page')).toBeInTheDocument()
+  })
+
+  it('shows no badge when there is nothing unread', async () => {
+    getNotifications.mockResolvedValue({ data: { notifications: [], unread_count: 0 } })
+    getFeed.mockResolvedValue({ data: [] })
+    renderFeed()
+    await screen.findByText(/nothing cooking yet/i)
+    // A permanent "0" is exactly the empty scoreboard this app avoids elsewhere.
+    expect(screen.getByRole('button', { name: /^what's new$/i })).toBeInTheDocument()
+    expect(screen.queryByText('0')).not.toBeInTheDocument()
+  })
+
+  it('shows the count when there is, and caps it at 9+', async () => {
+    getNotifications.mockResolvedValue({ data: { notifications: [], unread_count: 12 } })
+    getFeed.mockResolvedValue({ data: [] })
+    renderFeed()
+    expect(await screen.findByText('9+')).toBeInTheDocument()
+    // The accessible name carries the real number for a screen reader.
+    expect(screen.getByRole('button', { name: /12 unread/i })).toBeInTheDocument()
+  })
+
+  it('a failed count is silent rather than breaking the masthead', async () => {
+    getNotifications.mockRejectedValue(new Error('offline'))
+    getFeed.mockResolvedValue({ data: [post(1)] })
+    renderFeed()
+    expect(await screen.findByText('Dish 1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /what's new/i })).toBeInTheDocument()
   })
 })

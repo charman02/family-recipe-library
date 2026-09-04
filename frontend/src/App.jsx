@@ -20,6 +20,8 @@ import Friends from './pages/Friends'
 import UserProfile from './pages/UserProfile'
 import Profile from './pages/Profile'
 import Feedback from './pages/Feedback'
+import Notifications from './pages/Notifications'
+import Requests from './pages/Requests'
 import InviteLanding from './pages/InviteLanding'
 
 function Layout({ children }) {
@@ -201,6 +203,30 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Feedback />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      {/* The inbox (#79) — issei's first notification surface. Protected and inside
+          Layout: it's a normal destination you return from, not a takeover. */}
+      <Route
+        path="/notifications"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Notifications />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      {/* The cook's asks (#79). The ONLY place request counts and requester names are
+          shown, which is what keeps them off every public surface. */}
+      <Route
+        path="/requests"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Requests />
             </Layout>
           </ProtectedRoute>
         }

@@ -115,5 +115,18 @@ alone — re-run it):
 
 Backend routers are well covered. These frontend surfaces have **no test file** and
 are the first places a silent break can hide — add tests when you next touch them:
-`EditRecipe`, `HandoffPage`, `ForgotPassword`, `ResetPassword`. (`Browse` has a test file now.)
+`EditRecipe`, `HandoffPage`, `ForgotPassword`, `ResetPassword`.
+
+### Invariant 8 — a recipe-request count never reaches anyone but the cook
+
+`PostResponse.request_count` must be `None` for every viewer who is not the post's author, and
+no surface may render a zero. This is the app's first engagement metric and the easiest thing
+to "helpfully" make public: it is already computed and already on the wire, so publishing it is
+deleting one `if`, and two earlier design docs even recommended the public version. See
+POSITIONING.md's fourth invariant for why it stays private.
+
+Pinned by `tests/test_recipe_requests.py` — `test_the_count_goes_to_the_cook_and_to_nobody_else`,
+`test_a_viewer_never_learns_that_someone_else_asked`, `test_the_feed_carries_the_same_rule` (all
+assert `None`, not `0`) — and by `frontend/src/components/PostCard.test.jsx`, "shows the count
+to the COOK only, and never as a zero". (`Browse` has a test file now.)
 (`EditRecipe` being untested is exactly how invariant 7's bug reached prod.)

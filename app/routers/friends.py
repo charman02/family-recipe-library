@@ -20,6 +20,7 @@ from app.schemas.friend import (
     ProfileResponse,
 )
 from app.services.friends import existing_friendship, friend_ids
+from app.services.notifications import notify
 from app.services.sharing import can_view, can_view_post
 
 router = APIRouter(prefix="/friends", tags=["friends"])
@@ -80,6 +81,14 @@ def request_friend(
         # accepts it, so both intents are honoured without a second row.
         if existing.state == "pending" and existing.addressee_id == current_user.id:
             existing.state = "accepted"
+            # Requesting back is an accept, so the original requester hears the same thing
+            # they'd hear from the accept endpoint (#79's one inbox).
+            notify(
+                db,
+                user_id=existing.requester_id,
+                type="friend_accept",
+                actor_id=current_user.id,
+            )
             db.commit()
             db.refresh(existing)
         return _to_friend_response(
@@ -91,6 +100,7 @@ def request_friend(
     )
     f.set_pair()
     db.add(f)
+    notify(db, user_id=body.to_user_id, type="friend_request", actor_id=current_user.id)
     try:
         db.commit()
     except IntegrityError:
@@ -128,6 +138,7 @@ def accept_friend(
         raise HTTPException(status_code=404, detail="Request not found")
     if f.state != "accepted":
         f.state = "accepted"
+        notify(db, user_id=f.requester_id, type="friend_accept", actor_id=current_user.id)
         db.commit()
         db.refresh(f)
     return _to_friend_response(

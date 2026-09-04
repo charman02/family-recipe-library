@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-vi.mock('../api/posts', () => ({ getPost: vi.fn() }))
-import { getPost } from '../api/posts'
+vi.mock('../api/posts', () => ({
+  getPost: vi.fn(),
+  requestRecipe: vi.fn(),
+  retractRequest: vi.fn(),
+}))
+vi.mock('../api/client', () => ({ default: {}, toUserMessage: (e, f) => f }))
+import { getPost, requestRecipe, retractRequest } from '../api/posts'
 import PostPage from './PostPage'
 
 const postData = (over = {}) => ({
@@ -80,5 +85,84 @@ describe('PostPage (#71)', () => {
     getPost.mockRejectedValue({ response: { status: 404 } })
     renderPost()
     expect(await screen.findByText(/isn.t available/i)).toBeInTheDocument()
+  })
+})
+
+// The ask on the PERMALINK (#79). This page is where a stranger lands from Browse's Meals
+// tab — the exact person with no other route to the cook — and the branch reviewer caught it
+// having no ask at all, which is the dead end #71 was built to open.
+describe('PostPage — asking for the recipe', () => {
+  it('offers the ask when the viewer can’t read a recipe for the meal', async () => {
+    getPost.mockResolvedValue({ data: postData({ recipe_id: null }) })
+    renderPost()
+    expect(
+      await screen.findByRole('button', { name: /ask for the recipe/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('links to the recipe instead, once the viewer can read it', async () => {
+    getPost.mockResolvedValue({ data: postData({ recipe_id: 12 }) })
+    renderPost()
+    expect(await screen.findByRole('button', { name: /see the recipe/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /ask for the recipe/i })).not.toBeInTheDocument()
+  })
+
+  it('never offers it on your own meal', async () => {
+    getPost.mockResolvedValue({ data: postData({ user_id: 1, recipe_id: null }) })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    expect(screen.queryByRole('button', { name: /ask for the recipe/i })).not.toBeInTheDocument()
+  })
+
+  it('asks, and shows the server’s answer', async () => {
+    getPost.mockResolvedValue({ data: postData({ recipe_id: null }) })
+    requestRecipe.mockResolvedValue({
+      data: postData({ recipe_id: null, requested_by_me: true }),
+    })
+    renderPost()
+    await userEvent.click(await screen.findByRole('button', { name: /ask for the recipe/i }))
+    await waitFor(() => expect(requestRecipe).toHaveBeenCalledWith(5))
+    expect(await screen.findByRole('button', { name: /asked ✓/i })).toBeInTheDocument()
+  })
+
+  it('seeds "Asked ✓" from the loaded post, so a reload tells the truth', async () => {
+    getPost.mockResolvedValue({ data: postData({ recipe_id: null, requested_by_me: true }) })
+    renderPost()
+    expect(await screen.findByRole('button', { name: /asked ✓/i })).toBeInTheDocument()
+  })
+
+  it('takes it back on a second tap', async () => {
+    getPost.mockResolvedValue({ data: postData({ recipe_id: null, requested_by_me: true }) })
+    retractRequest.mockResolvedValue({
+      data: postData({ recipe_id: null, requested_by_me: false }),
+    })
+    renderPost()
+    await userEvent.click(await screen.findByRole('button', { name: /asked ✓/i }))
+    await waitFor(() => expect(retractRequest).toHaveBeenCalledWith(5))
+    expect(
+      await screen.findByRole('button', { name: /ask for the recipe/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('puts the button back and explains when the ask fails', async () => {
+    getPost.mockResolvedValue({ data: postData({ recipe_id: null }) })
+    requestRecipe.mockRejectedValue(new Error('offline'))
+    renderPost()
+    await userEvent.click(await screen.findByRole('button', { name: /ask for the recipe/i }))
+    expect(
+      await screen.findByRole('button', { name: /ask for the recipe/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/couldn.t ask just now/i)).toBeInTheDocument()
+  })
+
+  it('never shows a request count here — that belongs to the cook alone', async () => {
+    getPost.mockResolvedValue({
+      data: postData({ recipe_id: null, request_count: 7, requested_by_me: false }),
+    })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    // Even if a server ever leaked a number, the permalink must not render it.
+    expect(document.body.textContent).not.toMatch(/7 (people|person)/)
+    expect(document.body.textContent).not.toMatch(/asked for this/i)
   })
 })

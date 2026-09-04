@@ -1,0 +1,136 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { getNotifications, markNotificationsRead } from '../api/notifications'
+import BackButton from '../components/BackButton'
+import MarkerTitle from '../components/MarkerTitle'
+import Avatar from '../components/Avatar'
+import EmptyState from '../components/EmptyState'
+import Loader from '../components/Loader'
+
+const ago = (iso) => {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h`
+  return `${Math.floor(hrs / 24)}d`
+}
+
+const nameOf = (n) =>
+  [n.actor_first_name, n.actor_last_name].filter(Boolean).join(' ') || 'Someone'
+
+// What each type SAYS. Kept as one table rather than branching inline, so the vocabulary is
+// readable in one place and a new type is one row. Never mentions voice, audio or a
+// recording — a per-step note is typed text (POSITIONING).
+function lineFor(n) {
+  const who = nameOf(n)
+  const what = n.subject
+  switch (n.type) {
+    case 'recipe_request':
+      return what ? `${who} asked you for your ${what}.` : `${who} asked you for a recipe.`
+    case 'request_fulfilled':
+      return what ? `${who} sent you ${what}.` : `${who} sent you the recipe you asked for.`
+    case 'friend_request':
+      return `${who} wants to be friends.`
+    case 'friend_accept':
+      return `${who} is now your friend.`
+    default:
+      // An unknown type must still render as a line rather than blanking the inbox — a
+      // client can be older than the server that wrote the row.
+      return `${who} did something.`
+  }
+}
+
+// Where tapping goes. A reference the row lost (the post or recipe was deleted, so the FK
+// SET NULL'd) simply isn't a link — the line still reads, because it still happened.
+function targetFor(n) {
+  if (n.type === 'request_fulfilled' && n.recipe_id) return `/recipes/${n.recipe_id}`
+  if (n.type === 'recipe_request') return '/requests'
+  if (n.type === 'friend_request') return '/friends'
+  if (n.type === 'friend_accept' && n.actor_id) return `/u/${n.actor_id}`
+  if (n.post_id) return `/posts/${n.post_id}`
+  return null
+}
+
+// The inbox (#79). issei's first notification surface: the cook learns someone asked, and
+// the requester learns their recipe arrived. Opening the page marks everything read, which
+// is the behaviour people expect from an inbox and avoids a per-row "mark read" control
+// nobody wants to tap.
+export default function Notifications() {
+  const navigate = useNavigate()
+  const [items, setItems] = useState(null)
+
+  useEffect(() => {
+    let stale = false
+    // One call: marking read returns the refreshed list, so the badge and the rows come
+    // from the same round trip and can't disagree.
+    markNotificationsRead()
+      .then((res) => !stale && setItems(res.data.notifications))
+      .catch(() =>
+        getNotifications()
+          .then((res) => !stale && setItems(res.data.notifications))
+          .catch(() => !stale && setItems([])),
+      )
+    return () => {
+      stale = true
+    }
+  }, [])
+
+  if (items === null) return <Loader />
+
+  return (
+    <div className="min-h-screen bg-cream px-[18px] pt-5 pb-10">
+      <div className="mb-4">
+        <BackButton to="/" label="Back" />
+      </div>
+      <MarkerTitle color="bg-periwinkle">
+        What&rsquo;s new<span className="text-terra">.</span>
+      </MarkerTitle>
+      <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-6">
+        Asks, arrivals and friends.
+      </p>
+
+      {items.length === 0 ? (
+        <EmptyState
+          icon="📬"
+          badge="bg-mint"
+          title="Nothing new"
+          sub="When someone asks you for a recipe — or sends you one you asked for — it lands here."
+          className="mt-6"
+        />
+      ) : (
+        <div className="space-y-2.5">
+          {items.map((n) => {
+            const to = targetFor(n)
+            const body = (
+              <>
+                <Avatar name={n.actor_first_name || '?'} photoUrl={n.actor_photo_url} size="sm" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-display text-[14px] text-ink leading-snug">
+                    {lineFor(n)}
+                  </span>
+                  <span className="block font-display italic text-[12px] text-ink-soft mt-0.5">
+                    {ago(n.created_at)}
+                  </span>
+                </span>
+              </>
+            )
+            return to ? (
+              <button
+                key={n.id}
+                onClick={() => navigate(to)}
+                className="sticker bg-card w-full flex items-center gap-3 p-3 text-left"
+              >
+                {body}
+              </button>
+            ) : (
+              <div key={n.id} className="sticker bg-card flex items-center gap-3 p-3">
+                {body}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

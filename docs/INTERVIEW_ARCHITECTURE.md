@@ -3,7 +3,7 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 48 endpoints · 12 tables · 18 migrations · 361 backend tests · 594 frontend
+**Scale:** 54 endpoints · 14 tables · 19 migrations · 395 backend tests · 648 frontend
 tests · 4,882 lines of Python, deployed (AWS ECS Fargate + Vercel + Neon Postgres).
 
 ---
@@ -27,7 +27,7 @@ downstream of one product decision.
 | API | FastAPI | Pydantic gives request/response validation at the boundary for free; async for the LLM call |
 | ORM | SQLAlchemy 2.0 (`Mapped[]` typed style) | Types are checkable; the models double as documentation |
 | DB | Postgres (Neon) in prod, SQLite locally | Same ORM either way; `database.py` branches on the URL |
-| Migrations | Alembic | 18 versioned migrations, forward-only in practice |
+| Migrations | Alembic | 19 versioned migrations, forward-only in practice |
 | Auth | JWT, stateless, bcrypt | No session store to run; the token carries `sub` = user id |
 | Frontend | React + Vite + Tailwind | — |
 | Hosting | AWS ECS Fargate (API) · Vercel (web) · Neon (DB) | Push to `main` auto-deploys via GitHub Actions OIDC pipeline |
@@ -45,7 +45,7 @@ data engineer will respect:
 
 ---
 
-## 3. Data model (12 tables)
+## 3. Data model (14 tables)
 
 ```
 users

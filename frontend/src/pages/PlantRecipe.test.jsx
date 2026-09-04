@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { buildOriginPayload } from '../lib/originPayload'
 
+vi.mock('../api/posts', () => ({
+  fulfillPost: vi.fn(() => Promise.resolve({ data: {} })),
+}))
 vi.mock('../api/sharing', () => ({
   plantRecipe: vi.fn(() =>
     Promise.resolve({
@@ -98,10 +101,13 @@ vi.mock('../components/SaveCelebration', () => ({
   ),
 }))
 import { plantRecipe, parseRecipeWithAI } from '../api/sharing'
+import { fulfillPost } from '../api/posts'
 import PlantRecipe from './PlantRecipe'
 
 beforeEach(() => {
   plantRecipe.mockClear()
+  fulfillPost.mockClear()
+  fulfillPost.mockResolvedValue({ data: {} })
   parseRecipeWithAI.mockClear()
   parseRecipeWithAI.mockResolvedValue({ data: { ai: false } })
   lastProps = null
@@ -115,8 +121,20 @@ function renderFlow(state) {
         {/* Where a mid-post save must land. Echoes what it was handed. */}
         <Route path="/add/meal" element={<ComposerSpy />} />
         <Route path="/add" element={<div>add chooser</div>} />
+        {/* Where answering an ask lands (#79). Echoes any state it was handed. */}
+        <Route path="/requests" element={<RequestsSpy />} />
       </Routes>
     </MemoryRouter>,
+  )
+}
+
+function RequestsSpy() {
+  const { state } = useLocation()
+  return (
+    <div>
+      <p>asks page</p>
+      <p>delivery failed: {String(state?.deliveryFailed ?? 'no')}</p>
+    </div>
   )
 }
 
@@ -623,5 +641,70 @@ describe('PlantRecipe — entered from the meal composer', () => {
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     expect(await screen.findByText(/back at the composer/i)).toBeInTheDocument()
     expect(screen.getByText(/attached: 7/)).toBeInTheDocument()
+  })
+})
+
+// Answering an ask (#79). Entered from /requests with BOTH a postDraft (so the recipe form
+// is pre-seeded, exactly as #81 does) and a fulfillPostId (the post to deliver to).
+describe('PlantRecipe — answering a recipe request', () => {
+  const postDraft = {
+    photo_url: 'https://img.test/meal.jpg',
+    dish_name: 'Sinigang',
+    description: 'the sour one',
+    visibility: 'friends',
+  }
+  const fromRequests = { postDraft, fulfillPostId: 5 }
+
+  it('delivers to everyone who asked, then returns to the asks page', async () => {
+    renderFlow(fromRequests)
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
+    await waitFor(() => expect(fulfillPost).toHaveBeenCalledWith(5, 42))
+    expect(await screen.findByText('asks page')).toBeInTheDocument()
+    // NOT the celebration: the act being finished is the delivery, not a solo save.
+    expect(screen.queryByText(/celebration for/i)).not.toBeInTheDocument()
+  })
+
+  it('says on the entry screen that saving SENDS it, not that a meal is waiting', async () => {
+    // The meal is already shared here, and saving returns to /requests — so the mid-post
+    // reassurance ("your meal is still waiting… brings you back to it") is false twice over.
+    renderFlow(fromRequests)
+    expect(screen.getByText(/saving sends this to everyone who asked/i)).toBeInTheDocument()
+    expect(screen.queryByText(/your meal is still waiting/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the mid-post wording when it really IS a mid-post draft', async () => {
+    renderFlow({ postDraft })
+    expect(screen.getByText(/your meal is still waiting/i)).toBeInTheDocument()
+    expect(screen.queryByText(/sends this to everyone/i)).not.toBeInTheDocument()
+  })
+
+  it('backing out returns to the asks page, never to a pre-filled new post', async () => {
+    // The trap: this draft describes a meal that is ALREADY published. Handing it to the
+    // composer would pre-fill a new post with the same photo, name and description — one
+    // tap from a duplicate.
+    renderFlow(fromRequests)
+    await userEvent.click(screen.getByRole('button', { name: /back/i }))
+    expect(await screen.findByText('asks page')).toBeInTheDocument()
+    expect(screen.queryByText(/back at the composer/i)).not.toBeInTheDocument()
+  })
+
+  it('tells the cook when the recipe saved but delivery did not', async () => {
+    // Swallowing is right for the RECIPE (it exists; this must not read as data loss) but
+    // silence was worse: an unchanged list reads as "the save didn't take", and the obvious
+    // recovery is to write the whole recipe a second time.
+    fulfillPost.mockRejectedValueOnce(new Error('offline'))
+    renderFlow(fromRequests)
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
+    expect(await screen.findByText('asks page')).toBeInTheDocument()
+    expect(screen.getByText(/delivery failed: Congee/)).toBeInTheDocument()
+  })
+
+  it('reports nothing when delivery worked', async () => {
+    renderFlow(fromRequests)
+    await enterDoor(/rather type it in/i)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
+    expect(await screen.findByText('delivery failed: no')).toBeInTheDocument()
   })
 })

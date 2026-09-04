@@ -44,6 +44,32 @@ class PostResponse(BaseModel):
     description: Optional[str] = None
     recipe_id: Optional[int] = None
     visibility: str = "friends"
+    # Whether the CALLER has asked the cook for this recipe (#79). Per-viewer, so the button
+    # can read "Asked ✓" without a second round trip.
+    requested_by_me: bool = False
+    # How many people have asked — **only ever populated for the post's own author**, None
+    # for everyone else. This is the deliberate product line: a public "N people want this"
+    # is a like count wearing a different noun, and it would print a visible zero under the
+    # ordinary meal this app exists to make postable. The cook gets it as a private nudge;
+    # demand becomes public later by RANK (a "most asked for" row), which shows the dishes
+    # that have demand without ever rendering an absence.
+    request_count: Optional[int] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PostWithRequesters(BaseModel):
+    """A post of the CALLER'S OWN plus who asked for its recipe — the cook's requests page.
+
+    Only ever built for posts the caller authored (the endpoint filters on `user_id`), which
+    is what makes returning names here consistent with the count rule above.
+    """
+
+    post: PostResponse
+    requesters: list["RequesterSummary"]
+
+
+from app.schemas.notification import RequesterSummary  # noqa: E402
+
+PostWithRequesters.model_rebuild()

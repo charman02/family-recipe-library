@@ -43,7 +43,7 @@ positioning choice, not just an omission.
 - **A Post = photo + dish name + optional description.** If the poster later makes the
   recipe in-app, all three auto-seed the recipe (name, description, photo→cover) —
   zero re-entry. Post and recipe share those three fields.
-- **An in-app notification center is required** (issei has none today).
+- **An in-app notification center is required** — **BUILT (#79)**: `Notification` + `services/notifications.py` + `GET /notifications`.
 - **Native iOS app: later, not now.** Build web-first (see Tension 2); native is a
   later amplifier, not a prerequisite.
 
@@ -60,12 +60,12 @@ issei has **no social graph today** — this is the biggest new primitive.
 This is the heart of the feature. Flow:
 1. Post photo + dish name (no recipe yet).
 2. Friend taps **Request recipe**.
-3. Poster sees **"N friends want this recipe."**
+3. Poster sees **"N people asked for this"** — *people*, not friends (a requester need not be one), and **only the poster sees any number**.
 4. Poster adds it via the existing add flow — **pre-seeded with the dish name and
    the post's photo as the cover** (low friction, the whole point).
 5. On save, it **auto-delivers to every requester** — this is a handoff grant to
    each, reusing the invite/grant system you just polished.
-6. Requesters are notified: "Charlie shared the recipe for X you asked about."
+6. Requesters are notified — shipped copy is **"{Name} sent you {dish}."** (#79)
 - Design requests to be **idempotent per user** (like handoff grants) and to
   **persist** as a "pending pull" that converts to a grant on fulfillment.
 
@@ -90,7 +90,7 @@ This is a large, multi-part feature. It adds, roughly in dependency order:
 - **Post** model (photo, dish name, optional caption, optional recipe_id) + a **feed**
 - **RecipeRequest** model + the fulfill→grant→notify loop
 - **Comment** model
-- **A notification system** — issei has NONE today. Requests and comments both need
+- **A notification system** — **BUILT (#79)**, in-app only; push waits for the native app. Requests and comments both need
   one. Given no push infra and the "we don't email users" stance, this likely starts
   as an **in-app notification center**. (Cross-cutting; flag as its own sub-project.)
 
@@ -168,7 +168,7 @@ request loop is the harder, higher-payoff build.
 ## Open questions for the build session
 
 1. Friends (symmetric) vs followers (asymmetric) — **decision needed** (rec: friends).
-2. Notification delivery: in-app only, or eventually push/email? (rec: in-app first.)
+2. Notification delivery — **RESOLVED: in-app only.**
 3. Is there any public/global feed, or strictly friends-only? (rec: friends-only.)
 4. Does posting a photo ever become the *primary* way recipes enter the app (demand-
    pulled), demoting the current add-first flow? Or do they coexist? (Big product call.)

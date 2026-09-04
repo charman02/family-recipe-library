@@ -11,8 +11,8 @@ list of things the app does *not* do.
 ## What the current build actually is
 
 Deployed and in beta use: FastAPI + SQLAlchemy on AWS ECS Fargate (`api.issei.app`), a React
-+ Vite + Tailwind SPA on Vercel (`issei.app`), Postgres on Neon. **48 routes, 12 models, 361
-backend tests, 594 frontend tests** — re-count rather than quote.
++ Vite + Tailwind SPA on Vercel (`issei.app`), Postgres on Neon. **54 routes, 14 models, 395
+backend tests, 648 frontend tests** — re-count rather than quote.
 
 **The signature act.** A recipe is attributed to a **person** (the dish is the title, the
 person is the byline "from Lola"), imprecise measurements are preserved verbatim rather than
@@ -32,7 +32,11 @@ entries. A cover photo and per-step photos via Cloudinary, with iPhone HEIC conv
 recipe, and there is deliberately **no like button**); a Friends|Everyone feed toggle; Browse
 with **Recipes | Meals** tabs; read-only profiles; an app-wide **people directory** with name
 search; a **Kept** shelf for bookmarking someone else's recipe (never a copy); and — newest —
-writing a recipe **without abandoning the meal post you're in the middle of**.
+writing a recipe **without abandoning the meal post you're in the middle of**; and the
+**recipe-request loop** (#79) — anyone who can see a meal can ask the cook for the recipe, the
+cook is notified in an **in-app inbox** (issei's first, which friend requests and accepts now
+route through too), and answering it mints a handoff grant per requester, so a private recipe
+reaches the people who asked without becoming public. The ask count is the cook's alone.
 
 **Visibility** is a concrete per-item value (`public | friends | private`) stored literally,
 never a live pointer; the profile setting only picks the create-form default and drives an
@@ -45,29 +49,6 @@ red suite.
 
 **Removed, on purpose, and not coming back:** the recipe lineage/family tree, the seed→tree
 "garden" UI, and the consolidating shopping list. See `POSITIONING.md` and the note below.
-
----
-
-## Recipe Requests — the loop back to the cook
-
-**Current state:** a post can link to a recipe, and Browse's Meals tab lets anyone open a
-public meal — but there is **no way to ask for a recipe that hasn't been written down**. The
-`/posts/:id` page has no request action. This is the largest hole in the product as it stands.
-
-**What this adds:** a friend (or a stranger on a public post) taps "ask for the recipe"; the
-cook gets a notification and a one-tap path into the authoring flow that already knows the
-dish name, description and photo. #81 built the second half of that road — the composer can
-now hand a draft into the recipe flow and get a recipe back — so this is mostly the *request*
-entity, the notification surface, and the entry point.
-
-**Why it matters:** it's the app's premise stated as a mechanic. Someone tasted your food and
-asked for the recipe — that ask is currently a text message outside the app.
-
-**Implementation notes:** a `recipe_request` row (requester, post or dish name, state), a
-notification centre (nothing in the app notifies anyone today except the reset email), and
-strict care with counts: a public "N friends want this" tally is a like button wearing a
-different noun, and a per-cook private count is the removed `child_count` wearing another.
-Show the *people who asked*, to the cook only, or show nothing.
 
 ---
 
@@ -265,18 +246,16 @@ layer, not inside a list feature. Start with an alias table; fuzzy or LLM normal
 
 In order:
 
-1. **Recipe requests + notifications** — the app's own premise, currently unimplemented as a
-   mechanic, and the thing beta users work around with text messages.
-2. **The findability opt-out** — small, and it closes a consent gap that is live in prod right
+1. **The findability opt-out** — small, and it closes a consent gap that is live in prod right
    now. Cheap enough that ranking it below a feature is hard to defend.
-3. **A deploy that can't half-ship** — infrastructure, unglamorous, and it already bit twice.
-4. **Re-sharing a recipe you don't own** — the other half of keeping, and the most common next
+2. **A deploy that can't half-ship** — infrastructure, unglamorous, and it already bit twice.
+3. **Re-sharing a recipe you don't own** — the other half of keeping, and the most common next
    thing a happy recipient wants.
-5. **Translation** — the deepest feature that speaks directly to the core audience, gated on
+4. **Translation** — the deepest feature that speaks directly to the core audience, gated on
    getting the imprecise-amount rule right.
-6. **Multi-user family sharing** — still real, but scope it to genuine co-ownership now that
+5. **Multi-user family sharing** — still real, but scope it to genuine co-ownership now that
    the friend graph covers lightweight sharing.
-7. **iOS app** (with swipe-back brought to web first), then **video/gallery**, then
+6. **iOS app** (with swipe-back brought to web first), then **video/gallery**, then
    **ingredient canonicalization** — which unlocks cook-from-ingredients and better search,
    and which nothing currently depends on.
 

@@ -23,6 +23,11 @@ vi.mock('../api/friends', () => ({
   ),
   getFriendRequests: vi.fn(() => Promise.resolve({ data: [] })),
 }))
+// The You page also totals pending recipe-asks across your posts (#79). Benign default;
+// the tests below that care override it.
+vi.mock('../api/posts', () => ({
+  getIncomingRequests: vi.fn(() => Promise.resolve({ data: [] })),
+}))
 // Avatar upload (#33): stub the shared uploader so picking a photo synchronously yields
 // a URL (the real one hits Cloudinary via axios).
 vi.mock('../lib/photoUpload', () => ({
@@ -379,5 +384,43 @@ describe('Profile account editing', () => {
     expect(
       await screen.findByText(/current password isn.t right/i),
     ).toBeInTheDocument()
+  })
+})
+
+// The asked-for total (#79). Deliberately NOT the bell's unread badge: reading a
+// notification clears that, but the ask is still an obligation waiting on the cook.
+describe('You page — recipe asks waiting on you', () => {
+  it('shows the total across all your posts, and routes to the asks page', async () => {
+    const { getIncomingRequests } = await import('../api/posts')
+    getIncomingRequests.mockResolvedValue({
+      data: [
+        { post: { id: 1 }, requesters: [{ user_id: 7 }, { user_id: 8 }] },
+        { post: { id: 2 }, requesters: [{ user_id: 9 }] },
+      ],
+    })
+    renderProfile()
+    const btn = await screen.findByRole('button', { name: /3 people asked for a recipe/i })
+    await userEvent.click(btn)
+    expect(mockNavigate).toHaveBeenCalledWith('/requests')
+  })
+
+  it('reads "1 person", not "1 people"', async () => {
+    const { getIncomingRequests } = await import('../api/posts')
+    getIncomingRequests.mockResolvedValue({
+      data: [{ post: { id: 1 }, requesters: [{ user_id: 7 }] }],
+    })
+    renderProfile()
+    expect(
+      await screen.findByRole('button', { name: /1 person asked for a recipe/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows nothing at all when nobody has asked', async () => {
+    const { getIncomingRequests } = await import('../api/posts')
+    getIncomingRequests.mockResolvedValue({ data: [] })
+    renderProfile()
+    await waitFor(() => expect(getIncomingRequests).toHaveBeenCalled())
+    // No zero-state button — an empty obligation is not worth a row.
+    expect(screen.queryByText(/asked for a recipe/i)).not.toBeInTheDocument()
   })
 })

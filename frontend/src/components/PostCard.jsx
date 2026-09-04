@@ -1,10 +1,21 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { requestRecipe, retractRequest } from '../api/posts'
+import { toUserMessage } from '../api/client'
 import Avatar from './Avatar'
 
 // A single meal in the feed: the photo big, then who made it and what it is.
-// Deliberately quiet on actions in Phase 1 — no like button (never), and the
-// "request the recipe" action arrives in Phase 2. For now a post that HAS a recipe
-// links through to it; one that doesn't is just the moment.
+//
+// ONE action, and it is not a like — there is no like button and never will be. A post
+// whose recipe you can read links through to it; one you can't gets "Ask for the recipe"
+// (#79), which is the app's premise as a mechanic: you tasted it and asked. A request is
+// costly and specific and ends in a real artifact, which is what makes it not a reaction.
+//
+// The cook — and ONLY the cook — also sees "N people asked for this", as a private nudge.
+// Everyone else is handed `request_count: null`, so there is no public tally to render and
+// no zero printed under an ordinary Tuesday meal. Public demand is meant to surface later
+// by RANK (a "most asked for" row in Browse), which shows the dishes that HAVE demand
+// without ever displaying an absence. Don't turn the count into a badge on the card.
 
 // Short relative time — "just now / 3h / 2d / Aug 4". Kept tiny and local; the feed
 // doesn't need a date library for this.
@@ -46,12 +57,37 @@ const fullName = (p) => `${p.author_first_name} ${p.author_last_name}`.trim()
 // nothing to "open", and the photo stays a plain image.
 export default function PostCard({ post, onOpen }) {
   const navigate = useNavigate()
+  // The ask (#79). Local mirror of the server's answer so the button responds instantly.
+  // No parent callback: every list that renders this card refetches on mount, and a prop no
+  // caller passes is a comment claiming wiring that doesn't exist.
+  const [asking, setAsking] = useState(false)
+  const [askError, setAskError] = useState('')
+  const [asked, setAsked] = useState(Boolean(post.requested_by_me))
 
   // Tapping the author opens their profile — but for your OWN post, /u/{yourId} is the
   // read-only "other user" view of yourself; send yourself to /profile ("You") instead.
   const me = JSON.parse(localStorage.getItem('issei_user') || '{}')
   const isMine = String(me.id) === String(post.user_id)
   const openAuthor = () => navigate(isMine ? '/profile' : `/u/${post.user_id}`)
+
+  async function ask() {
+    if (asking) return
+    setAsking(true)
+    setAskError('')
+    // Optimistic on the LABEL only — the server's response is what we then trust, and a
+    // failure puts the button back rather than leaving a lie on screen.
+    const next = !asked
+    setAsked(next)
+    try {
+      const { data } = next ? await requestRecipe(post.id) : await retractRequest(post.id)
+      setAsked(Boolean(data.requested_by_me))
+    } catch (err) {
+      setAsked(!next)
+      setAskError(toUserMessage(err, 'Couldn’t ask just now. Try again.'))
+    } finally {
+      setAsking(false)
+    }
+  }
 
   return (
     <article className="sticker bg-card overflow-hidden">
@@ -104,15 +140,48 @@ export default function PostCard({ post, onOpen }) {
             {post.description}
           </p>
         )}
-        {/* A post that has a recipe links through to it. (The "request the recipe"
-            action for posts WITHOUT one lands in Phase 2.) */}
-        {post.recipe_id && (
+        {/* The action row. A post whose recipe you CAN read links through to it; one you
+            can't gets the ask. Exactly one of the two, because `recipe_id` arrives nulled
+            when you may not read it — so "never written down" and "written but private" are
+            the same state here, and the button reveals nothing either way. This is also
+            deliberately where a like button would have gone; there isn't one. */}
+        {post.recipe_id ? (
           <button
             onClick={() => navigate(`/recipes/${post.recipe_id}`)}
             className="mt-2.5 inline-flex items-center gap-1 font-display font-bold text-[13px] text-terra"
           >
             See the recipe &rarr;
           </button>
+        ) : (
+          !isMine && (
+            <button
+              onClick={ask}
+              disabled={asking}
+              aria-pressed={asked}
+              className={`mt-2.5 inline-flex items-center gap-1.5 rounded-full border-2 border-ink px-3.5 py-1.5 font-display font-bold text-[13px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-50 ${
+                asked ? 'bg-cream text-ink-soft' : 'bg-saffron text-ink'
+              }`}
+            >
+              {asked ? 'Asked ✓' : 'Ask for the recipe'}
+            </button>
+          )
+        )}
+        {/* The cook's own nudge, and ONLY the cook's: request_count is null for everyone
+            else, so there is no public tally and no zero printed under an ordinary meal. */}
+        {isMine && post.request_count > 0 && (
+          <button
+            onClick={() => navigate('/requests')}
+            className="mt-2.5 block font-display font-bold text-[13px] text-plum"
+          >
+            {post.request_count === 1
+              ? '1 person asked for this →'
+              : `${post.request_count} people asked for this →`}
+          </button>
+        )}
+        {askError && (
+          <p className="mt-2">
+            <span className="error-pill">{askError}</span>
+          </p>
         )}
       </div>
     </article>
