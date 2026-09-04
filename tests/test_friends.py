@@ -405,6 +405,44 @@ def test_discover_KEEPS_someone_YOU_asked_and_labels_them_requested(client, make
     assert [r["user_id"] for r in client.get("/friends/requests", headers=ah).json()] == [c.id]
 
 
+def test_someone_you_asked_is_exempt_from_the_discover_cap(client, make_user):
+    """The cap and the "Requested" label would otherwise fight each other past 50 users:
+    spending cap slots on un-addable rows, or letting the cap drop them and reintroducing the
+    disappearance the label exists to prevent. So the cap applies only to addable strangers.
+
+    Built with DISCOVER_LIMIT + 1 strangers so the cap is genuinely binding, then a request to
+    the OLDEST of them — the one guaranteed to be off the newest-first page."""
+    from app.routers.friends import DISCOVER_LIMIT
+
+    a, ah = make_user(first_name="Ana")
+    others = [make_user()[0] for _ in range(DISCOVER_LIMIT + 1)]
+    oldest = others[0]
+
+    # Before asking: the cap is binding and the oldest is off the page.
+    rows = client.get("/friends/discover", headers=ah).json()
+    assert len(rows) == DISCOVER_LIMIT
+    assert oldest.id not in {r["user_id"] for r in rows}
+
+    client.post("/friends/request", json={"to_user_id": oldest.id}, headers=ah)
+
+    rows = client.get("/friends/discover", headers=ah).json()
+    by_id = {r["user_id"]: r for r in rows}
+    # Now present DESPITE being past the cap, and labelled.
+    assert by_id[oldest.id]["friend_state"] == "requested"
+    # ...and the cap still spends its full allowance on addable strangers, so asking someone
+    # doesn't cost you a stranger slot.
+    assert sum(1 for r in rows if r["friend_state"] == "none") == DISCOVER_LIMIT
+
+
+def test_the_cap_exemption_still_honours_the_search_term(client, make_user):
+    # The exempt half runs through the same filtered query, so ?q= can't be bypassed by it.
+    a, ah = make_user(first_name="Ana")
+    b, _ = make_user(first_name="Zebedee")
+    client.post("/friends/request", json={"to_user_id": b.id}, headers=ah)
+    assert [r["user_id"] for r in client.get("/friends/discover?q=zeb", headers=ah).json()] == [b.id]
+    assert client.get("/friends/discover?q=nobodyhere", headers=ah).json() == []
+
+
 def test_discover_offers_no_friendship_id_at_all(client, make_user):
     # There is no action on a directory row that needs one — every state is either "Add"
     # (by user id) or a label. Asserted so a future "Accept from here" doesn't quietly

@@ -183,7 +183,7 @@ export default function PostPage() {
           {isMine && post.request_count > 0 && (
             <button
               onClick={() => navigate('/requests')}
-              className="mt-3 block font-display font-bold text-[13.5px] text-plum"
+              className="mt-3 block font-display font-bold text-[13.5px] text-terra"
             >
               {post.request_count === 1
                 ? '1 person asked for this →'

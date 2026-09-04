@@ -547,7 +547,16 @@ def discover_people(
     `friend_state="requested"` and shows "Requested" rather than vanishing, because a person
     disappearing the moment you tap Add reads as "did that work? did I just delete them?" —
     which is what a real user reported. That case had no other home; an incoming request does.
-    Newest accounts first (the people most likely to be looking for someone too), capped.
+
+    Newest accounts first (the people most likely to be looking for someone too), capped at
+    DISCOVER_LIMIT — but the cap applies ONLY to people the caller could still add. Anyone they
+    already asked is returned outside it. Otherwise the two halves of this endpoint fight each
+    other once the app passes 50 users: keeping requested people on the list would spend cap
+    slots on rows nobody can act on, and letting the cap drop them would reintroduce the exact
+    disappearance this design exists to prevent. The exempt set is bounded by how many people
+    the caller has personally asked, so it can't be used to page past the cap. Both halves still
+    honour `?q=`. The real fix at scale is making `q` required (see FUTURE) — this just stops
+    the cap and the label contradicting each other in the meantime.
 
     Declared BEFORE /profile/{user_id} so the literal path isn't captured as a user id.
     """
@@ -592,7 +601,21 @@ def discover_people(
                 User.last_name.ilike(pattern, escape="\\"),
             )
         )
-    people = query.order_by(User.created_at.desc(), User.id.desc()).limit(DISCOVER_LIMIT).all()
+    newest_first = (User.created_at.desc(), User.id.desc())
+    if pending_out:
+        # Cap the addable strangers; return everyone the caller asked regardless.
+        people = (
+            query.filter(User.id.notin_(pending_out))
+            .order_by(*newest_first)
+            .limit(DISCOVER_LIMIT)
+            .all()
+        )
+        people += query.filter(User.id.in_(pending_out)).order_by(*newest_first).all()
+        # One list, one ordering, so an exempt row isn't visibly bolted to the end. created_at
+        # can be NULL on an old row, hence the fallback rather than a bare sort key.
+        people.sort(key=lambda u: (u.created_at is not None, u.created_at, u.id), reverse=True)
+    else:
+        people = query.order_by(*newest_first).limit(DISCOVER_LIMIT).all()
     return [
         DiscoverPerson(
             user_id=u.id,

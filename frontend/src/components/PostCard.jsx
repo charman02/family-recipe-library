@@ -174,7 +174,7 @@ export default function PostCard({ post, onOpen }) {
         {isMine && post.request_count > 0 && (
           <button
             onClick={() => navigate('/requests')}
-            className="mt-2.5 block font-display font-bold text-[13px] text-plum"
+            className="mt-2.5 block font-display font-bold text-[13px] text-terra"
           >
             {post.request_count === 1
               ? '1 person asked for this →'
