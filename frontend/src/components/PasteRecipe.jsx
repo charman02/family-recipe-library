@@ -68,6 +68,10 @@ Simmer until the sauce coats a spoon`
 export default function PasteRecipe({
   onParsed,
   onBack,
+  // Opens the plain field-by-field <RecipeForm>, skipping the parser entirely. The prop
+  // keeps its old name; the LABEL deliberately no longer says "type", because "Type it" is
+  // one of this screen's two modes and the link read as an offer to do the thing you were
+  // already doing (user-reported). It is a third door, not a mode.
   onTypeItIn,
   initialText = '',
   // Optional reassurance shown under the subtitle. Exists for #81: this is the screen you
@@ -352,7 +356,7 @@ export default function PasteRecipe({
           onClick={onTypeItIn}
           className="block w-full text-center font-display font-bold text-[14px] text-terra mt-5 py-2"
         >
-          Rather type it in? &rarr;
+          Rather fill in the form? &rarr;
         </button>
       )}
     </div>

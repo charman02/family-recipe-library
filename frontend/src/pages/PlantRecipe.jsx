@@ -36,7 +36,7 @@ export default function PlantRecipe() {
   const fulfillPostId = location.state?.fulfillPostId || null
   // No doorway step any more: /add already chose "Write a recipe", so we land straight
   // on the say/paste screen (the one signature way in). The old blank-form door lives
-  // on as a "Rather type it in?" link at the bottom of that screen.
+  // on as a "Rather fill in the form?" link at the bottom of that screen.
   const [step, setStep] = useState('paste') // paste|form|celebrate|saved|handoff
   // What a paste produced, mapped into RecipeForm's initialValues shape. Held here
   // rather than passed through navigation so a back-and-forth doesn't lose it.
@@ -61,7 +61,7 @@ export default function PlantRecipe() {
   // Step-aware back. The say/paste screen is now the entry point, so its back exits to
   // the /add chooser. The form goes back to PASTE when a parse seeded it (so correcting
   // the source text is possible without losing the parse); a blank form reached via
-  // "Rather type it in?" goes back to the paste screen too.
+  // "Rather fill in the form?" goes back to the paste screen too.
   function goBack() {
     if (step === 'form') setStep('paste')
     // Answering an ask came from /requests, not from a composer. Sending this draft to
@@ -73,7 +73,7 @@ export default function PlantRecipe() {
     else navigate('/add')
   }
 
-  // "Rather type it in?" — the demoted blank-form door, offered at the bottom of the
+  // "Rather fill in the form?" — the demoted blank-form door, offered at the bottom of the
   // say/paste screen for someone with nothing to paste (the paste word-gate would
   // otherwise strand them).
   function typeItIn() {

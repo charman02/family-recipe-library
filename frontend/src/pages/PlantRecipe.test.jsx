@@ -160,7 +160,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
     // The blank-form escape hatch is a quiet link at the bottom of this screen, not a
     // co-equal card and not a separate doorway.
     expect(
-      screen.getByRole('button', { name: /rather type it in/i }),
+      screen.getByRole('button', { name: /rather fill in the form/i }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /fill it in yourself/i }),
@@ -169,7 +169,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
 
   it('the form door lands straight on the form', async () => {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     expect(
       screen.getByRole('button', { name: /submit-form/i }),
     ).toBeInTheDocument()
@@ -179,7 +179,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
     // The doorway no longer forks on "inherited vs your own"; the form carries a
     // single optional "Passed down from" field.
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     expect(
       screen.getByLabelText(/passed down from/i),
     ).toBeInTheDocument()
@@ -187,7 +187,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
 
   it('sends the origin when a source name is filled in', async () => {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.type(screen.getByLabelText(/passed down from/i), 'Lola')
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     expect(plantRecipe.mock.calls[0][0].origin.name).toBe('Lola')
@@ -197,7 +197,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
 
   it('sends no origin when the source name is left blank', async () => {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     expect(plantRecipe.mock.calls[0][0].origin ?? null).toBeNull()
   })
@@ -206,7 +206,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
     // The celebration's reveal is the terminal saved screen now (checkmark + card
     // + share); the old text-only "Congee is saved." screen was replaced by it.
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     expect(screen.getByText(/a splash of vinegar/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
 
@@ -217,7 +217,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
 
   it('share from the celebration goes to the hand-off step', async () => {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: /submit-form/i }))
     await userEvent.click(
       await screen.findByRole('button', { name: /celebrate-share/i }),
@@ -230,12 +230,12 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
 
   it('back from the type-it-in form returns to the say/paste screen, not out of the flow', async () => {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     // Back on the say/paste screen (its heading + the type-it-in link are present).
     expect(screen.getByRole('heading', { name: /add it your way/i })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /rather type it in/i }),
+      screen.getByRole('button', { name: /rather fill in the form/i }),
     ).toBeInTheDocument()
   })
 })
@@ -245,7 +245,7 @@ describe('PlantRecipe — lands straight on say/paste, with a type-it-in link', 
 describe('PlantRecipe visibility', () => {
   async function reachTheForm() {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
   }
 
   it('preselects "Friends only" for a private-profile author (the default)', async () => {
@@ -307,7 +307,7 @@ describe('PlantRecipe — pasting a whole recipe', () => {
   it('opens on say/paste, with the type-it-in link below it', async () => {
     renderFlow()
     const heading = screen.getByRole('heading', { name: /add it your way/i })
-    const form = screen.getByRole('button', { name: /rather type it in/i })
+    const form = screen.getByRole('button', { name: /rather fill in the form/i })
     // 4 === Node.DOCUMENT_POSITION_FOLLOWING: the type-it-in link comes AFTER the
     // say/paste screen's heading.
     expect(heading.compareDocumentPosition(form) & 4).toBeTruthy()
@@ -357,7 +357,7 @@ describe('PlantRecipe — pasting a whole recipe', () => {
 describe('PlantRecipe — keeping just the name', () => {
   it('saves with the dish name alone, then celebrates', async () => {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: /^quick-save$/i }))
     expect(plantRecipe).toHaveBeenCalledWith({
       name: 'Congee',
@@ -503,7 +503,7 @@ describe('PlantRecipe — entered from the meal composer', () => {
 
   it('returns to the composer with the saved recipe instead of celebrating', async () => {
     renderFlow({ postDraft })
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
 
     expect(await screen.findByText(/back at the composer/i)).toBeInTheDocument()
@@ -516,7 +516,7 @@ describe('PlantRecipe — entered from the meal composer', () => {
 
   it('still celebrates when NOT entered from a post', async () => {
     renderFlow()
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
     expect(await screen.findByText(/celebration for congee/i)).toBeInTheDocument()
   })
@@ -536,14 +536,14 @@ describe('PlantRecipe — entered from the meal composer', () => {
 
   it("inherits the post's photo as the recipe cover", async () => {
     renderFlow({ postDraft })
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     // You just uploaded a picture of this exact dish; asking for it twice is the friction.
     expect(lastProps.initialValues.coverPhotoUrl).toBe('https://img.test/meal.jpg')
   })
 
   it('sends the cover the FORM reports on a name-only quick save', async () => {
     renderFlow({ postDraft })
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: /^quick-save$/i }))
     await waitFor(() =>
       expect(plantRecipe).toHaveBeenCalledWith(
@@ -561,7 +561,7 @@ describe('PlantRecipe — entered from the meal composer', () => {
     // form's live value, so clearing the inherited cover and taking the name-only shortcut
     // saved the recipe with the exact photo that had just been removed.
     renderFlow({ postDraft })
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: /^quick-save-cover-removed$/i }))
     await waitFor(() => expect(plantRecipe).toHaveBeenCalled())
     expect(plantRecipe.mock.calls[0][0]).not.toHaveProperty('cover_photo_url')
@@ -572,7 +572,7 @@ describe('PlantRecipe — entered from the meal composer', () => {
     // the seed this would be 'friends'. Same dish, same moment, same audience intent —
     // and it's still stored literally, not linked to the post.
     renderFlow({ postDraft })
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
     await waitFor(() =>
       expect(plantRecipe).toHaveBeenCalledWith(
@@ -603,7 +603,7 @@ describe('PlantRecipe — entered from the meal composer', () => {
     // the photo was wired at first, so someone who'd just typed "Sunday adobo / the good one"
     // was asked for both again one screen later.
     renderFlow({ postDraft })
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     expect(lastProps.initialValues).toMatchObject({
       name: 'Sunday adobo',
       description: 'the good one',
@@ -657,7 +657,7 @@ describe('PlantRecipe — answering a recipe request', () => {
 
   it('delivers to everyone who asked, then returns to the asks page', async () => {
     renderFlow(fromRequests)
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
     await waitFor(() => expect(fulfillPost).toHaveBeenCalledWith(5, 42))
     expect(await screen.findByText('asks page')).toBeInTheDocument()
@@ -695,7 +695,7 @@ describe('PlantRecipe — answering a recipe request', () => {
     // recovery is to write the whole recipe a second time.
     fulfillPost.mockRejectedValueOnce(new Error('offline'))
     renderFlow(fromRequests)
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
     expect(await screen.findByText('asks page')).toBeInTheDocument()
     expect(screen.getByText(/delivery failed: Congee/)).toBeInTheDocument()
@@ -703,7 +703,7 @@ describe('PlantRecipe — answering a recipe request', () => {
 
   it('reports nothing when delivery worked', async () => {
     renderFlow(fromRequests)
-    await enterDoor(/rather type it in/i)
+    await enterDoor(/rather fill in the form/i)
     await userEvent.click(screen.getByRole('button', { name: 'submit-form' }))
     expect(await screen.findByText('delivery failed: no')).toBeInTheDocument()
   })
