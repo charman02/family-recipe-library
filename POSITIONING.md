@@ -240,16 +240,28 @@ on Home); **writing a recipe mid-post** (#81 — the meal composer's "Write one"
 draft to the add-a-recipe flow and gets the recipe back attached); and **the recipe-request loop
 with an in-app inbox** (#79 — anyone who can see a meal may ask the cook for the recipe; the
 cook answers by writing or attaching one; delivery is a handoff grant per requester, so a
-PRIVATE recipe reaches the people who asked without its visibility changing). Note what the directory means for any privacy claim: every signed-in user can
-enumerate every other user's name and photo, with no opt-out — so do **not** describe the
-app as private-by-default without qualifying that findability is not covered by the
-profile setting (see TECHDEBT's "Auth & permissions").
+PRIVATE recipe reaches the people who asked without its visibility changing); and **blocking**
+(#85 — `POST`/`GET`/`DELETE /friends/blocks`). Note what the directory means for any privacy
+claim: every signed-in user can enumerate every other user's name and photo, with no opt-out —
+so do **not** describe the app as private-by-default without qualifying that findability is not
+covered by the profile setting (see TECHDEBT's "Auth & permissions").
+
+Two things about **blocking** are easy to overclaim and are false. It is **not "unsend"**: a
+recipe you already handed that person stays readable to them forever, because `can_view`'s
+grant branch deliberately stays open to a blocked viewer for that one recipe. The canonical
+way to say this to a user is the confirm dialog's own line — *"A recipe you already sent them
+stays theirs."* — and it should not be reworded into anything that implies revocation. (A
+*new* grant can't cross a block: `handoff_recipe` refuses.) And blocking is **not a report or
+a mute** — there is still no reporting, no moderation queue and no mute anywhere in the app,
+so never write "block and report".
 
 Discoverability itself is a DECISION, not an oversight (owner call, 2026-09-04): name and
 photo findable by any signed-in user while content stays private is the same model Instagram,
 TikTok and X use, and issei matches it. So this is a rule about CLAIMS, not a promise of a
 future opt-out — there isn't one planned. Say "your recipes and posts are private until you
-share them", never "you are private".
+share them", never "you are private". Since #85 findability does have a *floor*: you can
+block, which removes the two of you from each other's directory, Browse, feed and profile in
+both directions. That is the honest qualification to add — a floor, not an opt-out.
 
 What has **not** shipped: **comments** on a meal (Phase 3), and **re-sharing a recipe you
 don't own**.
@@ -259,13 +271,20 @@ recipe, the cook's — so their later corrections reach the keeper, and if they 
 private or delete it the keeper genuinely loses access), and **only the cook can hand a
 recipe on** — a keeper has no re-share, no edit, and no delete.
 
-Four invariants still hold everywhere and must not be contradicted: the
+Five invariants still hold everywhere and must not be contradicted: the
 "everyone"/Browse surfaces show **public** posts only (a friends-only or private post never
 leaks into them — enforced in SQL); there is still **no like button** anywhere; there
 is **no count or list of who kept a recipe** — that would be the removed `child_count`
-wearing a new noun; and **a recipe-request count is the cook's alone**.
+wearing a new noun; **a recipe-request count is the cook's alone**; and **a block is always
+silent**. Every "you're not entitled to this" answer stays a 404 with the same body an
+unknown user gets — never a 403, never a distinct message, and no UI may ever say "you have
+been blocked" or otherwise let someone detect that they were. That is the same reasoning
+behind every other authorization denial in the app, and it is a copy rule as much as a code
+one. Nor is there any way to learn who has blocked **you**: `GET /friends/blocks` returns
+only the people the caller blocked.
 
-That fourth one is new with #79 and is the easiest of the four to break by being helpful.
+The fourth is new with #79 and the fifth with #85; the fourth is the easiest of the five to
+break by being helpful.
 `PostResponse.request_count` is populated only for the post's author and is `None` for every
 other viewer (`app/schemas/post.py`); the requesters' names appear only on
 `GET /posts/requests/incoming` (filtered on `Post.user_id`) and the `/requests` page it feeds;
@@ -331,8 +350,8 @@ git history now.
 
 ### Don't inflate the numbers — measure them
 
-As measured on this branch (see `README.md` for the method): **54 routes**, **14 models**,
-**395 backend tests**, **660 frontend tests in 49 files**. Endpoint and test counts have
+As measured on this branch (see `README.md` for the method): **57 routes**, **15 models**,
+**429 backend tests**, **671 frontend tests in 49 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

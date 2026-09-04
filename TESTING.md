@@ -60,10 +60,14 @@ that touches one of these areas, extend its test; never delete the guard to go g
 Each is a real, named test today (verify with the command; don't trust this list
 alone — re-run it):
 
-1. **Read authorization: a private recipe is invisible to non-owners.**
-   `can_view` is the single rule (owner OR `public` OR (`friends` AND an accepted friend via `are_friends`) OR an accepted handoff grant — the `friends` branch arrived with #68). A stranger
-   gets 404 on the recipe, its scale, its cook, and it never appears in `/browse`.
-   → `tests/test_sharing.py`, `tests/test_visibility.py`
+1. **Read authorization: a block, then visibility, then the grant.**
+   `can_view` (recipes) and `can_view_post` (posts) are the single rules, sharing one truth
+   table (`_resource_is_visible`). In evaluation order: **a block between viewer and owner in
+   either direction → never visible**, checked *before* `public`; then owner OR `public` OR
+   (`friends` AND an accepted friend via `are_friends`); then — recipes only, orthogonally —
+   an accepted handoff grant. The `friends` branch arrived with #68, the block with #85. A
+   stranger gets 404 on the recipe, its scale, its cook, and it never appears in `/browse`.
+   → `tests/test_sharing.py`, `tests/test_visibility.py`, `tests/test_blocks.py`
 
 2. **Read is not write: a recipient can never edit or delete.**
    `patch_recipe` / `delete_recipe` / `handoff_recipe` filter on `user_id`. A
@@ -103,7 +107,12 @@ alone — re-run it):
 ## When you add a feature
 
 - **New endpoint** → a test file that pins its auth (401 for anonymous where
-  required) and, if it reads user data, its **scope** (invariant 1/3).
+  required) and, if it reads user data, its **scope** (invariant 1/3). If it returns
+  **another person's** name, photo, recipe or post, it must either funnel through
+  `can_view` / `can_view_post` or call `is_blocked` / `blocked_ids` itself (invariant 9) —
+  that's the actual failure mode, not a theoretical one: `discover_people`, `user_profile`,
+  `request_friend`, `friend_suggestions` and `browse_recipes` each needed a hand-written
+  check, and `friend_suggestions` was missed on the first pass.
 - **New recipe-form field** → seed it in `EditRecipe.initialValues` and add a
   round-trip assertion (invariant 7). Add it to the payload test.
 - **New user-facing copy near dictation/handoff** → it's covered by the banned-word
@@ -130,3 +139,51 @@ Pinned by `tests/test_recipe_requests.py` — `test_the_count_goes_to_the_cook_a
 assert `None`, not `0`) — and by `frontend/src/components/PostCard.test.jsx`, "shows the count
 to the COOK only, and never as a zero". (`Browse` has a test file now.)
 (`EditRecipe` being untested is exactly how invariant 7's bug reached prod.)
+
+### Invariant 9 — a block beats visibility, never an accepted grant, and is always a 404
+
+Three separable claims, all pinned in `tests/test_blocks.py`. The middle one is the one a
+future contributor is most likely to "fix", because it reads as a leak until you know why.
+
+1. **A block beats visibility, including `public`.** The check is first in
+   `_resource_is_visible`, before the `public` short-circuit. Reordering it is a silent
+   regression — a block that didn't outrank `public` would leave every public recipe and post
+   of theirs on your screen, and no other test would fail.
+   → `test_a_blocked_pair_cannot_read_each_others_PUBLIC_posts`,
+   `test_a_blocked_pair_cannot_read_each_others_PUBLIC_recipes`,
+   `test_blocked_posts_leave_the_browse_and_everyone_surfaces`,
+   `test_blocked_recipes_leave_browse`,
+   `test_friends_only_content_stops_being_readable_after_a_block`
+
+2. **A block does NOT revoke a handoff grant that already existed. This is not a bug.**
+   `can_view`'s grant branch stays open to a blocked viewer for that **one** recipe. You
+   genuinely handed them that dish; it is on their Kept shelf and they may have cooked from
+   it. A block means "no new contact", not "unsend" — and revoking would be the only place in
+   this app where access is taken back after being given. **Do not tighten this.** Changing
+   it changes a product decision, not a vulnerability. What a block *does* stop is a **new**
+   grant: `handoff_recipe` refuses across a block with the same 404 an unknown user gets,
+   which matters because the grant branch bypasses visibility entirely and would otherwise be
+   an uncapped channel into a blocker's kitchen.
+   → `test_a_handed_over_recipe_SURVIVES_a_block`,
+   `test_a_grant_that_existed_BEFORE_the_block_still_works`,
+   `test_a_block_still_hides_everything_they_were_NOT_handed` (the carve-out is exactly one
+   recipe, not a hole), `test_a_blocked_person_cannot_hand_you_a_NEW_recipe`
+
+3. **Every block denial is a 404, never a 403, and never a distinct message.** A blocked
+   person must not be able to detect the block from a status code, a body, or a timing
+   difference in what's returned. `request_friend` and `user_profile` return the *same*
+   `{"detail": "User not found"}` an unknown user gets; `POST /friends/blocks` returns 204
+   whether or not a block already existed. This is a copy rule as well as a code one: no UI
+   may ever say "you have been blocked".
+   → `test_a_block_is_indistinguishable_from_a_private_post`,
+   `test_blocking_someone_who_already_blocked_you_is_still_204`,
+   `test_a_blocked_person_cannot_send_a_friend_request`,
+   `test_a_blocked_pair_cannot_open_each_others_profile`
+
+And two consequences that are easy to get backwards, both pinned:
+**blocking must not delete data** the caller can't get back — the Kept shelf's prune is
+permanent, so a block hides a bookmarked recipe without deleting the save row, and unblocking
+restores it (`test_a_block_does_not_DELETE_your_bookmarks_of_their_recipes`, guarded against
+over-correction by `test_losing_access_for_any_OTHER_reason_still_prunes`) — and **the
+inbox is not exempt**, since `list_notifications` resolves an actor's name and photo with no
+`can_view` to lean on (`test_blocking_clears_notifications_between_the_two`).

@@ -11,8 +11,8 @@ list of things the app does *not* do.
 ## What the current build actually is
 
 Deployed and in beta use: FastAPI + SQLAlchemy on AWS ECS Fargate (`api.issei.app`), a React
-+ Vite + Tailwind SPA on Vercel (`issei.app`), Postgres on Neon. **54 routes, 14 models, 395
-backend tests, 660 frontend tests** — re-count rather than quote.
++ Vite + Tailwind SPA on Vercel (`issei.app`), Postgres on Neon. **57 routes, 15 models, 429
+backend tests, 671 frontend tests** — re-count rather than quote.
 
 **The signature act.** A recipe is attributed to a **person** (the dish is the title, the
 person is the byline "from Lola"), imprecise measurements are preserved verbatim rather than
@@ -72,34 +72,41 @@ chain, no ancestry, no "passed through N kitchens".
 
 ---
 
-## Blocking (and search-only discovery at scale)
+## Search-only discovery at scale (and what blocking still doesn't cover)
 
 **Current state:** everyone is discoverable — name and photo findable by any signed-in user,
 while their content stays governed by `visibility`. That is deliberate (owner call,
 2026-09-04) and is how the apps this one invites comparison with work: private controls what
 people see, not whether you exist. **No opt-out is planned.**
 
-What is genuinely missing is the primitive those apps pair it with. **There is no block, mute
-or report anywhere in the codebase** — verified, not assumed. Unfriending removes the
-friendship row; it does not stop someone finding you in the directory or asking you for a
-recipe again, and #79 opened requests to any signed-in stranger on a public post.
+**Blocking shipped in #85**, which was the primitive this section used to be about. A block is
+mutually invisible (directory, Browse, the everyone-feed, each other's profile, posts, recipes
+and friend suggestions), deletes the friendship, drops pending asks both ways, and is silent —
+every denial is the same 404 a stranger gets. The implementation landed better than the plan
+here specified: rather than patching `can_view_post` and `request_recipe` individually, the
+check went *inside* `_resource_is_visible` **before** the `public` branch, so it covers every
+recipe and post read through both rules at once. `GET /recipes/browse` needed a new
+`get_current_user_optional` dependency, since it was the one public surface a block couldn't
+otherwise reach.
 
-**What this adds:** a `block` table, consulted by `discover_people` (they stop appearing for
-each other), `can_view_post`, `request_recipe`, and the friend endpoints. Blocking must be
-silent to the blocked party — the same reasoning that makes every "not entitled" answer a 404
-rather than a 403.
+**What blocking deliberately does NOT do, and don't claim it does:** it is not *unsend* — a
+recipe you already handed that person stays readable to them forever, because the grant branch
+survives (a *new* grant can't cross a block, though). And it is not a report or a mute:
+**there is still no reporting, no moderation queue and no mute anywhere in the app.** Blocking
+is the only safety primitive that exists, so never write "block and report". Reporting is the
+honest next item in this area, and it needs somewhere for a report to *go* — which is a
+process question, not just a table.
 
-**Why it matters:** it is the floor for shipping to strangers on an app store, and it is
-cheap next to the alternative of never opening discovery.
+**What actually remains here:** `GET /friends/discover` still BROWSES ALL — no `?q=` returns
+every user, newest first, 50 at a time (#85 only subtracted blocked people from it).
+Instagram will find a name you type; it will not paginate the platform. At a dozen users
+browse-all is the whole point of #80. Past a few hundred it is a scrapeable member list, and
+`q` should become required. Not urgent; worth deciding before growth rather than during it.
 
-**The adjacent one:** `GET /friends/discover` currently BROWSES ALL — no `?q=` returns every
-user, newest first. Instagram will find a name you type; it will not paginate the platform. At
-a dozen users browse-all is the whole point of #80. Past a few hundred it is a scrapeable
-member list, and `q` should become required. Not urgent; worth deciding before growth rather
-than during it.
-
-**And one copy rule, forever:** never describe issei as private-by-default without saying
-findability isn't covered. Instagram doesn't claim it either.
+**And one copy rule, still:** never describe issei as private-by-default without saying
+findability isn't covered by the profile setting. It now has a *floor* — you can block, and
+that removes you from that person's directory, Browse, feed and profile in both directions —
+but a floor is not an opt-out, and Instagram doesn't claim one either.
 
 ---
 
@@ -255,16 +262,19 @@ layer, not inside a list feature. Start with an alias table; fuzzy or LLM normal
 
 In order:
 
-1. **Blocking** — there is no block, mute or report anywhere in the app, while #79 opened
-   recipe requests to strangers. It is the floor for shipping to people you don't know, and
-   it is cheap next to the alternative of closing discovery back down.
-2. **A deploy that can't half-ship** — infrastructure, unglamorous, and it already bit twice.
-3. **Re-sharing a recipe you don't own** — the other half of keeping, and the most common next
+*(Blocking was #1 here until #85 shipped it — the floor for showing the app to people you
+don't know. What that left uncovered is **reporting**, which is now folded into item 5.)*
+
+1. **A deploy that can't half-ship** — infrastructure, unglamorous, and it already bit twice.
+2. **Re-sharing a recipe you don't own** — the other half of keeping, and the most common next
    thing a happy recipient wants.
-4. **Translation** — the deepest feature that speaks directly to the core audience, gated on
+3. **Translation** — the deepest feature that speaks directly to the core audience, gated on
    getting the imprecise-amount rule right.
-5. **Multi-user family sharing** — still real, but scope it to genuine co-ownership now that
+4. **Multi-user family sharing** — still real, but scope it to genuine co-ownership now that
    the friend graph covers lightweight sharing.
+5. **Reporting** — blocking protects one person from one person; reporting is what a stranger
+   needs when the problem isn't aimed only at them. Deliberately below the others because it
+   is mostly a process question (where does a report go, who reads it) rather than a table.
 6. **iOS app** (with swipe-back brought to web first), then **video/gallery**, then
    **ingredient canonicalization** — which unlocks cook-from-ingredients and better search,
    and which nothing currently depends on.

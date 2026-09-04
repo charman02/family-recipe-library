@@ -22,3 +22,16 @@ export const getFriendSuggestions = () => client.get('/friends/suggestions')
 export const discoverPeople = (q) =>
   client.get('/friends/discover', { params: q ? { q } : {} })
 export const getUserProfile = (userId) => client.get(`/friends/profile/${userId}`)
+// Blocking (#85). issei had no block, mute or report at all before this, and #79 opened
+// recipe requests to any signed-in stranger on a public post — so unfriending was the only
+// lever and it stopped neither discovery nor asking.
+//
+// A block is MUTUALLY invisible: neither sees the other in the directory, Browse, the
+// everyone-feed or on each other's profile. It also deletes the friendship (unblocking does
+// NOT restore it) and clears pending recipe-asks both ways. It deliberately does NOT revoke a
+// recipe you already handed them.
+export const blockUser = (userId) => client.post('/friends/blocks', { user_id: userId })
+export const unblockUser = (userId) => client.delete(`/friends/blocks/${userId}`)
+// Only people YOU have blocked — never who has blocked you. This list is the ONLY way to
+// unblock: once blocked, their profile 404s, so the control can't live there.
+export const getBlocks = () => client.get('/friends/blocks')

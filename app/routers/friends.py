@@ -12,13 +12,17 @@ from app.models.recipe import Recipe
 from app.models.post import Post
 from app.models.handoff import Handoff
 from app.models.friendship import Friendship
+from app.models.block import Block
 from app.schemas.friend import (
+    BlockRequestIn,
+    BlockedPerson,
     DiscoverPerson,
     FriendRequestIn,
     FriendResponse,
     FriendSuggestion,
     ProfileResponse,
 )
+from app.services.blocks import blocked_ids, is_blocked
 from app.services.friends import existing_friendship, friend_ids
 from app.services.notifications import notify
 from app.services.sharing import can_view, can_view_post
@@ -73,6 +77,11 @@ def request_friend(
         raise HTTPException(status_code=400, detail="You can’t friend yourself.")
     target = db.query(User).filter(User.id == body.to_user_id).first()
     if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    # A block, either direction, and the answer is the same 404 a missing user gets (#85).
+    # Never a distinct code or message: a blocked person must not be able to tell a block
+    # from a deleted account, which is the whole point of blocking silently.
+    if is_blocked(current_user.id, body.to_user_id, db):
         raise HTTPException(status_code=404, detail="User not found")
 
     existing = existing_friendship(current_user.id, body.to_user_id, db)
@@ -135,6 +144,12 @@ def accept_friend(
         raise HTTPException(status_code=404, detail="Request not found")
     if f.addressee_id != current_user.id:
         # 404 not 403 — don't reveal a request exists to someone not party to it.
+        raise HTTPException(status_code=404, detail="Request not found")
+    # `request_friend` refuses across a block and `block_user` deletes pending rows, but the
+    # two aren't serialized — a request that landed between the two statements would still be
+    # sitting here. No content leaks either way (can_view checks the block before the friends
+    # branch), but a blocked person would show up in `GET /friends` as an accepted friend.
+    if is_blocked(current_user.id, f.requester_id, db):
         raise HTTPException(status_code=404, detail="Request not found")
     if f.state != "accepted":
         f.state = "accepted"
@@ -309,6 +324,12 @@ def friend_suggestions(
     entangled = set()
     for r_id, a_id in existing:
         entangled.add(a_id if r_id == current_user.id else r_id)
+    # ...and anyone blocked either way (#85). This is the one friend endpoint where the block
+    # is easy to miss: blocking deletes the friendship and the pending asks, but deliberately
+    # does NOT delete handoffs — and handoffs are exactly what this list is seeded from. So
+    # the block REMOVES the only thing that was excluding them, and the person you blocked
+    # reappears here as a suggestion precisely BECAUSE you once handed them a recipe.
+    entangled |= blocked_ids(current_user.id, db)
 
     candidate_ids = [uid for uid in reason_by_id if uid not in entangled]
     users = _users_by_id(candidate_ids, db)
@@ -327,6 +348,162 @@ def friend_suggestions(
             )
         )
     return out
+
+
+@router.get("/blocks", response_model=list[BlockedPerson])
+def list_blocks(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """People the CALLER has blocked — their own list, so they can undo it.
+
+    Only rows where the caller is the blocker. Deliberately NOT "everyone you're blocked
+    from": telling you who has blocked you is information you're not entitled to, and it
+    would make blocking useless as protection.
+    """
+    rows = (
+        db.query(Block, User)
+        .join(User, User.id == Block.blocked_id)
+        .filter(Block.blocker_id == current_user.id)
+        .order_by(Block.created_at.desc(), Block.id.desc())
+        .all()
+    )
+    return [
+        BlockedPerson(
+            user_id=u.id,
+            first_name=u.first_name,
+            last_name=u.last_name,
+            photo_url=u.photo_url,
+            created_at=b.created_at,
+        )
+        for b, u in rows
+    ]
+
+
+@router.post("/blocks", status_code=status.HTTP_204_NO_CONTENT)
+def block_user(
+    body: BlockRequestIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Block someone (#85). issei had no block, mute or report at all before this, while
+    #79 opened recipe requests to any signed-in stranger on a public post — so unfriending
+    was the only lever, and it stopped neither discovery nor asking.
+
+    What it does, all in one transaction:
+    - records the block (idempotent — blocking twice is not a second row),
+    - **deletes any friendship** in either direction. You can't be friends with someone
+      you've blocked, and a dormant "accepted" row would leave friends-only content readable
+      until something else noticed. Unblocking does NOT restore it; they'd have to ask again.
+    - drops the caller's own pending recipe-requests toward them and theirs toward the caller,
+      so neither is left holding an ask that can never be answered.
+
+    What it deliberately does NOT do: revoke an accepted handoff grant. You gave them that
+    recipe; see `can_view`'s docstring and the Block model.
+
+    Returns 204 either way — no body, and no distinct answer for "already blocked", so the
+    endpoint leaks nothing about prior state.
+    """
+    if body.user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You can’t block yourself.")
+    target = db.query(User).filter(User.id == body.user_id).first()
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = (
+        db.query(Block)
+        .filter(Block.blocker_id == current_user.id, Block.blocked_id == body.user_id)
+        .first()
+    )
+    if existing is None:
+        db.add(Block(blocker_id=current_user.id, blocked_id=body.user_id))
+
+    # The friendship goes, in whichever direction it was formed.
+    db.query(Friendship).filter(
+        or_(
+            (Friendship.requester_id == current_user.id)
+            & (Friendship.addressee_id == body.user_id),
+            (Friendship.requester_id == body.user_id)
+            & (Friendship.addressee_id == current_user.id),
+        )
+    ).delete(synchronize_session=False)
+
+    # Pending asks between the two, both directions. A fulfilled one is history and stays.
+    from app.models.notification import Notification
+    from app.models.post import Post
+    from app.models.recipe_request import RecipeRequest
+
+    mine_to_them = (
+        db.query(RecipeRequest.id)
+        .join(Post, Post.id == RecipeRequest.post_id)
+        .filter(
+            RecipeRequest.requester_id == current_user.id,
+            RecipeRequest.state == "pending",
+            Post.user_id == body.user_id,
+        )
+    )
+    theirs_to_mine = (
+        db.query(RecipeRequest.id)
+        .join(Post, Post.id == RecipeRequest.post_id)
+        .filter(
+            RecipeRequest.requester_id == body.user_id,
+            RecipeRequest.state == "pending",
+            Post.user_id == current_user.id,
+        )
+    )
+    doomed = [r.id for r in mine_to_them] + [r.id for r in theirs_to_mine]
+    if doomed:
+        db.query(RecipeRequest).filter(RecipeRequest.id.in_(doomed)).delete(
+            synchronize_session=False
+        )
+
+    # Notifications between the two, both directions. Deliberately NOT the same call as #79's
+    # "retracting an ask keeps the cook's notification": there, the notification is history the
+    # other person is entitled to. Here the recipient has explicitly asked never to see this
+    # person again, and the confirm copy promises "you won't see each other anywhere" — which a
+    # lingering name would make false. The inbox is also the one surface where a blocked
+    # person's name and photo would keep appearing, because `list_notifications` resolves the
+    # actor directly and has no `can_view` to lean on.
+    db.query(Notification).filter(
+        or_(
+            (Notification.user_id == current_user.id)
+            & (Notification.actor_id == body.user_id),
+            (Notification.user_id == body.user_id)
+            & (Notification.actor_id == current_user.id),
+        )
+    ).delete(synchronize_session=False)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two taps raced uq_block_pair. One block is the correct outcome, so a lost race is a
+        # success — but only if the winner's row is actually there. Re-verify rather than
+        # reporting 204 for any integrity failure at all (same shape as `save_recipe` and
+        # `request_friend`), or a genuine constraint bug would look like a working block.
+        db.rollback()
+        if not is_blocked(current_user.id, body.user_id, db):
+            raise HTTPException(
+                status_code=500, detail="Couldn't block them just now. Please try again."
+            )
+    return None
+
+
+@router.delete("/blocks/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unblock_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove the caller's OWN block. If the other person also blocked the caller, their row
+    stays and the pair remains invisible to each other — you can only undo your own.
+
+    Does not restore the friendship that blocking deleted. 204 whether or not a row existed.
+    """
+    db.query(Block).filter(
+        Block.blocker_id == current_user.id, Block.blocked_id == user_id
+    ).delete(synchronize_session=False)
+    db.commit()
+    return None
 
 
 @router.get("/discover", response_model=list[DiscoverPerson])
@@ -369,6 +546,9 @@ def discover_people(
     """
     # Anyone already entangled with the caller — friend or pending, either direction.
     entangled = {current_user.id}
+    # Blocked either way — mutual invisibility, so neither appears in the other's directory
+    # (#85). This path has no can_view to lean on, so the exclusion is explicit here.
+    entangled |= blocked_ids(current_user.id, db)
     for r_id, a_id in db.query(Friendship.requester_id, Friendship.addressee_id).filter(
         or_(
             Friendship.requester_id == current_user.id,
@@ -423,6 +603,10 @@ def user_profile(
     target = db.query(User).filter(User.id == user_id).first()
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
+    # Mutual invisibility (#85): a blocked pair can't open each other's profile, and the
+    # answer is the same 404 as a user who doesn't exist.
+    if is_blocked(current_user.id, user_id, db):
+        raise HTTPException(status_code=404, detail="User not found")
 
     friend_state = None
     friend_can_accept = False
@@ -463,13 +647,19 @@ def user_profile(
     recipe_count = sum(
         1
         for r in recipes
-        if can_view(r, current_user, db, is_friend, is_grantee=r.id in granted_ids)
+        # blocked=False is established, not assumed: this endpoint 404s above if either
+        # party has blocked the other, so reaching here means there is no block (#85).
+        if can_view(
+            r, current_user, db, is_friend, is_grantee=r.id in granted_ids, blocked=False
+        )
     )
 
     posts = db.query(Post).filter(Post.user_id == user_id).all()
     for p in posts:
         p.user = target
-    post_count = sum(1 for p in posts if can_view_post(p, current_user, db, is_friend))
+    post_count = sum(
+        1 for p in posts if can_view_post(p, current_user, db, is_friend, blocked=False)
+    )
 
     # Friend count is a public, symmetric fact about the target — not gated by the
     # caller (unlike recipe/post counts). Reuse friend_ids so there's one definition of

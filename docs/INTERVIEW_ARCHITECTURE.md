@@ -3,8 +3,9 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 54 endpoints · 14 tables · 19 migrations · 395 backend tests · 660 frontend
-tests · 4,882 lines of Python, deployed (AWS ECS Fargate + Vercel + Neon Postgres).
+**Scale:** 57 endpoints · 15 tables · 20 migrations · 429 backend tests · 671 frontend
+tests · 6,137 lines of Python under `app/` (excluding tests and migrations), deployed
+(AWS ECS Fargate + Vercel + Neon Postgres).
 
 ---
 
@@ -27,7 +28,7 @@ downstream of one product decision.
 | API | FastAPI | Pydantic gives request/response validation at the boundary for free; async for the LLM call |
 | ORM | SQLAlchemy 2.0 (`Mapped[]` typed style) | Types are checkable; the models double as documentation |
 | DB | Postgres (Neon) in prod, SQLite locally | Same ORM either way; `database.py` branches on the URL |
-| Migrations | Alembic | 19 versioned migrations, forward-only in practice |
+| Migrations | Alembic | 20 versioned migrations, forward-only in practice |
 | Auth | JWT, stateless, bcrypt | No session store to run; the token carries `sub` = user id |
 | Frontend | React + Vite + Tailwind | — |
 | Hosting | AWS ECS Fargate (API) · Vercel (web) · Neon (DB) | Push to `main` auto-deploys via GitHub Actions OIDC pipeline |
@@ -152,8 +153,21 @@ interviewer realizes the project has a real idea in it.
 `app/services/sharing.py::can_view(recipe, user, db)`:
 
 ```
-owner  OR  public  OR  (friends AND viewer is an accepted friend)  OR  holds an accepted handoff for this recipe
+NOT blocked (either direction)
+  AND ( owner  OR  public  OR  (friends AND viewer is an accepted friend) )
+  OR  holds an accepted handoff for this recipe
 ```
+
+The block term is first, and its position is the interesting part: it is checked **before**
+`public`, so a block outranks even a public recipe. A block that didn't would leave every
+public recipe and post of theirs on your screen, which is not what anyone means by blocking.
+
+The one asymmetry — and the thing worth being able to explain — is that a block does **not**
+override an already-accepted handoff grant. You genuinely handed that person that dish; it is
+on their shelf and they may have cooked from it. A block means "no new contact", not "unsend",
+and revoking would be the only place in the app where access is taken back after being given.
+A *new* grant can't cross a block, though: `handoff_recipe` refuses, or the grant branch would
+be an uncapped channel into a blocker's kitchen.
 
 `visibility` is a concrete per-recipe value (`public | friends | private`); the friends
 branch resolves against `are_friends(viewer, owner)`. The handoff grant is orthogonal —
@@ -361,6 +375,14 @@ Cover the answers.
   sits in a wider pot; doubling gives you soup.
 - Where is read authorization decided? → One function, `can_view`. Read only — write is
   owner-only, enforced separately.
+- Why does a block beat `public` but not a handoff grant? → Because those answer different
+  questions. Visibility is "who is this for"; a block is "not this person, ever" and has to
+  outrank it. But a grant is a thing already given — you handed them that recipe — so
+  blocking stops *new* contact rather than retracting what's done. It's the one place the
+  rule isn't a simple precedence chain, and it's a product decision, not an oversight.
+- How do you stop a block from being detectable? → Every denial returns the same 404 body an
+  unknown user gets, and `POST /friends/blocks` returns 204 whether or not a row existed. The
+  blocked person sees what someone looking at a deleted account sees.
 - Why is `PRAGMA foreign_keys=ON` there? → SQLite ignores FKs by default; without it local
   tests pass where Postgres would reject.
 - How did you de-risk dropping the lineage columns? → Queried prod first: zero rows had a

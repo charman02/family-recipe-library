@@ -22,6 +22,9 @@ vi.mock('../api/friends', () => ({
     Promise.resolve({ data: { recipe_count: 0, post_count: 0, friend_count: 0 } }),
   ),
   getFriendRequests: vi.fn(() => Promise.resolve({ data: [] })),
+  // Blocked-people list (#85) — benign default; the tests that care override it.
+  getBlocks: vi.fn(() => Promise.resolve({ data: [] })),
+  unblockUser: vi.fn(() => Promise.resolve({})),
 }))
 // The You page also totals pending recipe-asks across your posts (#79). Benign default;
 // the tests below that care override it.
@@ -422,5 +425,67 @@ describe('You page — recipe asks waiting on you', () => {
     await waitFor(() => expect(getIncomingRequests).toHaveBeenCalled())
     // No zero-state button — an empty obligation is not worth a row.
     expect(screen.queryByText(/asked for a recipe/i)).not.toBeInTheDocument()
+  })
+})
+
+// Blocked people (#85). This list is the ONLY route back — once blocked, their profile 404s
+// for you, so the unblock control cannot live where the block control does.
+describe('You page — blocked people', () => {
+  const blocked = [
+    { user_id: 7, first_name: 'Ana', last_name: 'Cruz', photo_url: null, created_at: 'x' },
+  ]
+
+  it('lists who you blocked, and unblocks them', async () => {
+    const { getBlocks, unblockUser } = await import('../api/friends')
+    getBlocks.mockResolvedValue({ data: blocked })
+    renderProfile()
+    expect(await screen.findByText('Ana Cruz')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^unblock$/i }))
+    await waitFor(() => expect(unblockUser).toHaveBeenCalledWith(7))
+    // Removed from the list without a refetch.
+    await waitFor(() => expect(screen.queryByText('Ana Cruz')).not.toBeInTheDocument())
+  })
+
+  it('says plainly that unblocking is not re-friending', async () => {
+    const { getBlocks } = await import('../api/friends')
+    getBlocks.mockResolvedValue({ data: blocked })
+    renderProfile()
+    expect(
+      await screen.findByText(/doesn.t make you friends again/i),
+    ).toBeInTheDocument()
+  })
+
+  it('shows nothing at all when you have blocked nobody', async () => {
+    const { getBlocks } = await import('../api/friends')
+    getBlocks.mockResolvedValue({ data: [] })
+    renderProfile()
+    await waitFor(() => expect(getBlocks).toHaveBeenCalled())
+    // An empty "Blocked (0)" row is a permanent reminder of a thing that isn't happening.
+    expect(screen.queryByText(/^blocked$/i)).not.toBeInTheDocument()
+  })
+
+  // A failed unblock used to be silent: the promise rejected inside an async handler, the row
+  // stayed put, the label flipped back to "Unblock" and the user was told nothing. The block
+  // half of this same feature routes its failure through toUserMessage; so must this half.
+  it('says so when the unblock fails, and keeps the person listed', async () => {
+    const { getBlocks, unblockUser } = await import('../api/friends')
+    getBlocks.mockResolvedValue({ data: blocked })
+    unblockUser.mockRejectedValueOnce(new Error('nope'))
+    renderProfile()
+    expect(await screen.findByText('Ana Cruz')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^unblock$/i }))
+    expect(await screen.findByText(/couldn.t unblock them/i)).toBeInTheDocument()
+    // Still there, so they can try again — this list is the only route back.
+    expect(screen.getByText('Ana Cruz')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^unblock$/i })).toBeEnabled()
+  })
+
+  // Worse than a failed unblock: if the LIST fails to load, an empty result is
+  // indistinguishable from "you've blocked nobody", and there is no other route back.
+  it('says so when the blocked list itself fails to load', async () => {
+    const { getBlocks } = await import('../api/friends')
+    getBlocks.mockRejectedValueOnce(new Error('offline'))
+    renderProfile()
+    expect(await screen.findByText(/couldn.t load your blocked list/i)).toBeInTheDocument()
   })
 })

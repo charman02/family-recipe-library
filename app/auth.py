@@ -13,6 +13,11 @@ from app.config import settings
 
 # OAuth2 scheme - tells FastAPI where to find the bearer token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+# The same scheme, but a missing/invalid token yields None instead of a 401. For an endpoint
+# that is deliberately public yet must still respect the CALLER when there is one — Browse is
+# the case (#85): anyone may read it, but a signed-in reader must not be shown recipes by
+# someone they've blocked.
+oauth2_optional = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def hash_password(plain_password: str) -> str:
@@ -56,3 +61,36 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_optional), db: Session = Depends(get_db)
+):
+    """The signed-in user, or None — never raises.
+
+    Deliberately separate from `get_current_user` rather than a flag on it: an endpoint either
+    REQUIRES a user or it doesn't, and a single function that sometimes 401s and sometimes
+    returns None is the kind of ambiguity that leaks. Every existing protected route keeps
+    using the strict one.
+
+    A malformed or expired token is treated exactly like no token: None. The caller is then
+    an anonymous reader, which for a public feed is a valid state, not an error.
+    """
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.algorithm])
+        user_id: Optional[str] = payload.get("sub")
+        if user_id is None:
+            return None
+        # int() is INSIDE the try on purpose: a validly-signed token whose `sub` isn't a
+        # number would otherwise raise ValueError out of a function documented as never
+        # raising — and this one guards `/recipes/browse`, the app's only anonymous JSON
+        # endpoint, so that would be a 500 where the honest answer is "no user".
+        uid = int(user_id)
+    except (JWTError, ValueError):
+        return None
+
+    from app.models.user import User
+
+    return db.query(User).filter(User.id == uid).first()

@@ -16,6 +16,7 @@ from app.schemas.post import PostCreate, PostResponse, PostWithRequesters
 from app.schemas.notification import FulfillRequest, RequesterSummary
 from app.services.friends import are_friends, friend_ids
 from app.services.notifications import notify
+from app.services.blocks import blocked_ids, is_blocked
 from app.services.sharing import can_view, can_view_post
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -82,7 +83,15 @@ def _viewable_recipe_ids(posts, viewer: User, db: Session) -> set:
         .filter(Recipe.id.in_(recipe_ids), Recipe.deleted_at.is_(None))
         .all()
     )
-    return {r.id for r in recipes if can_view(r, viewer, db)}
+    # One blocks lookup for the page rather than one per linked recipe (#85). A public
+    # recipe used to short-circuit with zero queries; the block check runs before the
+    # `public` branch, so without this precompute every card costs a round trip.
+    hidden = blocked_ids(viewer.id, db)
+    return {
+        r.id
+        for r in recipes
+        if can_view(r, viewer, db, blocked=r.user_id in hidden)
+    }
 
 
 def _request_context(posts, viewer: User, db: Session):
@@ -221,10 +230,13 @@ def feed(
     # per row (this still drops a friend's PRIVATE post). In 'everyone' scope the authors
     # are non-friends, so is_friend is False and only their 'public' posts pass — which
     # the SQL already guaranteed; the check is a belt-and-suspenders assertion of that.
+    hidden = blocked_ids(current_user.id, db)
     posts = [
         p
         for p in posts
-        if can_view_post(p, current_user, db, is_friend=p.user_id in friends)
+        if can_view_post(
+            p, current_user, db, is_friend=p.user_id in friends, blocked=p.user_id in hidden
+        )
     ]
     viewable = _viewable_recipe_ids(posts, current_user, db)
     counts, mine = _request_context(posts, current_user, db)
@@ -268,7 +280,14 @@ def browse_posts(
     # Belt-and-suspenders: re-gate through the single read rule. Every row is already
     # public, so can_view_post passes each regardless of the viewer — but routing all
     # reads through one rule keeps "who can see a post" defined in exactly one place.
-    posts = [p for p in posts if can_view_post(p, current_user, db)]
+    # `/posts/browse` is deliberately uncapped, so a per-row block query would grow with the
+    # whole public corpus. One lookup for the page (#85).
+    hidden = blocked_ids(current_user.id, db)
+    posts = [
+        p
+        for p in posts
+        if can_view_post(p, current_user, db, blocked=p.user_id in hidden)
+    ]
     viewable = _viewable_recipe_ids(posts, current_user, db)
     counts, mine = _request_context(posts, current_user, db)
     return [
@@ -614,7 +633,13 @@ def user_posts(
     # The viewer↔profile-owner friendship is invariant across every post — resolve it
     # once (or trivially for one's own profile) rather than per row.
     is_friend = user_id == current_user.id or are_friends(current_user.id, user_id, db)
-    posts = [p for p in posts if can_view_post(p, current_user, db, is_friend=is_friend)]
+    # One author, so the block is invariant across the grid — resolve it once (#85).
+    blocked = is_blocked(current_user.id, user_id, db)
+    posts = [
+        p
+        for p in posts
+        if can_view_post(p, current_user, db, is_friend=is_friend, blocked=blocked)
+    ]
     viewable = _viewable_recipe_ids(posts, current_user, db)
     counts, mine = _request_context(posts, current_user, db)
     return [

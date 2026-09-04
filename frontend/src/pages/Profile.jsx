@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client, { toUserMessage } from '../api/client'
-import { getUserProfile, getFriendRequests } from '../api/friends'
+import { getUserProfile, getFriendRequests, getBlocks, unblockUser } from '../api/friends'
 import { getIncomingRequests } from '../api/posts'
 import { PHOTO_ACCEPT } from '../lib/photoUpload'
 import { useAvatarUpload } from '../lib/useAvatarUpload'
@@ -110,6 +110,11 @@ export default function Profile() {
   // unread badge: reading the notification clears that, but the ask itself is still waiting
   // on you, and an obligation shouldn't disappear because you glanced at it.
   const [askCount, setAskCount] = useState(0)
+  // Blocked people (#85). This list is the ONLY route back: once blocked, their profile 404s
+  // for you, so the unblock control cannot live where the block control does.
+  const [blocks, setBlocks] = useState([])
+  const [unblocking, setUnblocking] = useState(null)
+  const [blocksError, setBlocksError] = useState('')
   useEffect(() => {
     if (!user.id) return
     getUserProfile(user.id)
@@ -123,6 +128,20 @@ export default function Profile() {
         setAskCount(r.data.reduce((n, row) => n + row.requesters.length, 0)),
       )
       .catch(() => setAskCount(0))
+    // Don't swallow this one. An empty list is indistinguishable from "you've blocked
+    // nobody", and this list is the ONLY place an unblock exists — a silent GET failure would
+    // strand someone with no way back.
+    getBlocks()
+      .then((r) => {
+        setBlocks(r.data)
+        setBlocksError('')
+      })
+      .catch((err) => {
+        setBlocks([])
+        setBlocksError(
+          toUserMessage(err, 'Couldn’t load your blocked list. Pull to refresh.'),
+        )
+      })
   }, [user.id])
 
   // Avatar upload (#33) via the shared hook — it uploads (square face-crop), PATCHes
@@ -393,6 +412,56 @@ export default function Profile() {
       <h2 className="font-display font-black text-[19px] text-ink mt-7 mb-2">
         Who can see your kitchen
       </h2>
+      {/* Blocked people (#85). Only rendered when there are any — an empty "Blocked (0)" row
+          is a permanent reminder of a thing that isn't happening. Lives here rather than on
+          the blocked person's profile because that profile 404s for you once blocked, so this
+          is the only place an unblock can exist. */}
+      {blocksError && (
+        <p className="mb-3">
+          <span className="error-pill">{blocksError}</span>
+        </p>
+      )}
+      {blocks.length > 0 && (
+        <div className="sticker bg-card px-5 py-3 mb-3">
+          <p className="section-label mb-2">Blocked</p>
+          <div className="space-y-2">
+            {blocks.map((b) => (
+              <div key={b.user_id} className="flex items-center gap-2.5">
+                <Avatar name={b.first_name} photoUrl={b.photo_url} size="sm" />
+                <span className="min-w-0 flex-1 font-display font-bold text-[14px] text-ink truncate">
+                  {`${b.first_name} ${b.last_name}`.trim()}
+                </span>
+                <button
+                  disabled={unblocking === b.user_id}
+                  onClick={async () => {
+                    setUnblocking(b.user_id)
+                    setBlocksError('')
+                    try {
+                      await unblockUser(b.user_id)
+                      setBlocks((prev) => prev.filter((x) => x.user_id !== b.user_id))
+                    } catch (err) {
+                      // The block path routes its failure through toUserMessage; this half of
+                      // the same feature must too. Left uncaught, a 500 or an offline tap just
+                      // flipped the label back to "Unblock" and said nothing.
+                      setBlocksError(
+                        toUserMessage(err, 'Couldn’t unblock them just now. Try again.'),
+                      )
+                    } finally {
+                      setUnblocking(null)
+                    }
+                  }}
+                  className="flex-none rounded-full bg-cream text-ink border-2 border-ink px-3 py-1 font-display font-bold text-[12.5px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-50"
+                >
+                  {unblocking === b.user_id ? 'Unblocking…' : 'Unblock'}
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="font-display italic text-[12px] text-ink-soft mt-2 leading-snug">
+            Unblocking lets them find you again. It doesn&rsquo;t make you friends again.
+          </p>
+        </div>
+      )}
       <div className="sticker bg-card px-5 py-2">
         <Toggle
           label="Public profile"

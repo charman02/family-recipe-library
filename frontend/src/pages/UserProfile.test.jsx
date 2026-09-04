@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -10,7 +10,9 @@ vi.mock('../api/friends', () => ({
   removeFriend: vi.fn(() => Promise.resolve({})),
   getFriends: vi.fn(() => Promise.resolve({ data: [] })),
   getFriendRequests: vi.fn(() => Promise.resolve({ data: [] })),
+  blockUser: vi.fn(() => Promise.resolve({})),
 }))
+vi.mock('../api/client', () => ({ default: {}, toUserMessage: (e, f) => f }))
 // UserProfile now renders <ProfileContent>, which loads the person's recipes + posts.
 // Default both to empty so the identity/friend-button tests don't need real data;
 // individual tests override getUserRecipes to assert the grid.
@@ -20,7 +22,7 @@ vi.mock('../api/sharing', () => ({
 vi.mock('../api/posts', () => ({
   getUserPosts: vi.fn(() => Promise.resolve({ data: [] })),
 }))
-import { getUserProfile, requestFriend } from '../api/friends'
+import { getUserProfile, requestFriend, blockUser } from '../api/friends'
 import { getUserRecipes } from '../api/sharing'
 import UserProfile from './UserProfile'
 
@@ -43,6 +45,7 @@ const renderAt = (userId = '2') =>
     <MemoryRouter initialEntries={[`/u/${userId}`]}>
       <Routes>
         <Route path="/u/:userId" element={<UserProfile />} />
+        <Route path="/friends" element={<div>friends page</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -143,5 +146,70 @@ describe('UserProfile', () => {
     renderAt('1')
     await screen.findByText('Lola Remedios')
     expect(screen.queryByRole('button', { name: /add friend|friends|requested/i })).toBeNull()
+  })
+})
+
+// Blocking (#85). Deliberately two taps and deliberately quiet: it's a safety control, it
+// deletes the friendship, and it can't be undone from here — once blocked this profile 404s.
+describe('UserProfile — blocking', () => {
+  it('offers a quiet block link, not a button competing with Add friend', async () => {
+    getUserProfile.mockResolvedValue({ data: profile() })
+    renderAt()
+    const link = await screen.findByRole('button', { name: /block lola/i })
+    expect(link).toBeInTheDocument()
+    // The primary action stays the social one.
+    expect(screen.getByRole('button', { name: /add friend/i })).toBeInTheDocument()
+  })
+
+  it('asks first, and names every consequence before doing it', async () => {
+    getUserProfile.mockResolvedValue({ data: profile({ friend_state: 'accepted' }) })
+    renderAt()
+    await userEvent.click(await screen.findByRole('button', { name: /block lola/i }))
+    // Not a bare "are you sure?" — it says what happens.
+    expect(screen.getByText(/won.t see each other anywhere/i)).toBeInTheDocument()
+    expect(screen.getByText(/can.t ask you for a\s+recipe/i)).toBeInTheDocument()
+    expect(screen.getByText(/removes them as a friend/i)).toBeInTheDocument()
+    expect(screen.getByText(/unblocking\s+later won.t bring that back/i)).toBeInTheDocument()
+    // And the deliberate exception, stated so it isn't a surprise.
+    expect(screen.getByText(/recipe you already sent them stays\s+theirs/i)).toBeInTheDocument()
+    // Nothing has happened yet.
+    expect(blockUser).not.toHaveBeenCalled()
+  })
+
+  it('backing out does nothing at all', async () => {
+    getUserProfile.mockResolvedValue({ data: profile() })
+    renderAt()
+    await userEvent.click(await screen.findByRole('button', { name: /block lola/i }))
+    await userEvent.click(screen.getByRole('button', { name: /never mind/i }))
+    expect(blockUser).not.toHaveBeenCalled()
+    expect(await screen.findByRole('button', { name: /block lola/i })).toBeInTheDocument()
+  })
+
+  it('blocks, then leaves — this profile is a 404 for us now', async () => {
+    getUserProfile.mockResolvedValue({ data: profile() })
+    renderAt()
+    await userEvent.click(await screen.findByRole('button', { name: /block lola/i }))
+    await userEvent.click(screen.getByRole('button', { name: /block them/i }))
+    await waitFor(() => expect(blockUser).toHaveBeenCalledWith(2))
+    // Staying would render an error screen, so it navigates away.
+    expect(await screen.findByText('friends page')).toBeInTheDocument()
+  })
+
+  it('stays put and explains when the block fails', async () => {
+    getUserProfile.mockResolvedValue({ data: profile() })
+    blockUser.mockRejectedValueOnce(new Error('offline'))
+    renderAt()
+    await userEvent.click(await screen.findByRole('button', { name: /block lola/i }))
+    await userEvent.click(screen.getByRole('button', { name: /block them/i }))
+    expect(await screen.findByText(/couldn.t block them just now/i)).toBeInTheDocument()
+    expect(screen.queryByText('friends page')).not.toBeInTheDocument()
+  })
+
+  it('never offers to block yourself', async () => {
+    localStorage.setItem('issei_user', JSON.stringify({ id: 2 }))
+    getUserProfile.mockResolvedValue({ data: profile({ user_id: 2 }) })
+    renderAt('2')
+    await screen.findByText(/Lola/)
+    expect(screen.queryByRole('button', { name: /block/i })).not.toBeInTheDocument()
   })
 })

@@ -30,23 +30,35 @@ its visibility or the friendship says. It's checked only for recipes (posts have
 handoff), and only after the visibility rule says no.
 """
 
+from app.services.blocks import is_blocked
 from app.services.friends import are_friends
 
 
-def _resource_is_visible(owner_id, viewer_id, visibility, db, is_friend=None) -> bool:
+def _resource_is_visible(
+    owner_id, viewer_id, visibility, db, is_friend=None, blocked=None
+) -> bool:
     """The shared visibility truth table for a recipe or a post. Answers read access for
     a NON-owner, NON-grantee viewer — callers handle owner and (for recipes) handoff
     separately.
 
+    blocked → never visible, whatever the visibility says. Checked FIRST, and that order is
+              load-bearing: a block has to beat `public`, or blocking someone would leave
+              every public recipe and post of theirs still on your screen, which is the exact
+              thing blocking exists to stop (#85). Mutual by design — `is_blocked` answers for
+              a block in either direction, because one-way blocking doesn't achieve it.
     public  → always visible.
     private → never visible here.
     friends → visible iff the viewer is an accepted friend of the owner.
 
-    `is_friend` lets a caller that already knows the viewer↔owner friendship pass it in
-    (e.g. a profile page checking many of one owner's items) so this doesn't re-query
-    are_friends per item. When None it's resolved here. Only the friendship value is
-    ever precomputed — never the logic; this stays the one rule.
+    `is_friend` / `blocked` let a caller that already knows the answer pass it in (a profile
+    page checking many of one owner's items, or a feed page that precomputed `blocked_ids`
+    once) so neither is re-queried per item. When None each is resolved here. Only the
+    ANSWERS are ever precomputed — never the logic; this stays the one rule.
     """
+    if blocked is None:
+        blocked = is_blocked(viewer_id, owner_id, db)
+    if blocked:
+        return False
     if visibility == "public":
         return True
     if visibility == "private":
@@ -65,7 +77,7 @@ def effective_visibility(recipe, db=None):
     return recipe.visibility
 
 
-def can_view(recipe, user, db, is_friend=None, is_grantee=None):
+def can_view(recipe, user, db, is_friend=None, is_grantee=None, blocked=None):
     """The single read rule for a recipe: owner OR the visibility rule allows this
     viewer OR they hold an accepted handoff for this recipe.
 
@@ -73,14 +85,22 @@ def can_view(recipe, user, db, is_friend=None, is_grantee=None):
     enforced separately in patch_recipe. A grantee can read and cook a recipe they
     were handed; they cannot change someone else's record of it.
 
-    `is_friend` / `is_grantee` are optional precomputed answers a caller checking many
-    of one owner's items (a profile page) can pass so the friendship and the handoff
-    grant aren't re-queried per item. Both default to None → resolved here."""
+    A BLOCK beats the visibility rule but NOT the grant (#85). That asymmetry is
+    deliberate: you genuinely handed this person that recipe, it is on their Kept shelf and
+    they may have cooked from it, so a block means "no new contact", not "unsend". Revoking
+    would be the only place in the app where access is taken back after being given. So a
+    blocked viewer keeps reading the ONE recipe they hold a grant for, and nothing else.
+
+    `is_friend` / `is_grantee` / `blocked` are optional precomputed answers a caller checking
+    many of one owner's items (a profile page) can pass so the friendship, the handoff grant
+    and the block aren't re-queried per item. All default to None → resolved here."""
     from app.models.handoff import Handoff
 
     if recipe.user_id == user.id:
         return True
-    if _resource_is_visible(recipe.user_id, user.id, recipe.visibility, db, is_friend):
+    if _resource_is_visible(
+        recipe.user_id, user.id, recipe.visibility, db, is_friend, blocked
+    ):
         return True
     # Handoff grant is orthogonal — a grantee reads their one recipe regardless of the
     # recipe's visibility or any friendship.
@@ -98,12 +118,15 @@ def can_view(recipe, user, db, is_friend=None, is_grantee=None):
     )
 
 
-def can_view_post(post, user, db, is_friend=None):
+def can_view_post(post, user, db, is_friend=None, blocked=None):
     """The single read rule for a post: owner OR the visibility rule allows this
     viewer. Posts have no handoff grant, so that branch is absent — the truth table
     is otherwise identical to a recipe's (shared via `_resource_is_visible`).
 
-    `is_friend` is the same optional precomputed-friendship escape hatch as can_view."""
+    `is_friend` / `blocked` are the same optional precomputed escape hatches as can_view.
+    A post has no grant, so unlike a recipe a block denies it outright (#85)."""
     if post.user_id == user.id:
         return True
-    return _resource_is_visible(post.user_id, user.id, post.visibility, db, is_friend)
+    return _resource_is_visible(
+        post.user_id, user.id, post.visibility, db, is_friend, blocked
+    )

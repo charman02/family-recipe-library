@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.models.recipe import Recipe
 from app.models.ingredient_section import IngredientSection
@@ -35,6 +35,7 @@ from app.schemas.recipe import (
     InvitePreview,
 )
 from app.services.scaling import scale_ingredient
+from app.services.blocks import blocked_ids, is_blocked
 from app.services.sharing import effective_visibility, can_view
 from app.services.friends import are_friends
 from app.services.growth import soul_count, growth_stage, growth_vitality
@@ -194,6 +195,16 @@ def handoff_recipe(
         resolved_user = db.query(User).filter(User.id == to_user_id).first()
         if resolved_user is None:
             raise HTTPException(status_code=404, detail="User not found")
+        # No NEW grant across a block (#85), either direction. The locked decision is that a
+        # grant which ALREADY EXISTED at block time survives — you genuinely gave them that
+        # dish and a block means "no new contact", not "unsend". Minting a grant AFTER the
+        # block is the opposite: because can_view's grant branch waves a grant through
+        # regardless of visibility or friendship, without this check a blocked person could
+        # put arbitrary text (name, story, byline, step notes) plus their own name straight
+        # onto the blocker's Kept shelf, once per recipe they care to write. Same 404 body as
+        # an unknown user above, so the block stays undetectable.
+        if is_blocked(current_user.id, resolved_user.id, db):
+            raise HTTPException(status_code=404, detail="User not found")
 
     # Idempotent per (root, grantee): return the existing grant if present.
     # Link-only handoffs (no recipient at all) are deliberately NOT deduped — each
@@ -268,7 +279,18 @@ def list_recipes(current_user: User = Depends(get_current_user), db: Session = D
 
 
 @router.get("/browse", response_model=list[RecipeResponse])
-def browse_recipes(db: Session = Depends(get_db)):
+def browse_recipes(
+    db: Session = Depends(get_db),
+    viewer=Depends(get_current_user_optional),
+):
+    """Public recipes, newest first. Deliberately readable without an account.
+
+    But a SIGNED-IN reader must not be shown recipes by someone they've blocked (#85), so the
+    viewer is resolved optionally: anonymous callers get the plain public feed, and a signed-in
+    one gets it minus anyone they're blocked from either way. `/posts/browse` already required
+    auth, which made this the one public surface where a block didn't hold.
+    """
+    hidden = blocked_ids(viewer.id, db) if viewer is not None else set()
     recipes = (
         db.query(Recipe)
         .filter(Recipe.deleted_at == None)
@@ -281,7 +303,11 @@ def browse_recipes(db: Session = Depends(get_db)):
         .order_by(Recipe.created_at.desc())
         .all()
     )
-    recipes = [r for r in recipes if effective_visibility(r, db) == "public"]
+    recipes = [
+        r
+        for r in recipes
+        if effective_visibility(r, db) == "public" and r.user_id not in hidden
+    ]
     for r in recipes:
         _attach_growth_fields(r, db)
         # Browse is unauthenticated — don't leak per-owner activity on the public
@@ -398,10 +424,17 @@ def kept_recipes(
     own_ids = {r.id for r in rows if r.user_id == current_user.id}
     wanted -= own_ids
 
+    # One blocks lookup for the whole shelf instead of one per row (#85). Used twice below:
+    # to answer can_view without a query per recipe, and to keep a block from triggering the
+    # permanent prune.
+    blocked_owners = blocked_ids(current_user.id, db)
+
     visible = [
         r
         for r in rows
-        if r.id in wanted and r.deleted_at is None and can_view(r, current_user, db)
+        if r.id in wanted
+        and r.deleted_at is None
+        and can_view(r, current_user, db, blocked=r.user_id in blocked_owners)
     ]
     def _shelved_at(r):
         """When this recipe landed on the caller's shelf — the later of "you kept it" and
@@ -436,6 +469,21 @@ def kept_recipes(
     # `unreachable_count` is therefore how many bookmarks were just REMOVED, reported once
     # so a shrinking shelf is explained rather than mysterious; the next load returns 0.
     unreachable_ids = wanted - {r.id for r in visible}
+
+    # ...with ONE exception: a block (#85). Every other reason a recipe becomes unreachable is
+    # the cook's doing and outside the caller's control — restricted, unfriended, deleted — so
+    # deleting the bookmark is right. A block is the caller's OWN choice and is reversible from
+    # the You page, so pruning for it would make unblocking silently lossy in a way nothing
+    # warned them about: you'd unblock and your bookmarks of their recipes would simply be gone.
+    # They're dropped from `unreachable_count` too — the shelf shrank for a reason this person
+    # just caused deliberately, and "2 recipes are gone" would read as data loss.
+    #
+    # Note this affects SAVES only. A recipe they were HANDED stays on the shelf outright,
+    # because can_view's grant branch survives a block (locked decision 3) and it therefore
+    # never reaches this set at all.
+    if blocked_owners:
+        unreachable_ids -= {r.id for r in rows if r.user_id in blocked_owners}
+
     pruned = 0
     if unreachable_ids:
         pruned = (
@@ -579,6 +627,9 @@ def user_recipes(
         .all()
     )
     is_friend = user_id == current_user.id or are_friends(current_user.id, user_id, db)
+    # Every recipe here has the same author, so the block is invariant across the grid —
+    # resolve it once instead of per row (#85).
+    blocked = is_blocked(current_user.id, user_id, db)
     # Handoff grants are per-recipe and orthogonal to friendship, but they don't belong
     # on a public profile grid (a recipe handed to you privately isn't "their profile"
     # content — it's in your /shared). So pass is_grantee=False to keep can_view's grant
@@ -586,7 +637,7 @@ def user_recipes(
     visible = [
         r
         for r in recipes
-        if can_view(r, current_user, db, is_friend=is_friend, is_grantee=False)
+        if can_view(r, current_user, db, is_friend=is_friend, is_grantee=False, blocked=blocked)
     ]
     # Cap the RESPONSE, not the query: slicing after the can_view filter (rather than a
     # SQL LIMIT before it) means a stranger still gets the owner's public recipes even if

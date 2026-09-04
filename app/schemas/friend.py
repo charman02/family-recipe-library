@@ -60,6 +60,24 @@ class DiscoverPerson(BaseModel):
     photo_url: Optional[str] = None
 
 
+class BlockRequestIn(BaseModel):
+    user_id: int
+
+
+class BlockedPerson(BaseModel):
+    """Someone the CALLER has blocked, for their own unblock list (#85).
+
+    Only ever people the caller blocked — never who has blocked the caller, which is
+    information they aren't entitled to and would defeat blocking as protection.
+    """
+
+    user_id: int
+    first_name: str
+    last_name: str
+    photo_url: Optional[str] = None
+    created_at: datetime
+
+
 class ProfileResponse(BaseModel):
     """Another user's public-facing profile: their name and a count of the recipes and
     posts of theirs the caller may see (per the profile-visibility model — public if

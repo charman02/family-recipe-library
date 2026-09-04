@@ -32,8 +32,9 @@ strangers arrive. Security/privacy first.
   whether you EXIST. issei matches that, so there is no opt-out and none is planned.
   `profile_visibility` governs content and is correctly silent on findability.
 
-  Two things about our version genuinely differ from those apps, and they are the real
-  items — neither is an opt-out:
+  One thing about our version genuinely differs from those apps, and it is the real item —
+  it is not an opt-out. (The second item here used to be "there is no block"; blocking
+  shipped in #85, so that gap is closed and its replacement debt is listed below.)
 
   1. **We BROWSE-ALL; they SEARCH-ONLY.** `GET /friends/discover` with no `?q=` returns
      every other user, newest first, 50 at a time. Instagram will find a name you type; it
@@ -42,14 +43,6 @@ strangers arrive. Security/privacy first.
      hundred it is a scrapeable member list. *When to revisit:* make `q` required once the
      directory stops being the only way to find a first friend. *Where:*
      `app/routers/friends.py::discover_people`, `DISCOVER_LIMIT`.
-
-  2. **There is no BLOCK.** Verified: no block, mute or report exists anywhere in
-     `app/models/`, `app/routers/` or `app/services/`. Every app this one invites comparison
-     with has one, and #79 widened the exposure — any signed-in stranger can now send a
-     recipe request on a public post. Unfriending does not stop them finding you again or
-     asking again. This, not discoverability, is the safety primitive that is missing.
-     *Where:* would need a `block` table consulted by `discover_people`, `can_view_post`,
-     `request_recipe` and the friend endpoints.
 
   What stays true regardless: **do not describe the app as private-by-default without saying
   findability is not covered.** Instagram does not claim it either. That is a copy rule, not
@@ -93,12 +86,32 @@ strangers arrive. Security/privacy first.
   / data-inheritance path that matters more as you add users. *Where:* `app/routers/auth.py`
   (`signup` auto-accept block; `handoff_recipe` with `to_email`).
 
-- **The `is_friend` / `is_grantee` precompute trusts the caller.** To avoid re-querying
-  friendship per item on a profile/feed page, callers can pass a precomputed boolean that
+- **The `is_friend` / `is_grantee` / `blocked` precompute trusts the caller.** To avoid
+  re-querying per item on a profile/feed page, callers can pass a precomputed boolean that
   the rule uses *blindly*. A future caller that builds its "friends" set wrong (or passes
-  `True` by mistake) silently makes a friends-only item visible to that viewer. *Why
-  flagged:* it's a performance optimization that can become a leak if used carelessly.
-  *Where:* `app/services/sharing.py`; callers in `app/routers/posts.py`, `friends.py`.
+  `True` by mistake) silently makes a friends-only item visible to that viewer. `blocked`
+  (#85) is the worse of the three: passing `blocked=False` by mistake silently defeats a
+  block, and unlike the friends case the person it was protecting will never find out. *Why
+  flagged:* it's a performance optimization that can become a leak if used carelessly. *Where:*
+  `app/services/sharing.py`; callers in `app/routers/posts.py`, `recipes.py`, `friends.py`.
+
+- **Blocking is enforced in two places, and only one of them is structural.** (#85)
+  `_resource_is_visible` covers every recipe and post read, which is the right shape. But
+  `discover_people`, `user_profile`, `request_friend`, `friend_suggestions` and
+  `browse_recipes` each carry a hand-written `is_blocked` / `blocked_ids` call, because they
+  return *people* (or run unauthenticated) and so have no `can_view` to lean on. This is not
+  hypothetical: `friend_suggestions` was missed on the first pass and the review caught it —
+  a blocked person reappeared as a friend suggestion precisely *because* you had once handed
+  them a recipe. The next list endpoint that returns other people's names will have the same
+  gap. *Why flagged:* same class as "authorization is application-level, not query-level"
+  above. *Where:* `app/routers/friends.py`, `app/routers/recipes.py::browse_recipes`.
+
+- **Nothing revokes a handoff grant — now a three-way split, not a two-way one.** (#85)
+  Unfriending is retroactive; blocking is stronger still (it includes the unfriend and stops
+  all new contact). Neither takes back a recipe already handed over, and that is deliberate
+  (see invariant 9 in TESTING.md). *Why flagged:* "unfriend", "block" and "revoke what I
+  shared" are three different actions and only the first two exist. *Where:*
+  `app/services/sharing.py` (`can_view`'s grant branch).
 
 - **The Kept shelf is uncapped and does ~4 queries per row.** `GET /recipes/kept` (#57)
   has no LIMIT, and per visible row runs `can_view` (1–2 queries) plus
@@ -126,9 +139,11 @@ strangers arrive. Security/privacy first.
   `tests/test_recipe_saves.py::test_losing_access_is_permanent_reopening_does_not_restore_the_bookmark`.
 
 - **Browse loads whole tables and filters/searches in memory (recipes AND posts).** The
-  recipe Browse (`browse_recipes`, unauthenticated) loads *all* non-deleted recipes then
-  drops non-public ones with one Python line — mis-edit that line and every private recipe
-  streams to anonymous callers. The Meals tab's `browse_posts` (#71, auth-gated) filters
+  recipe Browse (`browse_recipes`, **optionally** authenticated since #85 — anonymous works,
+  and a signed-in viewer's blocks are honoured) loads *all* non-deleted recipes then drops
+  non-public ones and blocked owners' with one Python comprehension carrying *two* predicates
+  — mis-edit either and you leak (private recipes to anonymous callers, or a blocked person's
+  recipes back into the blocker's feed). The Meals tab's `browse_posts` (#71, auth-gated) filters
   `visibility=='public'` in SQL (safer), but is deliberately **uncapped** so the client
   can search the full set — both read the whole matching table per call and paginate/search
   client-side. Fine now; a scaling wall as the corpus grows. *Fix:* server-side search +
@@ -192,9 +207,10 @@ imminent scaling risk.
   Removing a friend hard-deletes the friendship row, and because `are_friends` is checked
   live on every read, friends-only recipes/posts immediately stop being visible. But a
   recipe you *handed* that person survives the unfriend (see the handoff-grant note above).
-  *Why flagged:* worth understanding the split — "unfriend" and "revoke what I shared" are
-  two different actions and only the first exists. *Where:* `app/routers/friends.py`
-  (`remove_friend`); `app/services/friends.py` (`are_friends`).
+  *Why flagged:* worth understanding the split — "unfriend", "block" (#85) and "revoke what
+  I shared" are three different actions and only the first two exist. *Where:*
+  `app/routers/friends.py` (`remove_friend`, `block_user`); `app/services/friends.py`
+  (`are_friends`); `app/services/blocks.py` (`is_blocked`).
 
 ### Data model
 
