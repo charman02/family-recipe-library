@@ -168,9 +168,10 @@ export default function UserProfile() {
           <FriendButton />
         </div>
 
-        {/* Block (#85) — deliberately quiet and below the friend action: it's a safety
-            control, not a social one, and nobody should reach it by accident. Hidden on
-            your own profile. */}
+        {/* Block (#85) — a real button in brick, below the friend action. It stays visually
+            secondary to the friend button (which is full-width terra) by being a compact pill
+            rather than by being a faint text link: it's a safety control people need to FIND,
+            and an underlined grey link read as a footnote. Hidden on your own profile. */}
         {!isSelf && (
           <div className="mt-4">
             {confirmingBlock ? (
@@ -213,7 +214,7 @@ export default function UserProfile() {
             ) : (
               <button
                 onClick={() => setConfirmingBlock(true)}
-                className="font-display text-[13px] text-ink-soft underline underline-offset-2"
+                className="inline-flex items-center rounded-full bg-brick text-cream border-2 border-ink px-4 py-1.5 font-display font-bold text-[13px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform"
               >
                 Block {profile.first_name}
               </button>

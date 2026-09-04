@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getPost, requestRecipe, retractRequest } from '../api/posts'
+import { getPost, requestRecipe, retractRequest, deletePost } from '../api/posts'
 import { toUserMessage } from '../api/client'
 import BackButton from '../components/BackButton'
 import Avatar from '../components/Avatar'
@@ -19,7 +19,18 @@ const fullName = (p) => `${p.author_first_name} ${p.author_last_name}`.trim()
 // whose recipe you can read links through to it (the discovery payoff); one you can't gets
 // "Ask for the recipe" (#79). This page especially needs the ask — it's where a STRANGER
 // lands from Browse's Meals tab, which is exactly the person with no other way to reach the
-// cook. The count is never shown here: it belongs to the cook alone, on /requests.
+// cook.
+//
+// TWO author-only controls, and both are the cook's alone. The ask COUNT renders here for the
+// author exactly as it does on the feed card — `request_count` is null for every non-author
+// (POSITIONING invariant 4), so there is no public tally to leak and no zero printed under
+// anyone's ordinary meal, including the cook's own. And DELETE lives here because this is the
+// only page that is unambiguously one post; a delete on a feed or grid card is a mis-tap
+// waiting to happen. Deleting is a hard delete server-side, so the confirm names what actually
+// goes: the post, and any pending asks on it (RecipeRequest.post_id cascades). It also says
+// what does NOT go — a linked recipe is a separate row and survives — because "delete post"
+// reads as "delete the recipe I attached" otherwise, and that would be the scariest possible
+// misunderstanding in an app whose whole point is keeping the recipe.
 export default function PostPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -30,6 +41,10 @@ export default function PostPage() {
   const [asking, setAsking] = useState(false)
   const [asked, setAsked] = useState(false)
   const [askError, setAskError] = useState('')
+  // Delete (author-only). Two taps: it can't be undone, and it takes pending asks with it.
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const me = JSON.parse(localStorage.getItem('issei_user') || '{}')
   const isMine = post ? String(me.id) === String(post.user_id) : false
@@ -49,6 +64,20 @@ export default function PostPage() {
       setAskError(toUserMessage(err, 'Couldn’t ask just now. Try again.'))
     } finally {
       setAsking(false)
+    }
+  }
+
+  async function confirmDelete() {
+    setDeleteError('')
+    setDeleting(true)
+    try {
+      await deletePost(post.id)
+      // This page is a 404 for everyone now, so land back where your posts live.
+      navigate('/my-recipes?tab=posts', { replace: true })
+    } catch (err) {
+      setDeleteError(toUserMessage(err, 'Couldn’t delete this post. Try again.'))
+      setDeleting(false)
+      // Deliberately leave the panel OPEN — it's where the error renders.
     }
   }
 
@@ -145,6 +174,71 @@ export default function PostPage() {
                 )}
               </>
             )
+          )}
+
+          {/* The cook's own count, and ONLY the cook's — same rule and same wording as the
+              feed card, so one act reads the same in both places. Hidden at zero: "0 people
+              asked for this" on your own meal is the discouraging line the private count
+              exists to avoid. */}
+          {isMine && post.request_count > 0 && (
+            <button
+              onClick={() => navigate('/requests')}
+              className="mt-3 block font-display font-bold text-[13.5px] text-plum"
+            >
+              {post.request_count === 1
+                ? '1 person asked for this →'
+                : `${post.request_count} people asked for this →`}
+            </button>
+          )}
+
+          {/* Delete (author-only). */}
+          {isMine && (
+            <div className="mt-4 pt-3 border-t-2 border-line">
+              {confirmingDelete ? (
+                <div className="sticker bg-card p-3">
+                  <p className="font-display font-bold text-[14px] text-ink leading-snug">
+                    Delete this meal?
+                  </p>
+                  <p className="font-display text-[13px] text-ink-soft leading-snug mt-1">
+                    It comes off your kitchen and your friends&rsquo; feeds for good.
+                    {post.request_count > 0 &&
+                      ' Anyone still waiting on the recipe stops waiting.'}
+                    {post.recipe_id && ' The recipe you attached stays in your kitchen.'}
+                  </p>
+                  {deleteError && (
+                    <p className="mt-2">
+                      <span className="error-pill">{deleteError}</span>
+                    </p>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={confirmDelete}
+                      disabled={deleting}
+                      className="flex-1 rounded-full bg-brick text-cream border-2 border-ink px-3 py-2 font-display font-bold text-[13px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-50"
+                    >
+                      {deleting ? 'Deleting…' : 'Delete it'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmingDelete(false)
+                        setDeleteError('')
+                      }}
+                      disabled={deleting}
+                      className="flex-1 rounded-full bg-cream text-ink border-2 border-ink px-3 py-2 font-display font-bold text-[13px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-50"
+                    >
+                      Keep it
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmingDelete(true)}
+                  className="font-display text-[13px] text-ink-soft underline underline-offset-2"
+                >
+                  Delete this meal
+                </button>
+              )}
+            </div>
           )}
         </div>
       </article>

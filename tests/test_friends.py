@@ -359,7 +359,16 @@ def test_discover_never_returns_email(client, make_user):
     make_user()
     rows = client.get("/friends/discover", headers=ah).json()
     assert rows and all("email" not in p for p in rows)
-    assert set(rows[0]) == {"user_id", "first_name", "last_name", "photo_url"}
+    # Pinned as an exact set on purpose: a directory row is the app's widest disclosure
+    # surface, so a field ARRIVING here should have to be a deliberate edit to this line.
+    assert set(rows[0]) == {
+        "user_id",
+        "first_name",
+        "last_name",
+        "photo_url",
+        "friend_state",
+        "friendship_id",
+    }
 
 
 def test_discover_excludes_accepted_friends(client, make_user):
@@ -372,16 +381,44 @@ def test_discover_excludes_accepted_friends(client, make_user):
     assert {p["user_id"] for p in rows} == {c.id}  # b is already a friend
 
 
-def test_discover_excludes_pending_in_either_direction(client, make_user):
+def test_discover_KEEPS_pending_people_and_labels_them(client, make_user):
+    """A pending request must NOT remove someone from the directory. Reported by a real user:
+    tapping Add made the person vanish, which reads as "did that work, or did I just delete
+    them?" The row stays and carries `friend_state` so it can say "Requested" instead.
+
+    Only an ACCEPTED friend leaves the list (they're in GET /friends), plus blocks and self."""
     a, ah = make_user()
     b, _ = make_user()
     c, ch = make_user()
     d, _ = make_user()
     client.post("/friends/request", json={"to_user_id": b.id}, headers=ah)  # a → b (outgoing)
     client.post("/friends/request", json={"to_user_id": a.id}, headers=ch)  # c → a (incoming)
-    rows = client.get("/friends/discover", headers=ah).json()
-    # b would show "Requested" and c belongs in the requests list — neither is addable.
-    assert {p["user_id"] for p in rows} == {d.id}
+
+    rows = {p["user_id"]: p for p in client.get("/friends/discover", headers=ah).json()}
+    assert set(rows) == {b.id, c.id, d.id}  # nobody dropped out
+    assert rows[b.id]["friend_state"] == "requested"
+    assert rows[c.id]["friend_state"] == "incoming"
+    assert rows[d.id]["friend_state"] == "none"
+    # The row id is sent only where there's something to do with it (accept).
+    assert rows[c.id]["friendship_id"] is not None
+    assert rows[b.id]["friendship_id"] is None
+    assert rows[d.id]["friendship_id"] is None
+
+
+def test_discover_drops_someone_only_once_the_friendship_is_ACCEPTED(client, make_user):
+    # The other half of the rule above: "requested" is a label, "accepted" is a departure.
+    a, ah = make_user()
+    b, bh = make_user()
+    fid = client.post(
+        "/friends/request", json={"to_user_id": b.id}, headers=ah
+    ).json()["id"]
+    assert [p["friend_state"] for p in client.get("/friends/discover", headers=ah).json()] == [
+        "requested"
+    ]
+
+    client.post(f"/friends/{fid}/accept", headers=bh)
+    assert client.get("/friends/discover", headers=ah).json() == []
+    assert client.get("/friends/discover", headers=bh).json() == []
 
 
 def test_discover_search_matches_either_name_part_case_insensitively(client, make_user):

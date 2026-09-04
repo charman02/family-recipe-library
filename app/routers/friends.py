@@ -538,26 +538,40 @@ def discover_people(
     that rule and leave the directory empty, fixing nothing. If an opt-out is ever wanted
     it needs its own column.
 
-    Excludes yourself, your accepted friends, and anyone with a pending request in either
-    direction — for all of whom an "Add" button would be wrong or a no-op. Newest accounts
-    first (the people most likely to be looking for someone too), capped.
+    Excludes yourself, your ACCEPTED friends (they're in `GET /friends`), and anyone in a
+    block relationship. Someone with a request PENDING either way deliberately stays on the
+    list, carrying `friend_state` so the row shows "Requested" or "Accept" instead: a person
+    silently disappearing the moment you tap Add reads as "did that work? did I just delete
+    them?", which is what a real user reported. The list is a directory of who exists, so it
+    should only lose people for a reason the caller can see. Newest accounts first (the people
+    most likely to be looking for someone too), capped.
 
     Declared BEFORE /profile/{user_id} so the literal path isn't captured as a user id.
     """
-    # Anyone already entangled with the caller — friend or pending, either direction.
-    entangled = {current_user.id}
-    # Blocked either way — mutual invisibility, so neither appears in the other's directory
-    # (#85). This path has no can_view to lean on, so the exclusion is explicit here.
-    entangled |= blocked_ids(current_user.id, db)
-    for r_id, a_id in db.query(Friendship.requester_id, Friendship.addressee_id).filter(
+    # Hidden entirely: yourself, anyone blocked either way (#85 — mutual invisibility, and
+    # this path has no can_view to lean on so the exclusion is explicit), and accepted friends.
+    hidden = {current_user.id}
+    hidden |= blocked_ids(current_user.id, db)
+    # Pending requests do NOT hide anyone; they annotate the row instead.
+    pending_out: dict[int, int] = {}  # they were asked BY the caller -> "Requested"
+    pending_in: dict[int, int] = {}   # they asked the caller -> "Accept", needs the row id
+    for f_id, r_id, a_id, state in db.query(
+        Friendship.id, Friendship.requester_id, Friendship.addressee_id, Friendship.state
+    ).filter(
         or_(
             Friendship.requester_id == current_user.id,
             Friendship.addressee_id == current_user.id,
         )
     ):
-        entangled.add(a_id if r_id == current_user.id else r_id)
+        other = a_id if r_id == current_user.id else r_id
+        if state == "accepted":
+            hidden.add(other)
+        elif r_id == current_user.id:
+            pending_out[other] = f_id
+        else:
+            pending_in[other] = f_id
 
-    query = db.query(User).filter(User.id.notin_(entangled))
+    query = db.query(User).filter(User.id.notin_(hidden))
     if q and q.strip():
         # Match either name part, so "ana" finds "Ana Cruz" and "Cruz" does too. ilike is
         # the portable case-insensitive contains (SQLite LIKE is already case-insensitive
@@ -580,7 +594,21 @@ def discover_people(
     people = query.order_by(User.created_at.desc(), User.id.desc()).limit(DISCOVER_LIMIT).all()
     return [
         DiscoverPerson(
-            user_id=u.id, first_name=u.first_name, last_name=u.last_name, photo_url=u.photo_url
+            user_id=u.id,
+            first_name=u.first_name,
+            last_name=u.last_name,
+            photo_url=u.photo_url,
+            friend_state=(
+                "requested"
+                if u.id in pending_out
+                else "incoming"
+                if u.id in pending_in
+                else "none"
+            ),
+            # Only `incoming` has an action that needs the row id (accept). Deliberately not
+            # sent for `requested` — there is nothing to do with it, and a friendship id is
+            # not something to hand out where it isn't used.
+            friendship_id=pending_in.get(u.id),
         )
         for u in people
     ]

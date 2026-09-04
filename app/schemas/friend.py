@@ -50,14 +50,26 @@ class DiscoverPerson(BaseModel):
     a recipe"), which is the whole point of that list. Directory entries have no reason —
     they are simply other people using issei — and inventing one would be a lie.
 
-    Carries only what a row needs to be tappable: name, id, photo. No email (that would
-    make the directory a harvestable address book), no counts, no activity.
+    Carries only what a row needs to be tappable and actionable: name, id, photo, and the
+    caller's own relationship to this person. No email (that would make the directory a
+    harvestable address book), no counts, no activity.
+
+    `friend_state` is the caller's side of the relationship, so the row can show the right
+    control instead of the person vanishing:
+      - `none`      — no relationship; offer "Add"
+      - `requested` — the CALLER asked them; show "Requested", not a live Add button
+      - `incoming`  — THEY asked the caller; offer "Accept", with `friendship_id` to act on
+    Accepted friends aren't in this list at all (they're in `GET /friends`), and neither is
+    anyone in a block relationship. `friendship_id` is set only for `incoming`, because it is
+    the only state with an action that needs the row id.
     """
 
     user_id: int
     first_name: str
     last_name: str
     photo_url: Optional[str] = None
+    friend_state: Literal["none", "requested", "incoming"] = "none"
+    friendship_id: Optional[int] = None
 
 
 class BlockRequestIn(BaseModel):

@@ -115,15 +115,44 @@ describe('Friends page — everyone on issei', () => {
     expect(requestFriend).toHaveBeenCalledWith(9)
   })
 
-  it('refetches the directory after adding, so the person drops out', async () => {
+  it('KEEPS the person listed after adding, showing "Requested" instead', async () => {
+    // A real user reported the old behaviour: tapping Add made the person vanish, which
+    // reads as "did that work, or did I just remove them?" The row stays and changes label.
     mock({ people: [stranger(9, 'Ana')] })
     renderPage()
     await screen.findByText('Ana Cook')
-    discoverPeople.mockResolvedValue({ data: [] })
+    // What the server now returns for that person on the refetch.
+    discoverPeople.mockResolvedValue({
+      data: [{ ...stranger(9, 'Ana'), friend_state: 'requested', friendship_id: null }],
+    })
     await userEvent.click(screen.getByRole('button', { name: /^add$/i }))
-    // The server excludes anyone with a pending request, so a reload is what removes
-    // them; without it the row would keep a live "Add" button that now no-ops.
     await waitFor(() => expect(discoverPeople).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Requested')).toBeInTheDocument()
+    expect(screen.getByText('Ana Cook')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^add$/i })).toBeNull()
+  })
+
+  it('shows "Requested" from the server state alone, with no tap in this session', async () => {
+    // The optimistic Set only covers the current session; a reload has to read as requested
+    // too, or the bug comes back the moment the page is refreshed.
+    mock({
+      people: [{ ...stranger(9, 'Ana'), friend_state: 'requested', friendship_id: null }],
+    })
+    renderPage()
+    expect(await screen.findByText('Requested')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^add$/i })).toBeNull()
+  })
+
+  it('offers Accept, not Add, to someone who asked YOU', async () => {
+    mock({
+      people: [{ ...stranger(9, 'Ana'), friend_state: 'incoming', friendship_id: 77 }],
+    })
+    renderPage()
+    await screen.findByText('Ana Cook')
+    expect(screen.queryByRole('button', { name: /^add$/i })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^accept$/i }))
+    // Accepts by friendship id — the row carries it precisely so this works from here.
+    await waitFor(() => expect(acceptFriend).toHaveBeenCalledWith(77))
   })
 
   it('searches SERVER-side, so it reaches past the capped page on screen', async () => {

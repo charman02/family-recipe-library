@@ -46,11 +46,14 @@ export default function Friends() {
   const [peopleError, setPeopleError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // Bumped after any friend action so the directory refetches — otherwise someone you
-  // just added would sit there with a live "Add" button.
+  // Bumped after any friend action so the directory refetches — the row's state comes from
+  // the server (`friend_state`), so it needs re-reading once an action lands.
   const [reloadKey, setReloadKey] = useState(0)
   // People the caller has just asked to add, so the row acknowledges the tap immediately
   // instead of keeping a live "Add" button until the refetch lands (250ms + a round trip).
+  // This is now only a HEAD START on the server's `friend_state: "requested"`, not the only
+  // record of it — the person used to drop out of the directory entirely once the refetch
+  // landed, which a real user read as "did that work, or did I just remove them?".
   const [requested, setRequested] = useState(() => new Set())
   const firstLoad = useRef(true)
   // Generation counter for load(): three independent requests, and two rapid actions
@@ -303,10 +306,22 @@ export default function Friends() {
                     {fullName(p)}
                   </span>
                 </button>
-                {requested.has(p.user_id) ? (
+                {/* Three states, and nobody leaves the list for having one. `requested` is
+                    OR'd with the optimistic set so the label lands on tap and then stays put
+                    once the server agrees. An accepted friend isn't here at all — they're in
+                    the Friends section below. */}
+                {requested.has(p.user_id) || p.friend_state === 'requested' ? (
                   <span className="flex-none font-display font-bold text-[13px] text-ink-soft px-3 py-1.5">
                     Requested
                   </span>
+                ) : p.friend_state === 'incoming' ? (
+                  <button
+                    onClick={() => onAccept(p.friendship_id)}
+                    disabled={busy}
+                    className="flex-none rounded-full bg-sage text-ink border-2 border-ink px-4 py-1.5 font-display font-bold text-[13px] shadow-[0_2px_0_#2E3A24] active:translate-y-[1px] active:shadow-none transition-transform disabled:opacity-50"
+                  >
+                    Accept
+                  </button>
                 ) : (
                   <button
                     onClick={() => onAdd(p.user_id)}

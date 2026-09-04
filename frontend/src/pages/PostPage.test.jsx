@@ -7,9 +7,10 @@ vi.mock('../api/posts', () => ({
   getPost: vi.fn(),
   requestRecipe: vi.fn(),
   retractRequest: vi.fn(),
+  deletePost: vi.fn(),
 }))
 vi.mock('../api/client', () => ({ default: {}, toUserMessage: (e, f) => f }))
-import { getPost, requestRecipe, retractRequest } from '../api/posts'
+import { getPost, requestRecipe, retractRequest, deletePost } from '../api/posts'
 import PostPage from './PostPage'
 
 const postData = (over = {}) => ({
@@ -35,6 +36,8 @@ function renderPost(id = '5') {
         <Route path="/recipes/:id" element={<div>recipe page</div>} />
         <Route path="/u/:userId" element={<div>author profile</div>} />
         <Route path="/browse" element={<div>browse page</div>} />
+        <Route path="/my-recipes" element={<div>your kitchen</div>} />
+        <Route path="/requests" element={<div>requests page</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -155,14 +158,108 @@ describe('PostPage — asking for the recipe', () => {
     expect(screen.getByText(/couldn.t ask just now/i)).toBeInTheDocument()
   })
 
-  it('never shows a request count here — that belongs to the cook alone', async () => {
+  it('never shows a request count to someone who is not the cook', async () => {
     getPost.mockResolvedValue({
       data: postData({ recipe_id: null, request_count: 7, requested_by_me: false }),
     })
     renderPost()
     await screen.findByText('Sunday Adobo')
-    // Even if a server ever leaked a number, the permalink must not render it.
+    // The server sends null to non-authors; even if one ever leaked a number, the permalink
+    // must not render it. POSITIONING invariant 4.
     expect(document.body.textContent).not.toMatch(/7 (people|person)/)
     expect(document.body.textContent).not.toMatch(/asked for this/i)
+  })
+})
+
+// The cook's own controls on their own post. Both are author-gated, and both were missing
+// entirely: the count only ever showed on the feed card, and nothing anywhere called
+// deletePost even though the endpoint had shipped.
+describe('PostPage — the cook on their own meal', () => {
+  const mine = (over = {}) => postData({ user_id: 1, ...over }) // viewer id is 1
+
+  it('shows the cook their own ask count, linking to /requests', async () => {
+    getPost.mockResolvedValue({ data: mine({ request_count: 3 }) })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    await userEvent.click(screen.getByRole('button', { name: /3 people asked for this/i }))
+    expect(await screen.findByText('requests page')).toBeInTheDocument()
+  })
+
+  it('says "1 person" rather than "1 people"', async () => {
+    getPost.mockResolvedValue({ data: mine({ request_count: 1 }) })
+    renderPost()
+    expect(await screen.findByText(/1 person asked for this/i)).toBeInTheDocument()
+  })
+
+  it('shows nothing at zero — "0 people asked" is the discouraging line', async () => {
+    getPost.mockResolvedValue({ data: mine({ request_count: 0 }) })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    expect(document.body.textContent).not.toMatch(/asked for this/i)
+  })
+
+  it('offers no ask button on your own post', async () => {
+    getPost.mockResolvedValue({ data: mine({ recipe_id: null }) })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    expect(screen.queryByRole('button', { name: /ask for the recipe/i })).toBeNull()
+  })
+
+  it('deletes the post after a confirm, and lands back in your kitchen', async () => {
+    getPost.mockResolvedValue({ data: mine() })
+    deletePost.mockResolvedValue({})
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    await userEvent.click(screen.getByRole('button', { name: /delete this meal/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^delete it$/i }))
+    await waitFor(() => expect(deletePost).toHaveBeenCalledWith(5))
+    expect(await screen.findByText('your kitchen')).toBeInTheDocument()
+  })
+
+  it('never deletes on the first tap', async () => {
+    getPost.mockResolvedValue({ data: mine() })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    await userEvent.click(screen.getByRole('button', { name: /delete this meal/i }))
+    expect(deletePost).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: /keep it/i }))
+    expect(deletePost).not.toHaveBeenCalled()
+  })
+
+  it('promises the attached recipe survives, because that is the scary misreading', async () => {
+    getPost.mockResolvedValue({ data: mine({ recipe_id: 9, request_count: 2 }) })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    await userEvent.click(screen.getByRole('button', { name: /delete this meal/i }))
+    expect(screen.getByText(/recipe you attached stays/i)).toBeInTheDocument()
+    // ...and it's honest about the asks it takes with it (RecipeRequest cascades).
+    expect(screen.getByText(/stops waiting/i)).toBeInTheDocument()
+  })
+
+  it('does not mention asks or the recipe when there are none of either', async () => {
+    getPost.mockResolvedValue({ data: mine({ recipe_id: null, request_count: 0 }) })
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    await userEvent.click(screen.getByRole('button', { name: /delete this meal/i }))
+    expect(screen.queryByText(/stops waiting/i)).toBeNull()
+    expect(screen.queryByText(/recipe you attached/i)).toBeNull()
+  })
+
+  it('says so when the delete fails, and keeps the post', async () => {
+    getPost.mockResolvedValue({ data: mine() })
+    deletePost.mockRejectedValue(new Error('nope'))
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    await userEvent.click(screen.getByRole('button', { name: /delete this meal/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^delete it$/i }))
+    expect(await screen.findByText(/couldn.t delete this post/i)).toBeInTheDocument()
+    expect(screen.getByText('Sunday Adobo')).toBeInTheDocument()
+  })
+
+  it('offers no delete on someone else\'s post', async () => {
+    getPost.mockResolvedValue({ data: postData() }) // author 42, viewer 1
+    renderPost()
+    await screen.findByText('Sunday Adobo')
+    expect(screen.queryByRole('button', { name: /delete this meal/i })).toBeNull()
   })
 })

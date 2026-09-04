@@ -85,10 +85,12 @@ export default function ProfileContent({ userId, emptyLabel }) {
             ))}
           </div>
         ) : (
-          // Single column — PostCard is a full-width photo card and self-navigates.
+          // Single column — PostCard is a full-width photo card and self-navigates. onOpen
+          // sends the photo through to the post's own page, matching Browse and the Kitchen
+          // (and it's how the author reaches their own delete control).
           <div className="space-y-5">
             {posts.map((p) => (
-              <PostCard key={p.id} post={p} />
+              <PostCard key={p.id} post={p} onOpen={() => navigate(`/posts/${p.id}`)} />
             ))}
           </div>
         )}

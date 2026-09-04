@@ -278,7 +278,10 @@ Five invariants still hold everywhere and must not be contradicted: the
 "everyone"/Browse surfaces show **public** posts only (a friends-only or private post never
 leaks into them — enforced in SQL); there is still **no like button** anywhere; there
 is **no count or list of who kept a recipe** — that would be the removed `child_count`
-wearing a new noun; **a recipe-request count is the cook's alone**; and **a block is always
+wearing a new noun; **a recipe-request count is the cook's alone** — it renders on the cook's
+own feed card and their own post page, hidden at zero, and `request_count` is `None` (never
+`0`) for every other viewer, while a requester's NAME appears only on `/requests`; and **a
+block is always
 silent**. Every "you're not entitled to this" answer stays a 404 with the same body an
 unknown user gets — never a 403, never a distinct message, and no UI may ever say "you have
 been blocked" or otherwise let someone detect that they were. That is the same reasoning
@@ -354,7 +357,7 @@ git history now.
 ### Don't inflate the numbers — measure them
 
 As measured on this branch (see `README.md` for the method): **57 routes**, **15 models**,
-**432 backend tests**, **671 frontend tests in 49 files**. Endpoint and test counts have
+**433 backend tests**, **683 frontend tests in 49 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

@@ -153,7 +153,10 @@ export default function MyRecipes() {
         ) : (
           <div className="space-y-5 mt-5">
             {myPosts.map((p) => (
-              <PostCard key={p.id} post={p} />
+              // onOpen makes the photo a tap target through to the post's own page —
+              // without it your own meal is a dead end here, and the delete control that
+              // lives on that page is unreachable from your kitchen.
+              <PostCard key={p.id} post={p} onOpen={() => navigate(`/posts/${p.id}`)} />
             ))}
           </div>
         )
