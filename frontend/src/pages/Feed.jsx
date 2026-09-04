@@ -4,6 +4,7 @@ import { getFeed } from '../api/posts'
 import { getNotifications } from '../api/notifications'
 import PostCard from '../components/PostCard'
 import FriendsStrip from '../components/FriendsStrip'
+import PhotoNudge from '../components/PhotoNudge'
 import Wordmark from '../components/Wordmark'
 import Loader from '../components/Loader'
 import Icon from '../components/Icon'
@@ -77,6 +78,8 @@ export default function Feed() {
   // Unread count for the masthead badge (#79). One cheap call; the inbox itself marks
   // everything read, so coming back shows no badge without extra bookkeeping here.
   const [unread, setUnread] = useState(0)
+  // Bumped when the photo nudge is satisfied or dismissed, so it unmounts at once.
+  const [nudgeKey, setNudgeKey] = useState(0)
   useEffect(() => {
     let stale = false
     getNotifications()
@@ -189,6 +192,12 @@ export default function Feed() {
         unread={unread}
       />
       {scopeToggle}
+
+      {/* A one-time "add a photo" strip (#84) for anyone who never saw #77's Welcome panel —
+          which is every account created before it shipped. Self-hides once there's a photo or
+          it's dismissed, and `nudgeKey` forces a remount so it disappears immediately rather
+          than on the next navigation. */}
+      <PhotoNudge key={nudgeKey} onDone={() => setNudgeKey((k) => k + 1)} />
 
       {/* The friends presence strip (#75) — friends' faces, most-recently-active first,
           each a tap to their profile. Only in the FRIENDS scope: the 'everyone' feed is
