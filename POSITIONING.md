@@ -245,6 +245,12 @@ enumerate every other user's name and photo, with no opt-out — so do **not** d
 app as private-by-default without qualifying that findability is not covered by the
 profile setting (see TECHDEBT's "Auth & permissions").
 
+Discoverability itself is a DECISION, not an oversight (owner call, 2026-09-04): name and
+photo findable by any signed-in user while content stays private is the same model Instagram,
+TikTok and X use, and issei matches it. So this is a rule about CLAIMS, not a promise of a
+future opt-out — there isn't one planned. Say "your recipes and posts are private until you
+share them", never "you are private".
+
 What has **not** shipped: **comments** on a meal (Phase 3), and **re-sharing a recipe you
 don't own**.
 Write both as direction, never as present features. On #57 specifically, two things are

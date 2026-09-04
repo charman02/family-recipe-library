@@ -72,25 +72,34 @@ chain, no ancestry, no "passed through N kitchens".
 
 ---
 
-## A Findability Opt-Out
+## Blocking (and search-only discovery at scale)
 
-**Current state:** every signed-in user can enumerate every other user's name and photo
-through the people directory, with **no opt-out**, and **nothing in the app tells them so**.
-The one control a user would expect to govern this — Profile's "Public profile" toggle — is
-explicitly about *content* ("Only your friends see your recipes and posts").
+**Current state:** everyone is discoverable — name and photo findable by any signed-in user,
+while their content stays governed by `visibility`. That is deliberate (owner call,
+2026-09-04) and is how the apps this one invites comparison with work: private controls what
+people see, not whether you exist. **No opt-out is planned.**
 
-**What this adds:** a dedicated `User.listed` column, a line in the Profile privacy section
-that says plainly that you are findable, and a filter in `discover_people`.
+What is genuinely missing is the primitive those apps pair it with. **There is no block, mute
+or report anywhere in the codebase** — verified, not assumed. Unfriending removes the
+friendship row; it does not stop someone finding you in the directory or asking you for a
+recipe again, and #79 opened requests to any signed-in stranger on a public post.
 
-**Why it matters:** the directory was the right call — a real beta user couldn't find anybody
-without it — but it was shipped as a deliberate trade with the consent half left undone. It
-is recorded in `TECHDEBT.md` under "Auth & permissions" so it can't quietly become permanent.
-**Until it exists, the app must not be described as private-by-default without saying that
-findability isn't covered.**
+**What this adds:** a `block` table, consulted by `discover_people` (they stop appearing for
+each other), `can_view_post`, `request_recipe`, and the friend endpoints. Blocking must be
+silent to the blocked party — the same reasoning that makes every "not entitled" answer a 404
+rather than a 403.
 
-**Implementation notes:** it must be its own column. `profile_visibility` is never consulted
-at read time (a deliberate #68 rule) and defaults to private, so reusing it would both break
-that rule and empty the directory.
+**Why it matters:** it is the floor for shipping to strangers on an app store, and it is
+cheap next to the alternative of never opening discovery.
+
+**The adjacent one:** `GET /friends/discover` currently BROWSES ALL — no `?q=` returns every
+user, newest first. Instagram will find a name you type; it will not paginate the platform. At
+a dozen users browse-all is the whole point of #80. Past a few hundred it is a scrapeable
+member list, and `q` should become required. Not urgent; worth deciding before growth rather
+than during it.
+
+**And one copy rule, forever:** never describe issei as private-by-default without saying
+findability isn't covered. Instagram doesn't claim it either.
 
 ---
 
@@ -246,8 +255,9 @@ layer, not inside a list feature. Start with an alias table; fuzzy or LLM normal
 
 In order:
 
-1. **The findability opt-out** — small, and it closes a consent gap that is live in prod right
-   now. Cheap enough that ranking it below a feature is hard to defend.
+1. **Blocking** — there is no block, mute or report anywhere in the app, while #79 opened
+   recipe requests to strangers. It is the floor for shipping to people you don't know, and
+   it is cheap next to the alternative of closing discovery back down.
 2. **A deploy that can't half-ship** — infrastructure, unglamorous, and it already bit twice.
 3. **Re-sharing a recipe you don't own** — the other half of keeping, and the most common next
    thing a happy recipient wants.

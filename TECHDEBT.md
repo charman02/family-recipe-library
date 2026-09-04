@@ -26,40 +26,34 @@ strangers arrive. Security/privacy first.
 
 ### Auth & permissions
 
-- **Every user is enumerable by every signed-in user, with no opt-out — and nothing in
-  the app tells them so.** `GET /friends/discover` (#80) returns any other account's first
-  name, last name and photo, searchable by name and pageable 50 at a time. The *data* isn't
-  new — `/u/{id}` and `GET /friends/profile/{id}` already gave all three to any signed-in
-  caller — what's new is that you no longer need to know an id, so the whole user table can
-  be walked (the 50-row cap is a payload limit, not an enumeration control: iterating `?q=`
-  over letter pairs reaches everyone). This was a deliberate call: the alternative was
-  leaving a real beta user unable to find anybody, and reusing `profile_visibility` as an
-  unlisted flag would both violate #68's rule that it is never consulted at read time and,
-  since it defaults to `private`, leave the directory empty and fix nothing. *The gap worth
-  fixing:* the consent side. No screen says "you are listed". The one control a user would
-  reasonably expect to govern findability — Profile's **Public profile** toggle — is
-  explicitly about *content* ("Only your friends see your recipes and posts") and doesn't
-  touch this; Welcome never mentions it either. So someone on the private default is still
-  findable by every stranger and has no way to learn that, let alone change it. *What it
-  would take:* a dedicated `User.listed` column (not `profile_visibility`), a line in the
-  Profile privacy section, and a filter in `discover_people`. Deferred consciously while the
-  user count is tiny and the failure mode is "nobody can find anybody"; revisit before any
-  real growth, and certainly before the app is described publicly as private-by-default.
-  *Where:* `app/routers/friends.py` (`discover_people`, `DISCOVER_LIMIT`),
-  `frontend/src/pages/Friends.jsx` ("Everyone on issei"), `frontend/src/pages/Profile.jsx`
-  (the toggle that does NOT cover this).
+- **Everyone is discoverable, and that is the DECISION, not a gap.** Owner call,
+  2026-09-04: name + photo findable by any signed-in user while your *content* stays
+  private is how Instagram, TikTok and X all work — private controls what people SEE, not
+  whether you EXIST. issei matches that, so there is no opt-out and none is planned.
+  `profile_visibility` governs content and is correctly silent on findability.
 
-- **`notify()` deliberately does not commit, and nothing catches a producer that forgets.**
-  Notifications are a side effect of some other act, so they must land in that act's
-  transaction — but a future producer that calls `notify()` and never commits drops the
-  notification silently, with no error and no test that would notice. *Where:*
-  `app/services/notifications.py`.
+  Two things about our version genuinely differ from those apps, and they are the real
+  items — neither is an opt-out:
 
-- **The inbox has no retention or pruning policy, and the client can't page it.**
-  `GET /notifications` keysets at 30 per page, but `Notifications.jsx` never passes
-  `before_id`, so anything past the first 30 is unreachable in the UI, and rows accumulate
-  forever. Also `ix_notifications_created_at` is unused (the inbox orders by `id`), and there
-  is no composite `(user_id, id)` index for the query it actually runs.
+  1. **We BROWSE-ALL; they SEARCH-ONLY.** `GET /friends/discover` with no `?q=` returns
+     every other user, newest first, 50 at a time. Instagram will find a name you type; it
+     will not hand you a paginated list of the whole platform. At a dozen users browse-all
+     IS the feature (it is why #80 exists — a real user could not find anybody). Past a few
+     hundred it is a scrapeable member list. *When to revisit:* make `q` required once the
+     directory stops being the only way to find a first friend. *Where:*
+     `app/routers/friends.py::discover_people`, `DISCOVER_LIMIT`.
+
+  2. **There is no BLOCK.** Verified: no block, mute or report exists anywhere in
+     `app/models/`, `app/routers/` or `app/services/`. Every app this one invites comparison
+     with has one, and #79 widened the exposure — any signed-in stranger can now send a
+     recipe request on a public post. Unfriending does not stop them finding you again or
+     asking again. This, not discoverability, is the safety primitive that is missing.
+     *Where:* would need a `block` table consulted by `discover_people`, `can_view_post`,
+     `request_recipe` and the friend endpoints.
+
+  What stays true regardless: **do not describe the app as private-by-default without saying
+  findability is not covered.** Instagram does not claim it either. That is a copy rule, not
+  a code gap — see POSITIONING.
 
 - **No rate limiting anywhere.** `app/main.py` mounts only `CORSMiddleware`. Not created by
   the directory, but the directory makes bulk name harvesting a single loop, and
