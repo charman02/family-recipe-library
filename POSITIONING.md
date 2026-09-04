@@ -250,8 +250,11 @@ Two things about **blocking** are easy to overclaim and are false. It is **not "
 recipe you already handed that person stays readable to them forever, because `can_view`'s
 grant branch deliberately stays open to a blocked viewer for that one recipe. The canonical
 way to say this to a user is the confirm dialog's own line — *"A recipe you already sent them
-stays theirs."* — and it should not be reworded into anything that implies revocation. (A
-*new* grant can't cross a block: `handoff_recipe` refuses.) And blocking is **not a report or
+stays theirs."* — and it should not be reworded into anything that implies revocation. The
+line the app draws is at the moment of OFFER, not acceptance: a share link or emailed invite
+the cook sent before blocking still works for that person (owner call, #88), because the token
+is the capability and they chose to send it. What a block stops is a *new* offer —
+`handoff_recipe` refuses across one.) And blocking is **not a report or
 a mute** — there is still no reporting, no moderation queue and no mute anywhere in the app,
 so never write "block and report".
 
@@ -351,7 +354,7 @@ git history now.
 ### Don't inflate the numbers — measure them
 
 As measured on this branch (see `README.md` for the method): **57 routes**, **15 models**,
-**429 backend tests**, **671 frontend tests in 49 files**. Endpoint and test counts have
+**432 backend tests**, **671 frontend tests in 49 files**. Endpoint and test counts have
 each changed several times as features were added and removed; count the `@router` / `@app` decorators
 and run the suites rather than repeating a number from an older doc.
 

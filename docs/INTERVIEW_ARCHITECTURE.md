@@ -3,7 +3,7 @@
 Written to be reread before an interview. Verified against the code on 2026-08-06, not
 from memory. Every number here was counted, not estimated.
 
-**Scale:** 57 endpoints · 15 tables · 20 migrations · 429 backend tests · 671 frontend
+**Scale:** 57 endpoints · 15 tables · 20 migrations · 432 backend tests · 671 frontend
 tests · 6,137 lines of Python under `app/` (excluding tests and migrations), deployed
 (AWS ECS Fargate + Vercel + Neon Postgres).
 

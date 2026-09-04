@@ -164,10 +164,18 @@ future contributor is most likely to "fix", because it reads as a leak until you
    grant: `handoff_recipe` refuses across a block with the same 404 an unknown user gets,
    which matters because the grant branch bypasses visibility entirely and would otherwise be
    an uncapped channel into a blocker's kitchen.
+   The same line applies to a **capability token minted before the block** (owner call, #88,
+   2026-09-04): a link-only invite stays claimable and an emailed invite stays acceptable,
+   because the cook minted the token and chose to share it — claiming it completes an offer
+   already made, and the token *is* the authorization. The cut is offer-time, not accept-time:
+   anything offered before the block still lands, nothing new can be offered after it.
    → `test_a_handed_over_recipe_SURVIVES_a_block`,
    `test_a_grant_that_existed_BEFORE_the_block_still_works`,
    `test_a_block_still_hides_everything_they_were_NOT_handed` (the carve-out is exactly one
-   recipe, not a hole), `test_a_blocked_person_cannot_hand_you_a_NEW_recipe`
+   recipe, not a hole), `test_a_blocked_person_cannot_hand_you_a_NEW_recipe`,
+   `test_a_link_only_token_minted_BEFORE_a_block_is_still_claimable`,
+   `test_an_email_invite_sent_BEFORE_a_block_can_still_be_accepted`,
+   `test_claiming_a_pre_block_token_grants_that_ONE_recipe_and_nothing_more`
 
 3. **Every block denial is a 404, never a 403, and never a distinct message.** A blocked
    person must not be able to detect the block from a status code, a body, or a timing

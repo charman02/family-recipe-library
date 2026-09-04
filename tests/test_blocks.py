@@ -523,3 +523,61 @@ def test_browse_survives_a_token_with_a_non_numeric_subject(client, make_user):
     r = client.get("/recipes/browse", headers={"Authorization": f"Bearer {bad}"})
     assert r.status_code == 200
     assert [x["name"] for x in r.json()] == ["Public one"]
+
+
+# --- the capability line: a token minted BEFORE the block still works (#88, owner call) ---
+
+
+def test_a_link_only_token_minted_BEFORE_a_block_is_still_claimable(client, make_user):
+    """Owner decision (#88, 2026-09-04): yes, claimable. The token IS the capability — the cook
+    minted it and chose to share it, so claiming it completes a handoff that was already
+    offered, exactly like an accepted grant surviving. A block stops NEW offers
+    (`handoff_recipe` 404s across one); it does not retract one already made.
+
+    Pinned because the opposite reading is just as arguable and someone will eventually
+    "harden" this: don't, without changing the decision."""
+    cook, ch = make_user()
+    fan, fh = make_user()
+    rec = _recipe(client, ch, name="Lola's adobo", visibility="private")
+    # Link-only: no recipient named, so the token is the whole grant.
+    token = client.post(f"/recipes/{rec['id']}/handoff", json={}, headers=ch).json()["token"]
+
+    _block(client, ch, fan.id)
+
+    assert client.post(f"/recipes/invite/{token}/claim", headers=fh).status_code == 200
+    assert client.get(f"/recipes/{rec['id']}", headers=fh).status_code == 200
+
+
+def test_an_email_invite_sent_BEFORE_a_block_can_still_be_accepted(client, make_user):
+    # Same rule, the addressed-invite path. Pending at block time, still acceptable after.
+    cook, ch = make_user()
+    fan, fh = make_user()
+    rec = _recipe(client, ch, name="Given", visibility="private")
+    h = client.post(
+        f"/recipes/{rec['id']}/handoff", json={"to_email": fan.email}, headers=ch
+    ).json()
+    assert h["state"] == "pending"
+
+    _block(client, ch, fan.id)
+
+    assert client.post(f"/recipes/handoffs/{h['id']}/accept", headers=fh).status_code == 200
+    assert client.get(f"/recipes/{rec['id']}", headers=fh).status_code == 200
+
+
+def test_claiming_a_pre_block_token_grants_that_ONE_recipe_and_nothing_more(client, make_user):
+    # The capability is per-recipe. Claiming one must not reopen the cook's other work — the
+    # same scoping already asserted for an accepted grant, re-asserted on this path because it
+    # MINTS a grant rather than reading an existing one.
+    cook, ch = make_user()
+    fan, fh = make_user()
+    shared = _recipe(client, ch, name="Shared", visibility="private")
+    other = _recipe(client, ch, name="Not shared", visibility="public")
+    token = client.post(f"/recipes/{shared['id']}/handoff", json={}, headers=ch).json()["token"]
+
+    _block(client, ch, fan.id)
+    client.post(f"/recipes/invite/{token}/claim", headers=fh)
+
+    assert client.get(f"/recipes/{shared['id']}", headers=fh).status_code == 200
+    assert client.get(f"/recipes/{other['id']}", headers=fh).status_code == 404
+    # ...and the block otherwise still holds in both directions.
+    assert client.get(f"/friends/profile/{cook.id}", headers=fh).status_code == 404
