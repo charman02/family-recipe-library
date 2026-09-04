@@ -58,18 +58,21 @@ class DiscoverPerson(BaseModel):
     control instead of the person vanishing:
       - `none`      — no relationship; offer "Add"
       - `requested` — the CALLER asked them; show "Requested", not a live Add button
-      - `incoming`  — THEY asked the caller; offer "Accept", with `friendship_id` to act on
-    Accepted friends aren't in this list at all (they're in `GET /friends`), and neither is
-    anyone in a block relationship. `friendship_id` is set only for `incoming`, because it is
-    the only state with an action that needs the row id.
+
+    Who is NOT in this list, and why it's the same rule twice: an accepted friend (they're in
+    `GET /friends`), someone whose request is pending TOWARDS the caller (they're in
+    `GET /friends/requests`, which the Friends page already renders above this section with
+    Accept/Ignore — listing them here as well put one request on screen twice with two live
+    Accept buttons), and anyone in a block relationship. Only the caller's own OUTGOING pending
+    request keeps someone here, because that is the case that had no other home and where
+    disappearing read as "did that work, or did I just remove them?".
     """
 
     user_id: int
     first_name: str
     last_name: str
     photo_url: Optional[str] = None
-    friend_state: Literal["none", "requested", "incoming"] = "none"
-    friendship_id: Optional[int] = None
+    friend_state: Literal["none", "requested"] = "none"
 
 
 class BlockRequestIn(BaseModel):

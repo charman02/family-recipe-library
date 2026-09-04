@@ -45,7 +45,10 @@ function lineFor(n) {
 // SET NULL'd) simply isn't a link — the line still reads, because it still happened.
 function targetFor(n) {
   if (n.type === 'request_fulfilled' && n.recipe_id) return `/recipes/${n.recipe_id}`
-  if (n.type === 'recipe_request') return '/requests'
+  // Gated on post_id, which the API SET NULLs when the post is deleted. The asks themselves
+  // cascade away with the post, so /requests would be empty — the line still reads ("Ben asked
+  // you for a recipe" did happen) but tapping it must not assert an ask that no longer exists.
+  if (n.type === 'recipe_request') return n.post_id ? '/requests' : null
   if (n.type === 'friend_request') return '/friends'
   if (n.type === 'friend_accept' && n.actor_id) return `/u/${n.actor_id}`
   if (n.post_id) return `/posts/${n.post_id}`

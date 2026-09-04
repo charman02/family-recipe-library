@@ -110,6 +110,21 @@ describe('Notifications — issei’s first inbox (#79)', () => {
     expect(screen.queryByRole('button', { name: /sent you/i })).not.toBeInTheDocument()
   })
 
+  it('an ask whose post was deleted still reads, but is not a link either', async () => {
+    // Same rule as above, for the type that was missing it: `recipe_request` linked to
+    // /requests unconditionally, so after the cook deleted the post the line tapped through
+    // to an empty asks page — asserting an ask that had cascaded away with the post.
+    renderPage([note({ type: 'recipe_request', post_id: null, subject: null })])
+    expect(await screen.findByText(/asked you for a recipe/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /asked you for a recipe/i })).toBeNull()
+  })
+
+  it('an ask whose post still exists DOES open the asks page', async () => {
+    renderPage([note({ type: 'recipe_request', post_id: 5, subject: null })])
+    await userEvent.click(await screen.findByText(/asked you for a recipe/i))
+    expect(await screen.findByText('requests page')).toBeInTheDocument()
+  })
+
   it('an empty inbox explains itself instead of showing a blank screen', async () => {
     renderPage([])
     expect(await screen.findByText(/nothing new/i)).toBeInTheDocument()

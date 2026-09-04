@@ -264,7 +264,11 @@ export default function Feed() {
       ) : (
         <div className="px-4 space-y-5">
           {posts.map((p) => (
-            <PostCard key={p.id} post={p} />
+            // onOpen is passed here too now that the post page has an ACTION on it:
+            // PostComposer lands you back on the Feed, so this is exactly where someone
+            // notices they shared the wrong photo — and tapping it did nothing, leaving the
+            // only route to delete as Kitchen → Posts tab → tap.
+            <PostCard key={p.id} post={p} onOpen={() => navigate(`/posts/${p.id}`)} />
           ))}
           {!reachedEnd && (
             <button

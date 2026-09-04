@@ -602,6 +602,13 @@ def delete_post(
     post = db.query(Post).filter(Post.id == post_id).first()
     if post is None or post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    # NOTE the asks on this post cascade away with it (RecipeRequest.post_id is CASCADE) but
+    # their NOTIFICATIONS deliberately do not: `Notification.post_id` is SET NULL because the
+    # ask genuinely happened, so the line stays and merely stops being a link (#79, pinned by
+    # test_a_notification_survives_its_post_being_deleted). The client is what has to honour
+    # that — a `recipe_request` row with a null `post_id` must not link to /requests, which
+    # would now be empty.
     db.delete(post)
     db.commit()
     return None

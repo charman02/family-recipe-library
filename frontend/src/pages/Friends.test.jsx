@@ -133,8 +133,10 @@ describe('Friends page — everyone on issei', () => {
   })
 
   it('shows "Requested" from the server state alone, with no tap in this session', async () => {
-    // The optimistic Set only covers the current session; a reload has to read as requested
-    // too, or the bug comes back the moment the page is refreshed.
+    // THIS is the real guard on the server half. The test above passes on the optimistic Set
+    // alone, so it would survive a revert; this one never taps Add, so the label can only come
+    // from `friend_state`. The optimistic Set only covers the current session anyway — a
+    // reload has to read as requested too, or the bug returns the moment the page refreshes.
     mock({
       people: [{ ...stranger(9, 'Ana'), friend_state: 'requested', friendship_id: null }],
     })
@@ -143,16 +145,17 @@ describe('Friends page — everyone on issei', () => {
     expect(screen.queryByRole('button', { name: /^add$/i })).toBeNull()
   })
 
-  it('offers Accept, not Add, to someone who asked YOU', async () => {
+  it('leaves someone who asked YOU to the requests section, not the directory', async () => {
+    // The server hides an incoming request from this list on purpose: it's already rendered
+    // above under "Wants to be friends" with Accept/Ignore, and showing it twice meant one
+    // request with two live Accept buttons. So the directory only ever has Add or Requested.
     mock({
-      people: [{ ...stranger(9, 'Ana'), friend_state: 'incoming', friendship_id: 77 }],
+      requests: [{ id: 77, user_id: 9, first_name: 'Ana', last_name: 'Cook', photo_url: null }],
+      people: [],
     })
     renderPage()
     await screen.findByText('Ana Cook')
-    expect(screen.queryByRole('button', { name: /^add$/i })).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: /^accept$/i }))
-    // Accepts by friendship id — the row carries it precisely so this works from here.
-    await waitFor(() => expect(acceptFriend).toHaveBeenCalledWith(77))
+    expect(screen.getAllByRole('button', { name: /^accept$/i })).toHaveLength(1)
   })
 
   it('searches SERVER-side, so it reaches past the capped page on screen', async () => {

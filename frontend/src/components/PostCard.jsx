@@ -51,7 +51,10 @@ function ago(iso) {
 
 const fullName = (p) => `${p.author_first_name} ${p.author_last_name}`.trim()
 
-// `onOpen`, when provided, makes the meal photo a tap target that opens the post — used
+// `onOpen` makes the meal photo a tap target that opens the post. Every list that renders a
+// card now passes it (Browse, the Feed, your Kitchen's Posts tab, a profile grid): the post
+// page carries the author's own delete control, so a card that doesn't open is a dead end for
+// the person most likely to want it. Originally it was Browse-only —
 // in Browse (#71), where a card is a PREVIEW that should open the full post at /posts/:id.
 // In the feed it's omitted: the feed already shows the whole post inline, so there's
 // nothing to "open", and the photo stays a plain image.

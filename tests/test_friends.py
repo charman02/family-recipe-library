@@ -367,7 +367,6 @@ def test_discover_never_returns_email(client, make_user):
         "last_name",
         "photo_url",
         "friend_state",
-        "friendship_id",
     }
 
 
@@ -381,12 +380,16 @@ def test_discover_excludes_accepted_friends(client, make_user):
     assert {p["user_id"] for p in rows} == {c.id}  # b is already a friend
 
 
-def test_discover_KEEPS_pending_people_and_labels_them(client, make_user):
-    """A pending request must NOT remove someone from the directory. Reported by a real user:
-    tapping Add made the person vanish, which reads as "did that work, or did I just delete
-    them?" The row stays and carries `friend_state` so it can say "Requested" instead.
+def test_discover_KEEPS_someone_YOU_asked_and_labels_them_requested(client, make_user):
+    """Your own OUTGOING request must NOT remove someone from the directory. Reported by a real
+    user: tapping Add made the person vanish, which reads as "did that work, or did I just
+    delete them?" The row stays and carries `friend_state="requested"` instead.
 
-    Only an ACCEPTED friend leaves the list (they're in GET /friends), plus blocks and self."""
+    An INCOMING request is different and stays hidden: it already has a home in
+    GET /friends/requests, which the Friends page renders above this section with
+    Accept/Ignore. Listing it here too put one request on screen twice with two live Accept
+    buttons. So the rule is the same one accepted friends get — if it lives in another
+    endpoint, it isn't duplicated here."""
     a, ah = make_user()
     b, _ = make_user()
     c, ch = make_user()
@@ -395,14 +398,22 @@ def test_discover_KEEPS_pending_people_and_labels_them(client, make_user):
     client.post("/friends/request", json={"to_user_id": a.id}, headers=ch)  # c → a (incoming)
 
     rows = {p["user_id"]: p for p in client.get("/friends/discover", headers=ah).json()}
-    assert set(rows) == {b.id, c.id, d.id}  # nobody dropped out
+    assert set(rows) == {b.id, d.id}  # b stays and is labelled; c is in /friends/requests
     assert rows[b.id]["friend_state"] == "requested"
-    assert rows[c.id]["friend_state"] == "incoming"
     assert rows[d.id]["friend_state"] == "none"
-    # The row id is sent only where there's something to do with it (accept).
-    assert rows[c.id]["friendship_id"] is not None
-    assert rows[b.id]["friendship_id"] is None
-    assert rows[d.id]["friendship_id"] is None
+    # ...and c really is reachable there, so nothing is lost by hiding them here.
+    assert [r["user_id"] for r in client.get("/friends/requests", headers=ah).json()] == [c.id]
+
+
+def test_discover_offers_no_friendship_id_at_all(client, make_user):
+    # There is no action on a directory row that needs one — every state is either "Add"
+    # (by user id) or a label. Asserted so a future "Accept from here" doesn't quietly
+    # reintroduce the duplicate-row bug along with the field.
+    a, ah = make_user()
+    b, _ = make_user()
+    client.post("/friends/request", json={"to_user_id": b.id}, headers=ah)
+    rows = client.get("/friends/discover", headers=ah).json()
+    assert rows and all("friendship_id" not in r for r in rows)
 
 
 def test_discover_drops_someone_only_once_the_friendship_is_ACCEPTED(client, make_user):

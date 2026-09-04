@@ -149,7 +149,7 @@ describe('UserProfile', () => {
   })
 })
 
-// Blocking (#85). Deliberately two taps and deliberately quiet: it's a safety control, it
+// Blocking (#85). Deliberately two taps, and secondary without being faint: it's a safety control, it
 // deletes the friendship, and it can't be undone from here — once blocked this profile 404s.
 describe('UserProfile — blocking', () => {
   it('offers a quiet block link, not a button competing with Add friend', async () => {
