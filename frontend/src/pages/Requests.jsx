@@ -76,11 +76,14 @@ export default function Requests() {
   if (rows === null) return <Loader />
 
   return (
-    <div className="min-h-screen bg-cream px-[18px] pt-5 pb-10">
-      <div className="mb-4">
+    <div className="min-h-screen bg-cream px-5 pt-5 pb-10">
+      <div className="mb-5">
         <BackButton to="/profile" label="Back" />
       </div>
-      <MarkerTitle color="bg-saffron">
+      <MarkerTitle
+        color="bg-saffron"
+        className="font-display font-black text-[32px] text-ink leading-none"
+      >
         Asked for<span className="text-terra">.</span>
       </MarkerTitle>
       <p className="font-display italic text-[15px] text-ink-soft mt-2 mb-6">

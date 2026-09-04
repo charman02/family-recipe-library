@@ -186,7 +186,7 @@ export default function Friends() {
           badge="bg-peach"
           title="No one here yet"
           sub="You’re the first one in the kitchen. When other people join, they’ll show up here to add — and anyone you hand a recipe to lands here too."
-          className="mt-6"
+          className="mt-6 mb-9"
         />
       )}
 

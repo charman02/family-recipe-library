@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+
 // ?raw pulls index.html in as a string, resolved relative to this file by Vite —
 // no cwd assumptions, unlike fs + import.meta.url (which isn't a file: URL here).
 import indexHtml from './index.html?raw'
